@@ -1,0 +1,38 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# cloudflare / wrangler
+.wrangler/
+.dev.vars
+worker-configuration.d.ts
+
+# vercel
+.vercel/
+
+# env
+.env
+.env.*
+!.env.example
+
+# drizzle (keep migrations, ignore local meta snapshots if desired)
+# packages/db/drizzle/meta/
+
+# logs & misc
+*.log
+npm-debug.log*
+coverage/
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

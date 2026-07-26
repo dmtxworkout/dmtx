@@ -1,0 +1,22 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+minimumReleaseAgeExclude:
+  - '@next/eslint-plugin-next@16.2.12'
+  - '@turbo/darwin-64@2.10.7'
+  - '@turbo/darwin-arm64@2.10.7'
+  - '@turbo/linux-64@2.10.7'
+  - '@turbo/linux-arm64@2.10.7'
+  - '@turbo/windows-64@2.10.7'
+  - '@turbo/windows-arm64@2.10.7'
+  - turbo@2.10.7
+
+# Allow these dependencies to run their install/build scripts (pnpm >= 10 blocks by default).
+onlyBuiltDependencies:
+  - esbuild
+  - workerd
+  - "@tailwindcss/oxide"
+  - sharp
+  - "@parcel/watcher"
+  - unrs-resolver

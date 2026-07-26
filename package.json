@@ -1,0 +1,31 @@
+{
+  "name": "dmtx",
+  "private": true,
+  "packageManager": "pnpm@11.5.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css}\"",
+    "db:generate": "pnpm --filter @dmtx/db generate",
+    "db:migrate": "pnpm --filter @dmtx/db migrate",
+    "db:studio": "pnpm --filter @dmtx/db studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.7",
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "zod": "4.4.3",
+      "typescript": "5.9.3"
+    }
+  }
+}

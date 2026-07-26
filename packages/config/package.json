@@ -1,0 +1,28 @@
+{
+  "name": "@dmtx/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint/base": "./eslint/base.js",
+    "./eslint/next": "./eslint/next.js",
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/library.json": "./tsconfig/library.json",
+    "./tsconfig/nextjs.json": "./tsconfig/nextjs.json",
+    "./tsconfig/workers.json": "./tsconfig/workers.json"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "^16.2.12",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "typescript-eslint": "^8.65.0"
+  },
+  "devDependencies": {
+    "eslint": "^10.8.0"
+  },
+  "peerDependencies": {
+    "eslint": "^10.0.0",
+    "typescript": "^5.9.0"
+  }
+}
