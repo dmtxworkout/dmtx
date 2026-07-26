@@ -1,0 +1,36 @@
+{
+  "name": "@dmtx/auth",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./permissions": "./src/permissions.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dmtx/db": "workspace:*",
+    "@dmtx/schemas": "workspace:*",
+    "better-auth": "^1.6.25",
+    "resend": "^6.18.0"
+  },
+  "devDependencies": {
+    "@dmtx/config": "workspace:*",
+    "@types/react": "^19.2.0",
+    "eslint": "^10.8.0",
+    "react": "^19.2.0",
+    "typescript": "5.9.3"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}
