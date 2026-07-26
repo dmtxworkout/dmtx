@@ -2,6 +2,12 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# Pin a single copy across the whole monorepo (two Zod copies => ZodType errors;
+# @hono/zod-openapi requires Zod 4).
+overrides:
+  zod: 4.4.3
+  typescript: 5.9.3
+
 minimumReleaseAgeExclude:
   - '@next/eslint-plugin-next@16.2.12'
   - '@turbo/darwin-64@2.10.7'
