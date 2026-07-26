@@ -1,0 +1,10 @@
+# Copy to `.dev.vars` and fill in. Loaded by `wrangler dev`.
+DATABASE_URL="postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=require"
+BETTER_AUTH_SECRET="generate-a-long-random-string-min-32-chars"
+RESEND_API_KEY="re_xxxxxxxx"
+
+# Cloudflare R2 (S3-compatible credentials — R2 > Manage API Tokens)
+R2_ACCOUNT_ID="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+R2_ACCESS_KEY_ID="xxxxxxxxxxxxxxxxxxxx"
+R2_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+R2_PUBLIC_BASE_URL="https://media.dmtx.app"

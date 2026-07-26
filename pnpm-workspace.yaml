@@ -17,6 +17,7 @@ minimumReleaseAgeExclude:
   - '@turbo/windows-64@2.10.7'
   - '@turbo/windows-arm64@2.10.7'
   - turbo@2.10.7
+  - '@cloudflare/workers-types@5.20260726.1'
 
 # Allow these dependencies to run their install/build scripts (pnpm >= 10 blocks by default).
 onlyBuiltDependencies:
@@ -29,3 +30,4 @@ onlyBuiltDependencies:
 
 allowBuilds:
   esbuild: true
+  workerd: true

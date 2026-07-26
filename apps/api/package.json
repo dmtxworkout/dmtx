@@ -1,0 +1,32 @@
+{
+  "name": "@dmtx/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@dmtx/auth": "workspace:*",
+    "@dmtx/db": "workspace:*",
+    "@dmtx/schemas": "workspace:*",
+    "@hono/zod-openapi": "^1.5.1",
+    "aws4fetch": "^1.0.20",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.32",
+    "uuidv7": "^1.2.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260726.1",
+    "@dmtx/config": "workspace:*",
+    "eslint": "^10.8.0",
+    "typescript": "5.9.3",
+    "wrangler": "^4.114.0"
+  }
+}

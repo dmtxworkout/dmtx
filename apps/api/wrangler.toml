@@ -1,0 +1,21 @@
+name = "dmtx-api"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Non-secret vars. Secrets (DATABASE_URL, BETTER_AUTH_SECRET, RESEND_API_KEY,
+# R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY) go in .dev.vars locally
+# and `wrangler secret put` in production.
+[vars]
+BETTER_AUTH_URL = "http://localhost:8787"
+ADMIN_ORIGIN = "http://localhost:3000"
+EMAIL_FROM = "DMTX <no-reply@dmtx.app>"
+R2_BUCKET = "dmtx-media"
+
+# Daily billing run (implemented in the billing phase; needs a scheduled()
+# handler before enabling).
+# [triggers]
+# crons = ["0 13 * * *"]
