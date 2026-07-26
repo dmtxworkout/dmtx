@@ -26,3 +26,6 @@ onlyBuiltDependencies:
   - sharp
   - "@parcel/watcher"
   - unrs-resolver
+
+allowBuilds:
+  esbuild: true
