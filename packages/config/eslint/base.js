@@ -44,11 +44,15 @@ export const noServerOnlyImports = {
             name: '@dmtx/db',
             message: '@dmtx/db is server-only. Talk to the API via @dmtx/api-client instead.',
           },
+          {
+            name: '@dmtx/auth',
+            message: 'Server-only entrypoint. Use @dmtx/auth/client on the client.',
+          },
         ],
         patterns: [
           {
-            group: ['@dmtx/db/*', '@dmtx/auth'],
-            message: 'Server-only package. Use @dmtx/auth/client or @dmtx/api-client on the client.',
+            group: ['@dmtx/db/*'],
+            message: '@dmtx/db is server-only. Use @dmtx/api-client on the client.',
           },
         ],
       },
