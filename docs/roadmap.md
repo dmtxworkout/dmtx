@@ -23,6 +23,10 @@
 8. **Production hardening** — CI (GitHub Actions + Turbo remote cache + Neon PR-branch migration check), subdomain cookie config, R2 CORS, deploys (Vercel + `wrangler deploy`).
 9. **Mobile app** — Expo consumer app (Netflix-style catalog, workout player, offline downloads), sharing `@dmtx/schemas` + `@dmtx/core` + `@dmtx/api-client`.
 
+## Future ideas (not scheduled)
+
+Bigger directions we want but haven't scheduled live in [future-ideas.md](future-ideas.md) — e.g. a **coach marketplace** where other coaches publish programs and earn commissions (needs a revenue-share model since today it's one all-access subscription).
+
 ## Known shortcuts to revisit
 
 - Exercise form omits muscle/equipment pickers (needs the taxonomy screens first).

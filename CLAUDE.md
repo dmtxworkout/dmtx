@@ -15,6 +15,7 @@ DMTX is the **"Netflix of workouts"**: a Spanish-language fitness platform with 
 | [docs/conventions.md](docs/conventions.md) | How to add an entity end-to-end; code patterns |
 | [docs/env.md](docs/env.md) | Required env vars and where they live |
 | [docs/roadmap.md](docs/roadmap.md) | What's built vs. next |
+| [docs/future-ideas.md](docs/future-ideas.md) | Parking lot (e.g. coach marketplace) — not scheduled |
 
 ## Monorepo at a glance
 
