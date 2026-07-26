@@ -1,28 +1,26 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
-} from '@tanstack/react-table';
-import type { ExerciseListItem } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { formatDateEs } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Card } from '@/components/ui/card';
-import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
+import { Chip } from '@/components/ui/chip';
+import { PageHeader } from '@/components/ui/page-header';
+import { Thumb } from '@/components/ui/thumb';
 
-const columnHelper = createColumnHelper<ExerciseListItem>();
+const COLS =
+  'grid-cols-[74px_minmax(0,1.6fr)_110px_120px_104px_120px_128px] gap-3.5 px-[18px]';
+
+const FILTERS = ['Todo', 'Principiante', 'Intermedio', 'Avanzado', 'Sin video'];
 
 export default function ExercisesPage() {
   const [search, setSearch] = useState('');
+  const router = useRouter();
   const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
@@ -36,112 +34,100 @@ export default function ExercisesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['exercises'] }),
   });
 
-  const columns = useMemo(
-    () => [
-      columnHelper.accessor('name', {
-        header: es.exercises.fields.name,
-        cell: (c) => <span className="font-medium text-zinc-900">{c.getValue()}</span>,
-      }),
-      columnHelper.accessor('difficulty', {
-        header: es.exercises.fields.difficulty,
-        cell: (c) => es.difficulty[c.getValue()],
-      }),
-      columnHelper.accessor('measurementType', {
-        header: es.exercises.fields.measurementType,
-        cell: (c) => es.measurement[c.getValue()],
-      }),
-      columnHelper.accessor('status', {
-        header: es.exercises.fields.status,
-        cell: (c) => <Badge tone={c.getValue()}>{es.status[c.getValue()]}</Badge>,
-      }),
-      columnHelper.accessor('updatedAt', {
-        header: 'Actualizado',
-        cell: (c) => <span className="text-zinc-500">{formatDateEs(c.getValue())}</span>,
-      }),
-      columnHelper.display({
-        id: 'actions',
-        header: () => <span className="sr-only">{es.app.actions}</span>,
-        cell: (c) => (
-          <div className="flex justify-end gap-2">
-            <Link href={`/ejercicios/${c.row.original.id}`}>
-              <Button variant="outline" size="sm">
-                {es.app.edit}
-              </Button>
-            </Link>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (confirm(es.app.confirmDelete)) remove.mutate(c.row.original.id);
-              }}
-            >
-              {es.app.delete}
-            </Button>
-          </div>
-        ),
-      }),
-    ],
-    [remove],
-  );
-
-  const table = useReactTable({
-    data: data?.data ?? [],
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
+  const rows = data?.data ?? [];
 
   return (
-    <div className="p-6">
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">{es.exercises.title}</h1>
-          {data && <p className="text-sm text-zinc-500">{es.exercises.count(data.total)}</p>}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <PageHeader
+        title={es.exercises.title}
+        subtitle={data ? es.exercises.count(data.total) : es.exercises.title}
+        actions={
+          <>
+            <Button variant="outline">Exportar</Button>
+            <Link href="/ejercicios/nuevo">
+              <Button>{es.exercises.new}</Button>
+            </Link>
+          </>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
+            <span className="text-muted-2">⌕</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o músculo"
+              className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
+            />
+          </div>
+          {FILTERS.map((f, i) => (
+            <Chip key={f} active={i === 0}>
+              {f}
+            </Chip>
+          ))}
         </div>
-        <Link href="/ejercicios/nuevo">
-          <Button>{es.exercises.new}</Button>
-        </Link>
-      </div>
+      </PageHeader>
 
-      <div className="mb-4 max-w-xs">
-        <Input
-          placeholder={es.app.search}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+          <div className={`grid min-w-[900px] ${COLS} border-b border-line-3 bg-surface-2 py-2.5`}>
+            {['', 'Nombre', 'Dificultad', 'Medición', 'Estado', 'Actualizado', ''].map((h, i) => (
+              <span
+                key={i}
+                className="font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2"
+              >
+                {h}
+              </span>
+            ))}
+          </div>
 
-      <Card>
-        {isLoading ? (
-          <div className="p-8 text-center text-sm text-zinc-500">{es.app.loading}</div>
-        ) : isError ? (
-          <div className="p-8 text-center text-sm text-red-600">{es.app.error}</div>
-        ) : (data?.data.length ?? 0) === 0 ? (
-          <div className="p-8 text-center text-sm text-zinc-500">{es.exercises.empty}</div>
-        ) : (
-          <Table>
-            <THead>
-              {table.getHeaderGroups().map((hg) => (
-                <TR key={hg.id} className="hover:bg-transparent">
-                  {hg.headers.map((h) => (
-                    <TH key={h.id}>
-                      {flexRender(h.column.columnDef.header, h.getContext())}
-                    </TH>
-                  ))}
-                </TR>
-              ))}
-            </THead>
-            <TBody>
-              {table.getRowModel().rows.map((row) => (
-                <TR key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TD key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TD>
-                  ))}
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        )}
-      </Card>
+          {isLoading ? (
+            <div className="p-8 text-center text-sm text-muted">{es.app.loading}</div>
+          ) : isError ? (
+            <div className="p-8 text-center text-sm text-accent-dark">{es.app.error}</div>
+          ) : rows.length === 0 ? (
+            <div className="p-10 text-center text-sm text-muted">{es.exercises.empty}</div>
+          ) : (
+            rows.map((e) => (
+              <div
+                key={e.id}
+                onClick={() => router.push(`/ejercicios/${e.id}`)}
+                className={`grid min-w-[900px] cursor-pointer ${COLS} items-center border-b border-line-4 py-2.5 last:border-0 hover:bg-surface-2/60`}
+              >
+                <Thumb className="h-[46px] w-[74px] rounded-md" ratio="auto" />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">{e.name}</div>
+                  {e.description && (
+                    <div className="truncate font-mono text-[11px] text-muted">{e.description}</div>
+                  )}
+                </div>
+                <span className="text-[13px] text-ink-2">{es.difficulty[e.difficulty]}</span>
+                <span className="text-[13px] text-ink-2">{es.measurement[e.measurementType]}</span>
+                <span>
+                  <Badge tone={e.status}>{es.status[e.status]}</Badge>
+                </span>
+                <span className="font-mono text-[12px] text-muted">{formatDateEs(e.updatedAt)}</span>
+                <div className="flex justify-end gap-1.5" onClick={(ev) => ev.stopPropagation()}>
+                  <Link href={`/ejercicios/${e.id}`}>
+                    <Button variant="outline" size="sm">
+                      {es.app.edit}
+                    </Button>
+                  </Link>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm(es.app.confirmDelete)) remove.mutate(e.id);
+                    }}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

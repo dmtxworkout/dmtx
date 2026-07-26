@@ -31,6 +31,13 @@ export const es = {
     media: 'Biblioteca',
     subscriptions: 'Suscripciones',
     reports: 'Reportes',
+    sections: {
+      principal: 'Principal',
+      contenido: 'Contenido',
+      catalogo: 'Catálogo',
+      negocio: 'Negocio',
+    },
+    role: 'Administrador',
   },
   login: {
     title: 'Iniciar sesión',

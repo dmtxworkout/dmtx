@@ -1,7 +1,35 @@
 @import 'tailwindcss';
 
-:root {
-  color-scheme: light;
+@theme {
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* surfaces */
+  --color-paper: #f7f6f4;
+  --color-surface: #ffffff;
+  --color-surface-2: #faf9f6;
+  --color-surface-3: #fdfcfa;
+
+  /* text */
+  --color-ink: #1a1a17;
+  --color-ink-2: #45423b;
+  --color-ink-3: #77746c;
+  --color-muted: #9c988e;
+  --color-muted-2: #a8a49a;
+  --color-faint: #b8b4aa;
+  --color-faint-2: #c8c4ba;
+
+  /* lines */
+  --color-line: #e8e4dc;
+  --color-line-2: #ded9d0;
+  --color-line-3: #f0ede7;
+  --color-line-4: #f6f4f0;
+
+  /* terracotta accent */
+  --color-accent: #d1502a;
+  --color-accent-hover: #bd4522;
+  --color-accent-dark: #9c3618;
+  --color-accent-tint: #fbe3dc;
 }
 
 html,
@@ -10,7 +38,25 @@ body {
 }
 
 body {
-  background-color: #fafafa;
-  color: #18181b;
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Tailwind v4 defaults borders to currentColor; anchor them to the warm line. */
+*,
+::before,
+::after {
+  border-color: var(--color-line);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #ddd8ce;
+  border-radius: 6px;
+  border: 3px solid var(--color-paper);
 }

@@ -129,7 +129,10 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
   });
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto max-w-2xl space-y-5 p-6">
+    <form
+      onSubmit={onSubmit}
+      className="min-h-0 flex-1 space-y-5 overflow-y-auto px-8 py-6 [&>*]:mx-auto [&>*]:max-w-2xl"
+    >
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">
           {exercise ? es.exercises.edit : es.exercises.new}

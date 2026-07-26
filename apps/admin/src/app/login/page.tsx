@@ -7,7 +7,9 @@ import { es } from '@/i18n/es';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
+import { Logo } from '@/components/ui/logo';
+import { MonoLabel } from '@/components/ui/mono-label';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -26,15 +28,19 @@ export default function LoginPage() {
       setError(es.login.error);
       return;
     }
-    router.push('/ejercicios');
+    router.push('/');
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-paper p-4">
       <Card className="w-full max-w-sm">
-        <CardContent className="py-6">
-          <h1 className="text-lg font-semibold">{es.login.title}</h1>
-          <p className="mb-5 text-sm text-zinc-500">{es.login.subtitle}</p>
+        <div className="px-7 py-8">
+          <div className="mb-6 flex items-center gap-2.5">
+            <Logo />
+            <MonoLabel className="text-[11px] tracking-[0.12em] text-muted">Admin</MonoLabel>
+          </div>
+          <h1 className="text-[22px] font-bold tracking-[-0.02em]">{es.login.title}</h1>
+          <p className="mb-6 mt-1 text-sm text-ink-3">{es.login.subtitle}</p>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
               <Label htmlFor="email">{es.login.email}</Label>
@@ -58,12 +64,12 @@ export default function LoginPage() {
                 required
               />
             </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-accent-dark">{error}</p>}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? es.app.loading : es.login.submit}
             </Button>
           </form>
-        </CardContent>
+        </div>
       </Card>
     </div>
   );
