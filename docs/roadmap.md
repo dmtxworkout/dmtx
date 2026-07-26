@@ -25,7 +25,7 @@
 
 ## Future ideas (not scheduled)
 
-Bigger directions we want but haven't scheduled live in [future-ideas.md](future-ideas.md) — e.g. a **coach marketplace** where other coaches publish programs and earn commissions (needs a revenue-share model since today it's one all-access subscription).
+Bigger directions we want but haven't scheduled live in [../features/](../features/) — e.g. a **coach marketplace** where other coaches publish programs and earn commissions (needs a revenue-share model since today it's one all-access subscription).
 
 ## Known shortcuts to revisit
 
