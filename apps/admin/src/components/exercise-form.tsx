@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MediaField } from '@/components/media-field';
 
 const formSchema = z.object({
   name: z.string().min(1, es.app.required),
@@ -93,6 +94,12 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
   const router = useRouter();
   const qc = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(
+    exercise?.thumbnailAssetId ?? null,
+  );
+  const [demoVideoAssetId, setDemoVideoAssetId] = useState<string | null>(
+    exercise?.demoVideoAssetId ?? null,
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -111,6 +118,8 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
         isUnilateral: values.isUnilateral,
         status: values.status,
         defaultTempo: buildTempo(values.tempo),
+        thumbnailAssetId,
+        demoVideoAssetId,
       };
       if (exercise) return api.exercises.update(exercise.id, base);
       const payload: CreateExerciseInput = { ...base, muscles: [], equipmentIds: [] };
@@ -204,6 +213,26 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
               </label>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>{es.exercises.fields.media}</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-8 py-5">
+          <MediaField
+            kind="image"
+            label={es.exercises.fields.thumbnail}
+            value={thumbnailAssetId}
+            onChange={setThumbnailAssetId}
+          />
+          <MediaField
+            kind="video"
+            label={es.exercises.fields.demoVideo}
+            value={demoVideoAssetId}
+            onChange={setDemoVideoAssetId}
+          />
         </CardContent>
       </Card>
 

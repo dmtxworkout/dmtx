@@ -19,6 +19,10 @@ export const es = {
     confirmDelete: '¿Seguro que quieres eliminar este elemento?',
     error: 'Ocurrió un error',
     required: 'Requerido',
+    upload: 'Subir',
+    change: 'Cambiar',
+    remove: 'Quitar',
+    uploading: 'Subiendo…',
   },
   nav: {
     dashboard: 'Panel',
@@ -79,6 +83,9 @@ export const es = {
       isUnilateral: 'Unilateral (por lado)',
       status: 'Estado',
       tempo: 'Tempo',
+      media: 'Medios',
+      thumbnail: 'Portada',
+      demoVideo: 'Video demostración',
     },
     tempo: {
       holdTop: 'Hold arriba',

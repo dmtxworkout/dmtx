@@ -7,11 +7,18 @@ export interface PresignInput {
 }
 
 export interface PresignResult {
+  assetId: string;
   key: string;
   uploadUrl: string;
-  publicUrl: string | null;
   method: 'PUT';
   headers: Record<string, string>;
+}
+
+export interface MediaAsset {
+  id: string;
+  kind: 'video' | 'image';
+  mimeType: string | null;
+  viewUrl: string;
 }
 
 export function mediaApi(http: Http) {
@@ -19,7 +26,7 @@ export function mediaApi(http: Http) {
     presign(input: PresignInput): Promise<PresignResult> {
       return http.request('/api/media/presign', { method: 'POST', body: JSON.stringify(input) });
     },
-    /** Presign + upload a file directly to R2. Returns the stored object info. */
+    /** Presign + upload a file directly to R2. Returns the created asset (id, key). */
     async upload(file: File, kind: 'video' | 'image'): Promise<PresignResult> {
       const presigned = await this.presign({
         filename: file.name,
@@ -33,6 +40,10 @@ export function mediaApi(http: Http) {
       });
       if (!res.ok) throw new Error(`Error subiendo a R2 (${res.status})`);
       return presigned;
+    },
+    /** Fetch an asset + a short-lived presigned URL to display it. */
+    view(id: string): Promise<MediaAsset> {
+      return http.request(`/api/media/${id}`);
     },
   };
 }

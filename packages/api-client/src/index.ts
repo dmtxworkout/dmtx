@@ -19,4 +19,4 @@ export type ApiClient = ReturnType<typeof createApiClient>;
 
 export * from './http';
 export type { Paginated, ExerciseListItem } from './exercises';
-export type { PresignInput, PresignResult } from './media';
+export type { PresignInput, PresignResult, MediaAsset } from './media';

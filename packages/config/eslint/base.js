@@ -10,7 +10,15 @@ import prettier from 'eslint-config-prettier';
  */
 export const baseConfig = tseslint.config(
   {
-    ignores: ['dist/**', '.next/**', '.turbo/**', 'node_modules/**', 'drizzle/**', '**/*.gen.ts'],
+    ignores: [
+      'dist/**',
+      '.next/**',
+      '.turbo/**',
+      '.wrangler/**',
+      'node_modules/**',
+      'drizzle/**',
+      '**/*.gen.ts',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
