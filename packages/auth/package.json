@@ -10,12 +10,14 @@
   },
   "scripts": {
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "seed:admin": "tsx scripts/seed-admin.ts"
   },
   "dependencies": {
     "@dmtx/db": "workspace:*",
     "@dmtx/schemas": "workspace:*",
     "better-auth": "^1.6.25",
+    "drizzle-orm": "^0.45.2",
     "resend": "^6.18.0"
   },
   "devDependencies": {
@@ -23,6 +25,7 @@
     "@types/react": "^19.2.0",
     "eslint": "^10.8.0",
     "react": "^19.2.0",
+    "tsx": "^4.19.0",
     "typescript": "5.9.3"
   },
   "peerDependencies": {
