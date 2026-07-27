@@ -11,7 +11,7 @@ cp packages/db/.env.example packages/db/.env          # set DATABASE_URL
 pnpm db:migrate
 # Admin
 cp apps/admin/.env.example apps/admin/.env.local      # NEXT_PUBLIC_API_URL (default is fine)
-pnpm dev                                               # admin :3000 + api :8787
+pnpm dev                                               # admin :3001 + api :8787
 ```
 
 Create the first admin: sign up via the app, then set that user's `role` to `admin` in the DB (`pnpm db:studio` → `user` table), or promote via Better Auth's admin API.

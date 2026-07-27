@@ -11,6 +11,8 @@ export interface AuthEnv {
   BETTER_AUTH_URL: string;
   /** Comma-separated list of allowed origins (admin app, mobile, …). */
   TRUSTED_ORIGINS?: string;
+  /** The admin app origin — auto-added to trusted origins for cross-origin login. */
+  ADMIN_ORIGIN?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
 }
@@ -25,12 +27,15 @@ export function createAuth(env: AuthEnv) {
   const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
   const from = env.EMAIL_FROM ?? 'DMTX <no-reply@dmtx.app>';
 
+  const trustedOrigins = [
+    ...(env.TRUSTED_ORIGINS?.split(',').map((s) => s.trim()) ?? []),
+    env.ADMIN_ORIGIN,
+  ].filter((v): v is string => Boolean(v));
+
   return betterAuth({
     baseURL: env.BETTER_AUTH_URL,
     secret: env.BETTER_AUTH_SECRET,
-    trustedOrigins: env.TRUSTED_ORIGINS?.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
+    trustedOrigins: trustedOrigins.length ? trustedOrigins : undefined,
     database: drizzleAdapter(db, { provider: 'pg' }),
     emailAndPassword: {
       enabled: true,

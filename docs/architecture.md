@@ -38,4 +38,4 @@ A wholesale AWS move is an org-level decision (compliance / committed spend), no
 
 ## Cross-origin cookies (important)
 
-In production, host the admin and API under a **shared parent domain** (`admin.dmtx.app` + `api.dmtx.app`) and configure Better Auth `crossSubDomainCookies` (domain `.dmtx.app`), `SameSite=None; Secure`, and CORS `credentials: true` with an explicit origin. In **local dev** the two run on different ports (`:3000` / `:8787`), so the session cookie lives on the API origin and the admin's route guard is **client-side** (via `useSession`) rather than in Next middleware.
+In production, host the admin and API under a **shared parent domain** (`admin.dmtx.app` + `api.dmtx.app`) and configure Better Auth `crossSubDomainCookies` (domain `.dmtx.app`), `SameSite=None; Secure`, and CORS `credentials: true` with an explicit origin. In **local dev** the two run on different ports (`:3001` / `:8787`), so the session cookie lives on the API origin and the admin's route guard is **client-side** (via `useSession`) rather than in Next middleware.

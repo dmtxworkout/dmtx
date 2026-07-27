@@ -11,7 +11,7 @@ enabled = true
 # and `wrangler secret put` in production.
 [vars]
 BETTER_AUTH_URL = "http://localhost:8787"
-ADMIN_ORIGIN = "http://localhost:3000"
+ADMIN_ORIGIN = "http://localhost:3001"
 EMAIL_FROM = "DMTX <no-reply@dmtx.app>"
 R2_BUCKET = "dmtx-media"
 

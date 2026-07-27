@@ -17,7 +17,7 @@ See **`CLAUDE.md`** and **`docs/`** for architecture, data model, conventions, a
 pnpm install
 cp apps/api/.dev.vars.example apps/api/.dev.vars   # fill in secrets
 pnpm db:migrate                                    # apply schema to your Neon branch
-pnpm dev                                            # admin :3000 + api :8787
+pnpm dev                                            # admin :3001 + api :8787
 ```
 
 ## Workspace

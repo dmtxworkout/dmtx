@@ -39,7 +39,7 @@ packages/core     workout engines (later)        packages/config      tsconfig/e
 
 ```bash
 pnpm install                 # install everything
-pnpm dev                     # admin (:3000) + api (:8787) via turbo
+pnpm dev                     # admin (:3001) + api (:8787) via turbo
 pnpm --filter @dmtx/api dev  # just the API (wrangler dev)
 pnpm --filter @dmtx/admin dev
 pnpm db:generate             # generate a Drizzle migration from schema changes

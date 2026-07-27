@@ -11,7 +11,7 @@ const app = createApp();
 // CORS — credentials require an explicit origin (never "*").
 app.use('*', (c, next) =>
   cors({
-    origin: c.env.ADMIN_ORIGIN ?? 'http://localhost:3000',
+    origin: c.env.ADMIN_ORIGIN ?? 'http://localhost:3001',
     credentials: true,
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
