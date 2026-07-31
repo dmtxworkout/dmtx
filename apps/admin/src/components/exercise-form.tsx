@@ -26,7 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MediaField } from '@/components/media-field';
 
 const formSchema = z.object({
-  name: z.string().min(1, es.app.required),
+  name: z.string().min(1, es.app.nameRequired),
   description: z.string(),
   cues: z.array(z.object({ value: z.string() })),
   difficulty: difficultySchema,

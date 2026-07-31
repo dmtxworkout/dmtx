@@ -169,6 +169,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const router = useRouter();
   const qc = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState(false);
 
   const [name, setName] = useState(workout?.name ?? '');
   const [description, setDescription] = useState(workout?.description ?? '');
@@ -250,9 +251,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const doSave = () => {
     setServerError(null);
     if (!name.trim()) {
-      setServerError(es.app.required);
+      setNameError(true);
       return;
     }
+    setNameError(false);
     save.mutate();
   };
 
@@ -270,10 +272,19 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           </div>
           <input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (nameError) setNameError(false);
+            }}
             placeholder={es.workouts.new}
-            className="w-full max-w-2xl bg-transparent text-[26px] font-bold tracking-[-0.02em] placeholder:text-faint focus:outline-none"
+            className={cn(
+              'w-full max-w-2xl bg-transparent text-[26px] font-bold tracking-[-0.02em] focus:outline-none',
+              nameError ? 'placeholder:text-accent-dark' : 'placeholder:text-faint',
+            )}
           />
+          {nameError && (
+            <span className="text-xs font-medium text-accent-dark">{es.app.nameRequired}</span>
+          )}
           <div className="flex items-center gap-2">
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"

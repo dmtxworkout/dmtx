@@ -32,6 +32,7 @@ export function HabilidadForm({ skill }: { skill?: Skill }) {
   const router = useRouter();
   const qc = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState(false);
 
   const [name, setName] = useState(skill?.name ?? '');
   const [description, setDescription] = useState(skill?.description ?? '');
@@ -108,9 +109,10 @@ export function HabilidadForm({ skill }: { skill?: Skill }) {
             onClick={() => {
               setServerError(null);
               if (!name.trim()) {
-                setServerError(es.app.required);
+                setNameError(true);
                 return;
               }
+              setNameError(false);
               save.mutate();
             }}
             disabled={save.isPending}
@@ -129,7 +131,17 @@ export function HabilidadForm({ skill }: { skill?: Skill }) {
           <CardContent className="space-y-4 py-5">
             <div>
               <Label>{es.fields.name}</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Input
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (nameError) setNameError(false);
+                }}
+                className={nameError ? 'border-accent/60' : undefined}
+              />
+              {nameError && (
+                <p className="mt-1 text-xs font-medium text-accent-dark">{es.app.nameRequired}</p>
+              )}
             </div>
             <div>
               <Label>{es.fields.description}</Label>

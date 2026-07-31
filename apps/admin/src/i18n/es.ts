@@ -19,6 +19,7 @@ export const es = {
     confirmDelete: '¿Seguro que quieres eliminar este elemento?',
     error: 'Ocurrió un error',
     required: 'Requerido',
+    nameRequired: 'El nombre es requerido',
     upload: 'Subir',
     change: 'Cambiar',
     remove: 'Quitar',
