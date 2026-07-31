@@ -1,14 +1,13 @@
 'use client';
 
-import { type ChangeEvent, useEffect, useRef, useState } from 'react';
+import { type ChangeEvent, type DragEvent, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
-import { Button } from '@/components/ui/button';
-import { Thumb } from '@/components/ui/thumb';
+import { cn } from '@/lib/utils';
 
 /**
  * Upload + preview a single media asset (image or video) via presigned R2.
- * Holds only the asset id; the parent stores it on the entity.
+ * Supports click-to-pick and drag-and-drop. Holds only the asset id.
  */
 export function MediaField({
   kind,
@@ -24,6 +23,7 @@ export function MediaField({
   const inputRef = useRef<HTMLInputElement>(null);
   const [viewUrl, setViewUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,10 +41,12 @@ export function MediaField({
     };
   }, [value]);
 
-  async function onFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  async function upload(file: File) {
+    const expected = kind === 'image' ? 'image/' : 'video/';
+    if (!file.type.startsWith(expected)) {
+      setError(kind === 'image' ? 'Debe ser una imagen' : 'Debe ser un video');
+      return;
+    }
     setError(null);
     setUploading(true);
     try {
@@ -57,48 +59,92 @@ export function MediaField({
     }
   }
 
+  function onInput(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) void upload(file);
+  }
+
+  function onDrop(e: DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void upload(file);
+  }
+
   return (
     <div>
       <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{label}</div>
-      <div className="flex items-center gap-3">
-        <Thumb className="h-[70px] w-[112px] shrink-0 rounded-lg border border-line" ratio="auto">
-          {viewUrl && kind === 'image' && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={viewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      <input
+        ref={inputRef}
+        type="file"
+        accept={kind === 'image' ? 'image/*' : 'video/*'}
+        className="hidden"
+        onChange={onInput}
+      />
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        className={cn(
+          'relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          dragging
+            ? 'border-accent bg-accent-tint/40'
+            : viewUrl
+              ? 'border-line'
+              : 'border-dashed border-line-2 bg-surface-3 hover:bg-surface-2',
+        )}
+      >
+        {viewUrl && kind === 'image' && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={viewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        )}
+        {viewUrl && kind === 'video' && (
+          <video src={viewUrl} muted className="absolute inset-0 h-full w-full object-cover" />
+        )}
+        {!viewUrl && !uploading && (
+          <div className="px-4 text-xs text-muted">
+            <div className="mb-1 text-xl text-faint">↑</div>
+            Arrastra {kind === 'image' ? 'una imagen' : 'un video'} aquí
+            <br />o haz clic para subir
+          </div>
+        )}
+        {uploading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-surface/80 text-sm font-medium text-ink-2">
+            {es.app.uploading}
+          </div>
+        )}
+      </div>
+      {(value || error) && (
+        <div className="mt-2 flex items-center gap-3 text-xs">
+          {value && (
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              className="text-ink-3 hover:text-ink"
+            >
+              {es.app.change}
+            </button>
           )}
-          {viewUrl && kind === 'video' && (
-            <video src={viewUrl} muted className="absolute inset-0 h-full w-full object-cover" />
-          )}
-        </Thumb>
-        <div className="flex flex-col items-start gap-1.5">
-          <input
-            ref={inputRef}
-            type="file"
-            accept={kind === 'image' ? 'image/*' : 'video/*'}
-            className="hidden"
-            onChange={onFile}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={uploading}
-            onClick={() => inputRef.current?.click()}
-          >
-            {uploading ? es.app.uploading : value ? es.app.change : es.app.upload}
-          </Button>
           {value && (
             <button
               type="button"
               onClick={() => onChange(null)}
-              className="text-xs text-ink-3 hover:text-accent-dark"
+              className="text-ink-3 hover:text-accent-dark"
             >
               {es.app.remove}
             </button>
           )}
-          {error && <span className="text-xs text-accent-dark">{error}</span>}
+          {error && <span className="text-accent-dark">{error}</span>}
         </div>
-      </div>
+      )}
     </div>
   );
 }
