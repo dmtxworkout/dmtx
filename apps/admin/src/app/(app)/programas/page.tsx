@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Thumb } from '@/components/ui/thumb';
+import { MediaThumb } from '@/components/media-thumb';
 
 function meta(p: ProgramListItem): string {
   const parts: string[] = [es.programs.types[p.type], es.difficulty[p.difficulty]];
@@ -42,9 +43,12 @@ export default function ProgramasPage() {
         title={es.programs.title}
         subtitle={data ? `${data.total} programa${data.total === 1 ? '' : 's'}` : es.programs.title}
         actions={
-          <Link href="/programas/nuevo">
-            <Button>{es.programs.new}</Button>
-          </Link>
+          <>
+            <Button variant="outline">Duplicar plantilla</Button>
+            <Link href="/programas/nuevo">
+              <Button>{es.programs.new}</Button>
+            </Link>
+          </>
         }
       >
         <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
@@ -74,6 +78,9 @@ export default function ProgramasPage() {
                 className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-2"
               >
                 <Thumb>
+                  {p.thumbnailAssetId && (
+                    <MediaThumb assetId={p.thumbnailAssetId} className="absolute inset-0 h-full w-full" />
+                  )}
                   <span className="absolute left-2.5 top-2.5 rounded-md bg-ink px-1.5 py-1 font-mono text-[10px] font-semibold tracking-[0.06em] text-white">
                     {p.type === 'structured' ? 'CALENDARIO' : 'PLAYLIST'}
                   </span>

@@ -132,6 +132,14 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
 
+  const removeExercise = useMutation({
+    mutationFn: () => api.exercises.remove(exercise!.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['exercises'] });
+      router.push('/ejercicios');
+    },
+  });
+
   const onSubmit = form.handleSubmit((values) => {
     setServerError(null);
     save.mutate(values);
@@ -144,6 +152,15 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
           {exercise ? es.exercises.edit : es.exercises.new}
         </h1>
         <div className="flex gap-2">
+          {exercise && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
+            >
+              {es.app.delete}
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={() => router.push('/ejercicios')}>
             {es.app.cancel}
           </Button>

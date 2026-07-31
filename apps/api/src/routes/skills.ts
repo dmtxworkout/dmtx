@@ -1,12 +1,11 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { skillLevels, skills } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import {
   createSkillSchema,
   paginated,
   paginationQuerySchema,
-  skillListItemSchema,
   skillSchema,
   slugify,
   updateSkillSchema,
@@ -77,8 +76,8 @@ skillsRoute.openapi(
     request: { query: paginationQuerySchema },
     responses: {
       200: {
-        description: 'Lista de habilidades',
-        content: { 'application/json': { schema: paginated(skillListItemSchema) } },
+        description: 'Lista de habilidades (con niveles)',
+        content: { 'application/json': { schema: paginated(skillSchema) } },
       },
     },
   }),
@@ -96,7 +95,27 @@ skillsRoute.openapi(
         .offset((page - 1) * pageSize),
       db.select({ value: count() }).from(skills).where(where),
     ]);
-    return c.json({ data: rows.map(base), total: totals?.value ?? 0, page, pageSize }, 200);
+    const ids = rows.map((r) => r.id);
+    const levels = ids.length
+      ? await db.select().from(skillLevels).where(inArray(skillLevels.skillId, ids)).orderBy(skillLevels.position)
+      : [];
+    const byS = new Map<string, (typeof levels)[number][]>();
+    for (const l of levels) {
+      const arr = byS.get(l.skillId) ?? [];
+      arr.push(l);
+      byS.set(l.skillId, arr);
+    }
+    const data = rows.map((s) => ({
+      ...base(s),
+      levels: (byS.get(s.id) ?? []).map((l) => ({
+        id: l.id,
+        name: l.name,
+        description: l.description,
+        workoutId: l.workoutId,
+        unlockGoal: l.unlockGoal ?? null,
+      })),
+    }));
+    return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
 

@@ -3,16 +3,12 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  BLOCK_TYPE,
-  CONTENT_STATUS,
-  DIFFICULTY,
-  WORKOUT_FORMAT,
-} from '@dmtx/schemas';
+import { BLOCK_TYPE, CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
   BlockType,
   CreateWorkoutInput,
   FormatConfig,
+  LoadPrescription,
   Workout,
   WorkoutFormat,
 } from '@dmtx/schemas';
@@ -22,11 +18,10 @@ import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
+import { MediaThumb } from '@/components/media-thumb';
 import { EntityPicker } from '@/components/entity-picker';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
@@ -58,19 +53,12 @@ const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
   ],
   circuit: [
     { key: 'rounds', label: 'Rondas' },
-    { key: 'restBetweenRoundsSeconds', label: 'Descanso entre rondas (seg)' },
+    { key: 'restBetweenRoundsSeconds', label: 'Descanso/ronda (seg)' },
     { key: 'timeCapSeconds', label: 'Tiempo límite (seg)' },
   ],
 };
 
-type ItemState = {
-  key: string;
-  exerciseId: string;
-  sets: string;
-  reps: string;
-  workSeconds: string;
-  restBetweenSeconds: string;
-};
+type ItemState = { key: string; exerciseId: string; sets: string; reps: string; carga: string };
 type BlockState = {
   key: string;
   type: BlockType;
@@ -86,6 +74,26 @@ const num = (s: string): number | null => {
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n) : null;
 };
+
+function loadToStr(l?: LoadPrescription | null): string {
+  if (!l) return '';
+  if (l.type === 'absolute') return String(l.value);
+  if (l.type === 'percent_1rm') return `${l.value}%`;
+  if (l.type === 'rpe') return `RPE ${l.value}`;
+  return '';
+}
+function strToLoad(s: string): LoadPrescription | null {
+  const t = s.trim();
+  if (!t) return null;
+  if (t.endsWith('%')) {
+    const v = Number(t.slice(0, -1));
+    return Number.isFinite(v) ? { type: 'percent_1rm', value: v } : null;
+  }
+  const rpe = t.match(/rpe\s*(\d+(?:\.\d+)?)/i);
+  if (rpe) return { type: 'rpe', value: Number(rpe[1]) };
+  const n = Number(t);
+  return Number.isFinite(n) ? { type: 'absolute', value: n, unit: 'kg' } : null;
+}
 
 function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): FormatConfig {
   const n = (k: string, d = 0) => {
@@ -114,12 +122,7 @@ function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): 
     case 'for_time': {
       const t = n('timeCapSeconds');
       const r = n('rounds');
-      return {
-        format,
-        configVersion: 1,
-        ...(t > 0 ? { timeCapSeconds: t } : {}),
-        ...(r > 0 ? { rounds: r } : {}),
-      };
+      return { format, configVersion: 1, ...(t > 0 ? { timeCapSeconds: t } : {}), ...(r > 0 ? { rounds: r } : {}) };
     }
     case 'circuit': {
       const r = n('rounds');
@@ -137,7 +140,7 @@ function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): 
 }
 
 function initBlocks(w?: Workout): BlockState[] {
-  if (!w) return [];
+  if (!w) return [{ key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] }];
   return w.blocks.map((b) => ({
     key: uid(),
     type: b.type,
@@ -148,22 +151,19 @@ function initBlocks(w?: Workout): BlockState[] {
       exerciseId: it.exerciseId,
       sets: it.sets?.toString() ?? '',
       reps: it.reps?.toString() ?? '',
-      workSeconds: it.workSeconds?.toString() ?? '',
-      restBetweenSeconds: it.restBetweenSeconds?.toString() ?? '',
+      carga: loadToStr(it.loadPrescription),
     })),
   }));
 }
-
 function initCfg(w?: Workout): Record<string, string> {
   const out: Record<string, string> = {};
   const c = w?.formatConfig;
-  if (c) {
-    for (const [k, v] of Object.entries(c)) {
-      if (k !== 'format' && k !== 'configVersion' && typeof v === 'number') out[k] = String(v);
-    }
-  }
+  if (c) for (const [k, v] of Object.entries(c)) if (k !== 'format' && k !== 'configVersion' && typeof v === 'number') out[k] = String(v);
   return out;
 }
+
+const boxCls =
+  'h-[30px] w-full rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
 
 export function RutinaForm({ workout }: { workout?: Workout }) {
   const router = useRouter();
@@ -180,9 +180,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   const [format, setFormat] = useState<WorkoutFormat>(workout?.format ?? 'amrap');
   const [formatCfg, setFormatCfg] = useState<Record<string, string>>(initCfg(workout));
-  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(
-    workout?.thumbnailAssetId ?? null,
-  );
+  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
@@ -191,7 +189,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     queryKey: ['exercises', 'all'],
     queryFn: () => api.exercises.list({ pageSize: 500 }),
   });
-  const exerciseName = (id: string) => exList?.data.find((e) => e.id === id)?.name ?? '…';
+  const exercise = (id: string) => exList?.data.find((e) => e.id === id);
 
   const setCfg = (k: string, v: string) => setFormatCfg((c) => ({ ...c, [k]: v }));
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
@@ -199,11 +197,17 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const updateItem = (bk: string, ik: string, patch: Partial<ItemState>) =>
     setBlocks((bs) =>
       bs.map((b) =>
-        b.key === bk
-          ? { ...b, items: b.items.map((it) => (it.key === ik ? { ...it, ...patch } : it)) }
-          : b,
+        b.key === bk ? { ...b, items: b.items.map((it) => (it.key === ik ? { ...it, ...patch } : it)) } : b,
       ),
     );
+
+  const metaLine = [
+    type === 'video' ? 'Video' : FORMAT_LABEL[format],
+    durationMin ? `${durationMin} min` : null,
+    es.difficulty[difficulty],
+  ]
+    .filter(Boolean)
+    .join(' · ');
 
   const save = useMutation({
     mutationFn: () => {
@@ -228,8 +232,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 exerciseId: it.exerciseId,
                 sets: num(it.sets),
                 reps: num(it.reps),
-                workSeconds: num(it.workSeconds),
-                restBetweenSeconds: num(it.restBetweenSeconds),
+                loadPrescription: strToLoad(it.carga),
                 perSide: false,
               })),
             }))
@@ -244,50 +247,263 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
 
+  const doSave = () => {
+    setServerError(null);
+    if (!name.trim()) {
+      setServerError(es.app.required);
+      return;
+    }
+    save.mutate();
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b border-line bg-surface px-8 py-4">
-        <h1 className="text-xl font-semibold tracking-[-0.01em]">
-          {workout ? es.workouts.edit : es.workouts.new}
-        </h1>
-        <div className="flex gap-2">
+      {/* Header */}
+      <header className="flex items-start justify-between gap-6 border-b border-line bg-surface px-7 pb-4 pt-5">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
+            <button type="button" onClick={() => router.push('/rutinas')} className="hover:text-ink-2">
+              {es.workouts.title}
+            </button>
+            <span>/</span>
+            <span className="text-ink-2">{workout ? 'Editar' : 'Nueva'}</span>
+          </div>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={es.workouts.new}
+            className="w-full max-w-2xl bg-transparent text-[26px] font-bold tracking-[-0.02em] placeholder:text-faint focus:outline-none"
+          />
+          <div className="flex items-center gap-2">
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"
+              style={{ background: '#fdf0d9', color: '#8a5a12' }}
+            >
+              {es.status[status]}
+            </span>
+            <span className="font-mono text-xs font-medium text-muted">{metaLine}</span>
+          </div>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
           <Button type="button" variant="outline" onClick={() => router.push('/rutinas')}>
             {es.app.cancel}
           </Button>
-          <Button
-            onClick={() => {
-              setServerError(null);
-              if (!name.trim()) {
-                setServerError(es.app.required);
-                return;
-              }
-              save.mutate();
-            }}
-            disabled={save.isPending}
-          >
+          <Button onClick={doSave} disabled={save.isPending}>
             {save.isPending ? es.app.saving : es.app.save}
           </Button>
         </div>
-      </div>
+      </header>
 
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-8 py-6">
-        {serverError && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark">{serverError}</p>
-        )}
+      {serverError && (
+        <p className="mx-7 mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark">{serverError}</p>
+      )}
 
-        <Card>
-          <CardContent className="space-y-4 py-5">
+      {/* Two columns */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)]">
+        {/* Left: blocks (or video) */}
+        <div className="flex min-w-0 flex-col gap-3.5 overflow-y-auto px-7 py-5">
+          {type === 'structured' ? (
+            <>
+              <div className="flex items-center justify-between">
+                <h2 className="text-[15px] font-bold">{es.workouts.blocks}</h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setBlocks((bs) => [
+                      ...bs,
+                      { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
+                    ])
+                  }
+                >
+                  {es.workouts.addBlock}
+                </Button>
+              </div>
+
+              {blocks.map((b, bi) => (
+                <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
+                  <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
+                    <span className="font-mono text-[13px] text-faint">⠿</span>
+                    <span className="text-sm font-bold">Bloque {bi + 1}</span>
+                    <Select
+                      value={b.type}
+                      onChange={(e) => updateBlock(b.key, { type: e.target.value as BlockType })}
+                      className="h-7 w-auto rounded-md text-[12px]"
+                    >
+                      {BLOCK_TYPE.map((t) => (
+                        <option key={t} value={t}>
+                          {es.workouts.blockLabels[t]}
+                        </option>
+                      ))}
+                    </Select>
+                    <div className="ml-auto flex items-center gap-2">
+                      <input
+                        placeholder={es.workouts.rounds}
+                        value={b.rounds}
+                        onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
+                        className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                      />
+                      <input
+                        placeholder="descanso"
+                        value={b.restAfterSeconds}
+                        onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
+                        className="h-7 w-20 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
+                        className="text-faint-2 hover:text-accent-dark"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+
+                  {b.items.length > 0 && (
+                    <div className="grid grid-cols-[1fr_62px_62px_74px_26px] gap-3 border-b border-[#f4f1eb] px-3.5 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2">
+                      <span>{es.pick.exercise.replace('Elegir ', '')}</span>
+                      <span className="text-center">{es.workouts.sets}</span>
+                      <span className="text-center">{es.workouts.reps}</span>
+                      <span className="text-center">Carga</span>
+                      <span />
+                    </div>
+                  )}
+
+                  {b.items.map((it) => {
+                    const ex = exercise(it.exerciseId);
+                    return (
+                      <div
+                        key={it.key}
+                        className="grid grid-cols-[1fr_62px_62px_74px_26px] items-center gap-3 border-b border-[#f4f1eb] px-3.5 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          {ex?.thumbnailAssetId ? (
+                            <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
+                          ) : (
+                            <div
+                              className="h-9 w-[58px] shrink-0 rounded-md"
+                              style={{ background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' }}
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
+                            <div className="truncate font-mono text-[11px] text-muted">
+                              {ex ? es.measurement[ex.measurementType] : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <input value={it.sets} onChange={(e) => updateItem(b.key, it.key, { sets: e.target.value })} className={boxCls} />
+                        <input value={it.reps} onChange={(e) => updateItem(b.key, it.key, { reps: e.target.value })} className={boxCls} />
+                        <input value={it.carga} onChange={(e) => updateItem(b.key, it.key, { carga: e.target.value })} className={boxCls} />
+                        <button
+                          type="button"
+                          onClick={() => updateBlock(b.key, { items: b.items.filter((x) => x.key !== it.key) })}
+                          className="text-center text-faint-2 hover:text-accent-dark"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <div className="p-3">
+                    <button
+                      type="button"
+                      onClick={() => setPickerBlock(b.key)}
+                      className="inline-flex h-[30px] items-center rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
+                    >
+                      {es.workouts.addExercise}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {blocks.length === 0 && (
+                <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
+                  {es.workouts.noBlocks}
+                </div>
+              )}
+            </>
+          ) : (
             <div>
-              <Label>{es.fields.name}</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <h2 className="mb-3 text-[15px] font-bold">{es.workouts.video}</h2>
+              <div className="max-w-xl">
+                <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
+              </div>
             </div>
-            <div>
-              <Label>{es.fields.description}</Label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} />
+          )}
+        </div>
+
+        {/* Right: config sidebar */}
+        <aside className="flex flex-col gap-[22px] overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:border-l lg:border-t-0">
+          <div className="flex flex-col gap-2.5">
+            <MonoLabel>{es.workouts.type}</MonoLabel>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(['structured', 'video'] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setType(t)}
+                  className={cn(
+                    'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
+                    type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
+                  )}
+                >
+                  {es.workouts.types[t]}
+                </button>
+              ))}
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
+          </div>
+
+          {type === 'structured' && (
+            <>
+              <div className="flex flex-col gap-2.5">
+                <MonoLabel>{es.workouts.format}</MonoLabel>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {WORKOUT_FORMAT.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFormat(f)}
+                      className={cn(
+                        'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
+                        format === f
+                          ? 'border-accent bg-accent-tint/50 text-accent-dark'
+                          : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
+                      )}
+                    >
+                      {FORMAT_LABEL[f]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {FORMAT_FIELDS[format].length > 0 && (
+                <div className="flex flex-col gap-2.5">
+                  <MonoLabel>{es.workouts.config}</MonoLabel>
+                  <div className="grid grid-cols-2 gap-3">
+                    {FORMAT_FIELDS[format].map((f) => (
+                      <div key={f.key}>
+                        <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{f.label}</div>
+                        <Input
+                          inputMode="numeric"
+                          value={formatCfg[f.key] ?? ''}
+                          onChange={(e) => setCfg(f.key, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex flex-col gap-3">
+            <MonoLabel>Ajustes</MonoLabel>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>{es.fields.difficulty}</Label>
+                <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.difficulty}</div>
                 <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
                   {DIFFICULTY.map((d) => (
                     <option key={d} value={d}>
@@ -297,227 +513,35 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 </Select>
               </div>
               <div>
-                <Label>{es.workouts.duration}</Label>
-                <Input
-                  inputMode="numeric"
-                  value={durationMin}
-                  onChange={(e) => setDurationMin(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>{es.fields.status}</Label>
-                <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-                  {CONTENT_STATUS.map((s) => (
-                    <option key={s} value={s}>
-                      {es.status[s]}
-                    </option>
-                  ))}
-                </Select>
+                <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
+                <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{es.workouts.type}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 py-5">
-            <div className="flex gap-2">
-              {(['structured', 'video'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t)}
-                  className={cn(
-                    'h-9 rounded-lg border px-4 text-sm font-semibold transition-colors',
-                    type === t
-                      ? 'border-accent bg-accent-tint/40 text-accent-dark'
-                      : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
-                  )}
-                >
-                  {es.workouts.types[t]}
-                </button>
-              ))}
+            <div>
+              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.status}</div>
+              <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+                {CONTENT_STATUS.map((s) => (
+                  <option key={s} value={s}>
+                    {es.status[s]}
+                  </option>
+                ))}
+              </Select>
             </div>
-
-            {type === 'structured' ? (
-              <div className="space-y-4">
-                <div className="max-w-xs">
-                  <Label>{es.workouts.format}</Label>
-                  <Select value={format} onChange={(e) => setFormat(e.target.value as WorkoutFormat)}>
-                    {WORKOUT_FORMAT.map((f) => (
-                      <option key={f} value={f}>
-                        {FORMAT_LABEL[f]}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                {FORMAT_FIELDS[format].length > 0 && (
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    {FORMAT_FIELDS[format].map((f) => (
-                      <div key={f.key}>
-                        <Label>{f.label}</Label>
-                        <Input
-                          inputMode="numeric"
-                          value={formatCfg[f.key] ?? ''}
-                          onChange={(e) => setCfg(f.key, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <MediaField
-                kind="video"
-                label={es.workouts.video}
-                value={videoAssetId}
-                onChange={setVideoAssetId}
-              />
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>{es.fields.thumbnail}</CardTitle>
-          </CardHeader>
-          <CardContent className="py-5">
-            <div className="max-w-xs">
-              <MediaField
-                kind="image"
-                label={es.fields.thumbnail}
-                value={thumbnailAssetId}
-                onChange={setThumbnailAssetId}
+            <div>
+              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.description}</div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="min-h-16 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 text-sm"
               />
             </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        {type === 'structured' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>{es.workouts.blocks}</CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setBlocks((bs) => [
-                    ...bs,
-                    { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
-                  ])
-                }
-              >
-                {es.workouts.addBlock}
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4 py-4">
-              {blocks.length === 0 && (
-                <p className="py-4 text-center text-sm text-muted">{es.workouts.noBlocks}</p>
-              )}
-              {blocks.map((b, bi) => (
-                <div key={b.key} className="rounded-lg border border-line-2 bg-surface-3">
-                  <div className="flex flex-wrap items-end gap-3 border-b border-line-3 p-3">
-                    <span className="font-mono text-xs font-medium text-muted">#{bi + 1}</span>
-                    <div className="w-40">
-                      <Label>{es.workouts.blockType}</Label>
-                      <Select
-                        value={b.type}
-                        onChange={(e) => updateBlock(b.key, { type: e.target.value as BlockType })}
-                      >
-                        {BLOCK_TYPE.map((t) => (
-                          <option key={t} value={t}>
-                            {es.workouts.blockLabels[t]}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="w-24">
-                      <Label>{es.workouts.rounds}</Label>
-                      <Input
-                        inputMode="numeric"
-                        value={b.rounds}
-                        onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
-                      />
-                    </div>
-                    <div className="w-40">
-                      <Label>{es.workouts.restAfter}</Label>
-                      <Input
-                        inputMode="numeric"
-                        value={b.restAfterSeconds}
-                        onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
-                    >
-                      ✕
-                    </Button>
-                  </div>
-
-                  <div className="space-y-2 p-3">
-                    {b.items.map((it) => (
-                      <div key={it.key} className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-2">
-                        <span className="min-w-[120px] flex-1 truncate px-1 text-sm font-medium">
-                          {exerciseName(it.exerciseId)}
-                        </span>
-                        <input
-                          placeholder={es.workouts.sets}
-                          value={it.sets}
-                          onChange={(e) => updateItem(b.key, it.key, { sets: e.target.value })}
-                          className="h-8 w-16 rounded-md border border-line-2 bg-surface px-2 text-center text-sm"
-                        />
-                        <input
-                          placeholder={es.workouts.reps}
-                          value={it.reps}
-                          onChange={(e) => updateItem(b.key, it.key, { reps: e.target.value })}
-                          className="h-8 w-16 rounded-md border border-line-2 bg-surface px-2 text-center text-sm"
-                        />
-                        <input
-                          placeholder={es.workouts.work}
-                          value={it.workSeconds}
-                          onChange={(e) => updateItem(b.key, it.key, { workSeconds: e.target.value })}
-                          className="h-8 w-20 rounded-md border border-line-2 bg-surface px-2 text-center text-sm"
-                        />
-                        <input
-                          placeholder={es.workouts.rest}
-                          value={it.restBetweenSeconds}
-                          onChange={(e) =>
-                            updateItem(b.key, it.key, { restBetweenSeconds: e.target.value })
-                          }
-                          className="h-8 w-20 rounded-md border border-line-2 bg-surface px-2 text-center text-sm"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateBlock(b.key, { items: b.items.filter((x) => x.key !== it.key) })
-                          }
-                          className="px-1 text-faint hover:text-accent-dark"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPickerBlock(b.key)}
-                    >
-                      {es.workouts.addExercise}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
+          <div className="flex flex-col gap-2.5">
+            <MonoLabel>{es.fields.thumbnail}</MonoLabel>
+            <MediaField kind="image" label={es.fields.thumbnail} value={thumbnailAssetId} onChange={setThumbnailAssetId} />
+          </div>
+        </aside>
       </div>
 
       <EntityPicker<ExerciseListItem>
@@ -533,20 +557,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             setBlocks((bs) =>
               bs.map((b) =>
                 b.key === pickerBlock
-                  ? {
-                      ...b,
-                      items: [
-                        ...b.items,
-                        {
-                          key: uid(),
-                          exerciseId: e.id,
-                          sets: '',
-                          reps: '',
-                          workSeconds: '',
-                          restBetweenSeconds: '',
-                        },
-                      ],
-                    }
+                  ? { ...b, items: [...b.items, { key: uid(), exerciseId: e.id, sets: '', reps: '', carga: '' }] }
                   : b,
               ),
             );

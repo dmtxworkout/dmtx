@@ -3,14 +3,29 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Goal } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
-import { formatDateEs } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Thumb } from '@/components/ui/thumb';
+import { MediaThumb } from '@/components/media-thumb';
+
+const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
+const METRIC_SHORT: Record<string, string> = {
+  reps: 'reps',
+  time_seconds: 's',
+  distance_meters: 'm',
+  rounds: 'rondas',
+  load_kg: 'kg',
+  hold_seconds: 's',
+};
+
+function goalText(g: Goal | null | undefined): string {
+  if (!g || !('metric' in g)) return '—';
+  return `${es.goal.comparators[g.comparator]} ${g.value} ${METRIC_SHORT[g.metric] ?? ''}`.trim();
+}
 
 export default function HabilidadesPage() {
   const [search, setSearch] = useState('');
@@ -20,8 +35,13 @@ export default function HabilidadesPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['skills', search],
     queryFn: () => api.skills.list({ search: search || undefined, pageSize: 60 }),
-    placeholderData: keepPreviousData,
   });
+  const { data: woList } = useQuery({
+    queryKey: ['workouts', 'all'],
+    queryFn: () => api.workouts.list({ pageSize: 500 }),
+  });
+  const workoutName = (id: string) => woList?.data.find((w) => w.id === id)?.name ?? '…';
+
   const remove = useMutation({
     mutationFn: (id: string) => api.skills.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['skills'] }),
@@ -33,9 +53,7 @@ export default function HabilidadesPage() {
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
         title={es.skills.title}
-        subtitle={
-          data ? `${data.total} habilidad${data.total === 1 ? '' : 'es'}` : es.skills.title
-        }
+        subtitle="Progresiones por niveles. Cada nivel se desbloquea al cumplir su objetivo."
         actions={
           <Link href="/habilidades/nueva">
             <Button>{es.skills.new}</Button>
@@ -53,7 +71,7 @@ export default function HabilidadesPage() {
         </div>
       </PageHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-[22px]">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 pb-10 pt-[22px]">
         {isLoading ? (
           <div className="p-10 text-center text-sm text-muted">{es.app.loading}</div>
         ) : isError ? (
@@ -61,40 +79,72 @@ export default function HabilidadesPage() {
         ) : items.length === 0 ? (
           <div className="p-10 text-center text-sm text-muted">{es.skills.empty}</div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {items.map((s) => (
-              <div
-                key={s.id}
-                onClick={() => router.push(`/habilidades/${s.id}`)}
-                className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-2"
-              >
-                <Thumb />
-                <div className="flex flex-1 flex-col gap-1.5 px-3.5 pb-3.5 pt-3">
-                  <div className="text-[15px] font-semibold leading-tight tracking-[-0.01em]">
-                    {s.name}
-                  </div>
+          items.map((sk) => (
+            <div key={sk.id} className="overflow-hidden rounded-xl border border-line bg-surface">
+              <div className="group flex items-center gap-3 border-b border-line-3 bg-surface-2 px-4 py-3.5">
+                {sk.thumbnailAssetId ? (
+                  <MediaThumb assetId={sk.thumbnailAssetId} className="h-9 w-14 shrink-0 rounded-md" />
+                ) : (
+                  <div className="h-9 w-14 shrink-0 rounded-md" style={{ background: HATCH }} />
+                )}
+                <button
+                  type="button"
+                  onClick={() => router.push(`/habilidades/${sk.id}`)}
+                  className="min-w-0 text-left"
+                >
+                  <div className="text-base font-bold tracking-[-0.01em]">{sk.name}</div>
                   <div className="font-mono text-[11px] text-muted">
-                    {s.difficulty ? es.difficulty[s.difficulty] : '—'}
+                    {sk.levels.length} nivel{sk.levels.length === 1 ? '' : 'es'}
+                    {sk.difficulty ? ` · ${es.difficulty[sk.difficulty]}` : ''}
                   </div>
-                  <div className="mt-auto flex items-center gap-2 pt-1.5">
-                    <Badge tone={s.status}>{es.status[s.status]}</Badge>
-                    <span className="font-mono text-[11px] text-faint">
-                      {formatDateEs(s.updatedAt)}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(es.app.confirmDelete)) remove.mutate(s.id);
-                      }}
-                      className="ml-auto text-faint-2 opacity-0 transition-opacity hover:text-accent-dark group-hover:opacity-100"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                </button>
+                <div className="ml-auto flex items-center gap-2">
+                  <Badge tone={sk.status}>{es.status[sk.status]}</Badge>
+                  <button
+                    type="button"
+                    onClick={() => confirm(es.app.confirmDelete) && remove.mutate(sk.id)}
+                    className="text-faint-2 opacity-0 transition-opacity hover:text-accent-dark group-hover:opacity-100"
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="flex gap-2.5 overflow-x-auto px-4 py-3.5">
+                {sk.levels.map((lv, i) => (
+                  <button
+                    key={lv.id}
+                    type="button"
+                    onClick={() => router.push(`/habilidades/${sk.id}`)}
+                    className="flex w-[196px] flex-shrink-0 flex-col gap-1.5 rounded-[10px] border border-line bg-surface p-3 text-left transition-colors hover:border-line-2"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent font-mono text-[11px] font-semibold text-white">
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 truncate text-[13px] font-semibold">{lv.name}</span>
+                    </div>
+                    <div className="h-[22px] rounded-[5px]" style={{ background: HATCH }} />
+                    <div className="truncate font-mono text-[10px] text-muted">{workoutName(lv.workoutId)}</div>
+                    <div className="flex items-center gap-1.5 border-t border-line-3 pt-1.5">
+                      <span className="font-mono text-[9px] font-medium uppercase tracking-[0.1em] text-muted-2">
+                        Desbloqueo
+                      </span>
+                      <span className="ml-auto font-mono text-[11px] font-semibold text-ink-2">
+                        {goalText(lv.unlockGoal)}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                <Link
+                  href={`/habilidades/${sk.id}`}
+                  className="flex w-[130px] flex-shrink-0 items-center justify-center rounded-[10px] border border-dashed border-line-2 bg-surface-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
+                >
+                  {es.skills.addLevel}
+                </Link>
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>

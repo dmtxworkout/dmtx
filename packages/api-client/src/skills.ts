@@ -1,16 +1,11 @@
-import type {
-  CreateSkillInput,
-  PaginationQuery,
-  Skill,
-  SkillListItem,
-  UpdateSkillInput,
-} from '@dmtx/schemas';
+import type { CreateSkillInput, PaginationQuery, Skill, UpdateSkillInput } from '@dmtx/schemas';
 import { type Http, listQuery } from './http';
 import type { Paginated } from './exercises';
 
 export function skillsApi(http: Http) {
   return {
-    list(query?: Partial<PaginationQuery>): Promise<Paginated<SkillListItem>> {
+    /** Returns full skills including their levels. */
+    list(query?: Partial<PaginationQuery>): Promise<Paginated<Skill>> {
       return http.request(`/api/skills${listQuery(query)}`);
     },
     get(id: string): Promise<Skill> {

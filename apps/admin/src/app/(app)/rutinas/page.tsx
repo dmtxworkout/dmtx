@@ -11,7 +11,11 @@ import { formatDateEs } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
 import { Thumb } from '@/components/ui/thumb';
+import { MediaThumb } from '@/components/media-thumb';
+
+const RUTINA_FILTERS = ['Todo', 'AMRAP', 'EMOM', 'Tabata', 'Fuerza', 'Video'];
 
 const FORMAT_LABEL: Record<string, string> = {
   amrap: 'AMRAP',
@@ -55,19 +59,32 @@ export default function RutinasPage() {
         title={es.workouts.title}
         subtitle={data ? `${data.total} rutina${data.total === 1 ? '' : 's'}` : es.workouts.title}
         actions={
-          <Link href="/rutinas/nueva">
-            <Button>{es.workouts.new}</Button>
-          </Link>
+          <>
+            <Button variant="outline">Importar CSV</Button>
+            <Link href="/rutinas/nueva">
+              <Button>{es.workouts.new}</Button>
+            </Link>
+          </>
         }
       >
-        <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
-          <span className="text-muted-2">⌕</span>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar rutina"
-            className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
-          />
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
+            <span className="text-muted-2">⌕</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar rutina, formato o ejercicio"
+              className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
+            />
+          </div>
+          {RUTINA_FILTERS.map((f, i) => (
+            <Chip key={f} active={i === 0}>
+              {f}
+            </Chip>
+          ))}
+          <span className="ml-auto font-mono text-xs font-medium text-muted">
+            Ordenar: actualizado ↓
+          </span>
         </div>
       </PageHeader>
 
@@ -87,6 +104,9 @@ export default function RutinasPage() {
                 className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-2"
               >
                 <Thumb>
+                  {w.thumbnailAssetId && (
+                    <MediaThumb assetId={w.thumbnailAssetId} className="absolute inset-0 h-full w-full" />
+                  )}
                   <span className="absolute left-2.5 top-2.5 rounded-md bg-ink px-1.5 py-1 font-mono text-[10px] font-semibold tracking-[0.06em] text-white">
                     {w.type === 'video' ? 'VIDEO' : (w.format ? FORMAT_LABEL[w.format] ?? w.format : '—')}
                   </span>
