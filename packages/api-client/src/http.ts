@@ -47,3 +47,17 @@ export function createHttp({ baseUrl, fetch: fetchImpl = fetch }: HttpClientOpti
 }
 
 export type Http = ReturnType<typeof createHttp>;
+
+/** Build a `?page=&pageSize=&search=` query string (empty when no params). */
+export function listQuery(query?: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+}): string {
+  const p = new URLSearchParams();
+  if (query?.page) p.set('page', String(query.page));
+  if (query?.pageSize) p.set('pageSize', String(query.pageSize));
+  if (query?.search) p.set('search', query.search);
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}

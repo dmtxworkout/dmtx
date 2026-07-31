@@ -1,6 +1,9 @@
 import { createHttp, type HttpClientOptions } from './http';
 import { exercisesApi } from './exercises';
 import { mediaApi } from './media';
+import { workoutsApi } from './workouts';
+import { programsApi } from './programs';
+import { skillsApi } from './skills';
 
 /**
  * Typed client for the DMTX API. Types come from `@dmtx/schemas` (the single
@@ -12,6 +15,9 @@ export function createApiClient(options: HttpClientOptions) {
   return {
     exercises: exercisesApi(http),
     media: mediaApi(http),
+    workouts: workoutsApi(http),
+    programs: programsApi(http),
+    skills: skillsApi(http),
   };
 }
 

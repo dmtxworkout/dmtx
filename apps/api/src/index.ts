@@ -5,6 +5,9 @@ import { createApp } from './lib/openapi';
 import { withSession } from './middleware/auth';
 import { exercisesRoute } from './routes/exercises';
 import { mediaRoute } from './routes/media';
+import { workoutsRoute } from './routes/workouts';
+import { programsRoute } from './routes/programs';
+import { skillsRoute } from './routes/skills';
 
 const app = createApp();
 
@@ -34,6 +37,9 @@ app.get('/health', (c) => c.json({ ok: true, service: 'dmtx-api' }));
 
 app.route('/api/exercises', exercisesRoute);
 app.route('/api/media', mediaRoute);
+app.route('/api/workouts', workoutsRoute);
+app.route('/api/programs', programsRoute);
+app.route('/api/skills', skillsRoute);
 
 // OpenAPI document (consumed by @dmtx/api-client codegen).
 app.doc('/doc', {
