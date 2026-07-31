@@ -111,7 +111,20 @@ export function MediaField({
         )}
         {!viewUrl && !uploading && (
           <div className="px-4 text-xs text-muted">
-            <div className="mb-1 text-xl text-faint">↑</div>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.75}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              className="mx-auto mb-1.5 h-6 w-6 text-faint"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="M17 8l-5-5-5 5" />
+              <path d="M12 3v12" />
+            </svg>
             Arrastra {kind === 'image' ? 'una imagen' : 'un video'} aquí
             <br />o haz clic para subir
           </div>
