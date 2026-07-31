@@ -98,4 +98,17 @@ export const es = {
     updated: 'Ejercicio actualizado',
     deleted: 'Ejercicio eliminado',
   },
+  media: {
+    title: 'Biblioteca',
+    library: 'Elegir de biblioteca',
+    pickTitle: 'Elegir de la biblioteca',
+    empty: 'No hay medios todavía.',
+    uploadHint: 'Arrastra videos o imágenes aquí',
+    uploadSub: 'MP4 / JPG / PNG · subida directa a R2',
+    chooseFiles: 'Elegir archivos',
+    deleteConfirm: '¿Eliminar este archivo?',
+    image: 'Imagen',
+    video: 'Video',
+    all: 'Todo',
+  },
 } as const;

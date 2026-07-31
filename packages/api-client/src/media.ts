@@ -1,4 +1,5 @@
 import type { Http } from './http';
+import type { Paginated } from './exercises';
 
 export interface PresignInput {
   filename: string;
@@ -7,27 +8,55 @@ export interface PresignInput {
 }
 
 export interface PresignResult {
-  assetId: string;
   key: string;
   uploadUrl: string;
   method: 'PUT';
   headers: Record<string, string>;
 }
 
+export interface CreateMediaInput {
+  key: string;
+  kind: 'video' | 'image';
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
 export interface MediaAsset {
   id: string;
   kind: 'video' | 'image';
+  name: string;
   mimeType: string | null;
+  sizeBytes: number | null;
   viewUrl: string;
+  createdAt: string;
+}
+
+export interface MediaListQuery {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  kind?: 'video' | 'image';
 }
 
 export function mediaApi(http: Http) {
   return {
+    list(query?: MediaListQuery): Promise<Paginated<MediaAsset>> {
+      const params = new URLSearchParams();
+      if (query?.page) params.set('page', String(query.page));
+      if (query?.pageSize) params.set('pageSize', String(query.pageSize));
+      if (query?.search) params.set('search', query.search);
+      if (query?.kind) params.set('kind', query.kind);
+      const qs = params.toString();
+      return http.request(`/api/media${qs ? `?${qs}` : ''}`);
+    },
     presign(input: PresignInput): Promise<PresignResult> {
       return http.request('/api/media/presign', { method: 'POST', body: JSON.stringify(input) });
     },
-    /** Presign + upload a file directly to R2. Returns the created asset (id, key). */
-    async upload(file: File, kind: 'video' | 'image'): Promise<PresignResult> {
+    create(input: CreateMediaInput): Promise<MediaAsset> {
+      return http.request('/api/media', { method: 'POST', body: JSON.stringify(input) });
+    },
+    /** Presign → PUT to R2 → create the record. Returns the new asset. */
+    async upload(file: File, kind: 'video' | 'image'): Promise<MediaAsset> {
       const presigned = await this.presign({
         filename: file.name,
         contentType: file.type || 'application/octet-stream',
@@ -39,11 +68,18 @@ export function mediaApi(http: Http) {
         body: file,
       });
       if (!res.ok) throw new Error(`Error subiendo a R2 (${res.status})`);
-      return presigned;
+      return this.create({
+        key: presigned.key,
+        kind,
+        mimeType: file.type || undefined,
+        sizeBytes: file.size,
+      });
     },
-    /** Fetch an asset + a short-lived presigned URL to display it. */
     view(id: string): Promise<MediaAsset> {
       return http.request(`/api/media/${id}`);
+    },
+    remove(id: string): Promise<void> {
+      return http.request(`/api/media/${id}`, { method: 'DELETE' });
     },
   };
 }

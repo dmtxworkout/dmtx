@@ -4,10 +4,11 @@ import { type ChangeEvent, type DragEvent, useEffect, useRef, useState } from 'r
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
+import { MediaPicker } from '@/components/media-picker';
 
 /**
- * Upload + preview a single media asset (image or video) via presigned R2.
- * Supports click-to-pick and drag-and-drop. Holds only the asset id.
+ * Upload + preview a single media asset (image or video), or pick an existing
+ * one from the library. Supports click and drag-and-drop. Holds only the id.
  */
 export function MediaField({
   kind,
@@ -25,6 +26,7 @@ export function MediaField({
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -50,8 +52,8 @@ export function MediaField({
     setError(null);
     setUploading(true);
     try {
-      const result = await api.media.upload(file, kind);
-      onChange(result.assetId);
+      const asset = await api.media.upload(file, kind);
+      onChange(asset.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : es.app.error);
     } finally {
@@ -135,29 +137,33 @@ export function MediaField({
           </div>
         )}
       </div>
-      {(value || error) && (
-        <div className="mt-2 flex items-center gap-3 text-xs">
-          {value && (
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              className="text-ink-3 hover:text-ink"
-            >
-              {es.app.change}
-            </button>
-          )}
-          {value && (
-            <button
-              type="button"
-              onClick={() => onChange(null)}
-              className="text-ink-3 hover:text-accent-dark"
-            >
-              {es.app.remove}
-            </button>
-          )}
-          {error && <span className="text-accent-dark">{error}</span>}
-        </div>
-      )}
+
+      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="font-medium text-accent hover:text-accent-dark"
+        >
+          {es.media.library}
+        </button>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="text-ink-3 hover:text-accent-dark"
+          >
+            {es.app.remove}
+          </button>
+        )}
+        {error && <span className="text-accent-dark">{error}</span>}
+      </div>
+
+      <MediaPicker
+        kind={kind}
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onPick={(id) => onChange(id)}
+      />
     </div>
   );
 }
