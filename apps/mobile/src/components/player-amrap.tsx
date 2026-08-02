@@ -36,11 +36,24 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
-  const circuit = useMemo(
-    () => workout.blocks.flatMap((b) => b.items).filter((it) => it.exercise),
+  // Blocks with their round count (a block is "these exercises, N rounds").
+  const blocksView = useMemo(
+    () =>
+      workout.blocks
+        .map((b) => ({
+          rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
+          items: b.items.filter((it) => it.exercise),
+        }))
+        .filter((bv) => bv.items.length > 0),
     [workout],
   );
-  const repsItems = useMemo(() => circuit.filter(isReps), [circuit]);
+  const repsItems = useMemo(
+    () =>
+      blocksView.flatMap((bv) =>
+        bv.items.filter(isReps).map((it) => ({ it, blockRounds: bv.rounds })),
+      ),
+    [blocksView],
+  );
   const cap =
     (workout.formatConfig as { totalSeconds?: number } | null)?.totalSeconds ??
     workout.estimatedDurationSeconds ??
@@ -83,8 +96,11 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
   }, [phase]);
 
   const totals = useMemo(() => {
-    const perItem = repsItems.map((it) => (it.reps ?? 0) * rounds + (partial[it.id] ?? 0));
-    return { perItem, volume: perItem.reduce((a, b) => a + b, 0) };
+    const volume = repsItems.reduce(
+      (sum, { it, blockRounds }) => sum + blockRounds * (it.reps ?? 0) * rounds + (partial[it.id] ?? 0),
+      0,
+    );
+    return { volume };
   }, [repsItems, rounds, partial]);
 
   const saveMutation = useMutation({
@@ -95,12 +111,12 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
 
   const save = () => {
     setSaveError(null);
-    const results: SetResultInput[] = repsItems.map((it, i) => ({
+    const results: SetResultInput[] = repsItems.map(({ it, blockRounds }, i) => ({
       exerciseId: it.exerciseId,
       exerciseName: it.exercise!.name,
       position: i,
       measure: 'reps',
-      reps: (it.reps ?? 0) * rounds + (partial[it.id] ?? 0),
+      reps: blockRounds * (it.reps ?? 0) * rounds + (partial[it.id] ?? 0),
       loadKg: loadKgOf(it),
     }));
     saveMutation.mutate({
@@ -163,16 +179,25 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
         <Text className="px-5 pb-1 font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
           El circuito
         </Text>
-        <ScrollView contentContainerClassName="px-5 pb-4">
-          {circuit.map((it) => (
-            <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2.5">
-              <Text className="w-14 font-mono-semibold text-[15px] text-accent">{targetText(it)}</Text>
-              <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
-                {it.exercise?.name}
-              </Text>
-              {loadKgOf(it) != null ? (
-                <Text className="font-mono text-[12px] text-ink-3">{loadKgOf(it)} kg</Text>
+        <ScrollView contentContainerClassName="gap-3 px-5 pb-4">
+          {blocksView.map((bv, i) => (
+            <View key={i} className="gap-0.5">
+              {bv.rounds > 1 ? (
+                <Text className="pb-0.5 font-mono-semibold text-[11px] uppercase tracking-wider text-accent">
+                  × {bv.rounds} rondas
+                </Text>
               ) : null}
+              {bv.items.map((it) => (
+                <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
+                  <Text className="w-14 font-mono-semibold text-[15px] text-accent">{targetText(it)}</Text>
+                  <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
+                    {it.exercise?.name}
+                  </Text>
+                  {loadKgOf(it) != null ? (
+                    <Text className="font-mono text-[12px] text-ink-3">{loadKgOf(it)} kg</Text>
+                  ) : null}
+                </View>
+              ))}
             </View>
           ))}
         </ScrollView>
@@ -201,9 +226,9 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
           si no la empezaste)
         </Text>
         <ScrollView className="flex-1" contentContainerClassName="gap-2.5">
-          {repsItems.map((it) => {
+          {repsItems.map(({ it, blockRounds }) => {
             const val = partial[it.id] ?? 0;
-            const target = it.reps ?? 0;
+            const target = blockRounds * (it.reps ?? 0);
             return (
               <View key={it.id} className="flex-row items-center gap-3 rounded-xl bg-surface p-2.5">
                 <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
@@ -241,8 +266,8 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
 
   // ---- Summary -------------------------------------------------------------
   const partialBreakdown = repsItems
-    .filter((it) => (partial[it.id] ?? 0) > 0)
-    .map((it) => `${partial[it.id]} ${it.exercise?.name}`);
+    .filter(({ it }) => (partial[it.id] ?? 0) > 0)
+    .map(({ it }) => `${partial[it.id]} ${it.exercise?.name}`);
   return (
     <View className="flex-1 bg-bg px-6" style={{ paddingTop: insets.top + 24 }}>
       <Text className="font-mono-semibold text-[11px] uppercase tracking-[0.18em] text-accent">
