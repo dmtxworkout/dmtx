@@ -1,5 +1,5 @@
 import '../global.css';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -34,12 +34,20 @@ function AuthGate() {
   const segments = useSegments();
   const router = useRouter();
 
+  // Safety net: never block on the session check. If it hasn't resolved shortly
+  // after launch (e.g. the API is unreachable), proceed as logged-out.
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (isPending) return;
+    const t = setTimeout(() => setReady(true), 2500);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (isPending && !ready) return;
     const inAuth = segments[0] === '(auth)';
     if (!session && !inAuth) router.replace('/(auth)/intro');
     else if (session && inAuth) router.replace('/(app)/(tabs)/inicio');
-  }, [session, isPending, segments, router]);
+  }, [session, isPending, ready, segments, router]);
 
   return (
     <Stack
