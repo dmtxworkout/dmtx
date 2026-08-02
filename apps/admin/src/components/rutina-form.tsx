@@ -509,19 +509,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-7 py-5">
           {type === 'structured' ? (
             <>
-              <div className="flex items-center justify-between">
-                <h2 className="text-[15px] font-bold">{es.workouts.blocks}</h2>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setBlocks((bs) => [...bs, { ...emptyBlock(), name: `Bloque ${bs.length + 1}` }])
-                  }
-                >
-                  {es.workouts.addBlock}
-                </Button>
-              </div>
+              <h2 className="text-[15px] font-bold">{es.workouts.blocks}</h2>
 
               <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent-tint/30 px-3 py-2.5">
                 <span className="mt-px font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
@@ -671,6 +659,15 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   {es.workouts.noBlocks}
                 </div>
               )}
+              <button
+                type="button"
+                onClick={() =>
+                  setBlocks((bs) => [...bs, { ...emptyBlock(), name: `Bloque ${bs.length + 1}` }])
+                }
+                className="w-full rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+              >
+                {es.workouts.addBlock}
+              </button>
             </>
           ) : (
             <div>
@@ -684,6 +681,27 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
 
         {/* Right: config sidebar */}
           <aside className="flex w-full flex-col gap-[22px] border-t border-line bg-surface px-[22px] py-[22px] lg:sticky lg:top-0 lg:w-[360px] lg:border-l lg:border-t-0">
+          <div className="flex flex-col gap-3">
+            <div>
+              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.status}</div>
+              <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+                {CONTENT_STATUS.map((s) => (
+                  <option key={s} value={s}>
+                    {es.status[s]}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.description}</div>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="min-h-16 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-2.5">
             <MonoLabel>{es.workouts.type}</MonoLabel>
             <div className="grid grid-cols-2 gap-1.5">
@@ -763,24 +781,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
                 <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
               </div>
-            </div>
-            <div>
-              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.status}</div>
-              <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-                {CONTENT_STATUS.map((s) => (
-                  <option key={s} value={s}>
-                    {es.status[s]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.description}</div>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-16 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 text-sm"
-              />
             </div>
           </div>
 
