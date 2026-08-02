@@ -503,9 +503,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       )}
 
       {/* Two columns */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)] lg:grid-rows-1">
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* Left: exercises / blocks (or video) */}
-        <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto px-7 py-5">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
           {type === 'structured' ? (
             <>
               <div className="flex items-center justify-between">
@@ -598,10 +598,22 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                               e.stopPropagation();
                               setNameEditKey(b.key);
                             }}
-                            className="shrink-0 rounded p-1 text-[13px] text-ink-3 hover:bg-surface-3 hover:text-accent"
+                            className="inline-flex shrink-0 items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-accent"
                             title="Renombrar"
                           >
-                            ✏️
+                            <svg
+                              width="15"
+                              height="15"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+                            </svg>
                           </button>
                           <span className="flex-1" />
                         </>
@@ -673,7 +685,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         </div>
 
         {/* Right: config sidebar */}
-        <aside className="flex min-h-0 flex-col gap-[22px] overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:border-l lg:border-t-0">
+        <aside className="flex min-h-0 w-full shrink-0 flex-col gap-[22px] overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
           <div className="flex flex-col gap-2.5">
             <MonoLabel>{es.workouts.type}</MonoLabel>
             <div className="grid grid-cols-2 gap-1.5">
