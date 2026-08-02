@@ -248,6 +248,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [nameEditKey, setNameEditKey] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
 
@@ -513,7 +514,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setBlocks((bs) => [...bs, emptyBlock()])}
+                  onClick={() =>
+                    setBlocks((bs) => [...bs, { ...emptyBlock(), name: `Bloque ${bs.length + 1}` }])
+                  }
                 >
                   {es.workouts.addBlock}
                 </Button>
@@ -568,13 +571,41 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                       >
                         ⠿
                       </span>
-                      <input
-                        value={b.name}
-                        onChange={(e) => updateBlock(b.key, { name: e.target.value })}
-                        onClick={(e) => e.stopPropagation()}
-                        placeholder={`Bloque ${bi + 1}`}
-                        className="min-w-0 flex-1 bg-transparent text-sm font-bold placeholder:font-bold placeholder:text-faint focus:outline-none"
-                      />
+                      <span className="select-none text-[11px] text-muted">
+                        {isCollapsed ? '▸' : '▾'}
+                      </span>
+                      {nameEditKey === b.key ? (
+                        <input
+                          autoFocus
+                          value={b.name}
+                          onChange={(e) => updateBlock(b.key, { name: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          onBlur={() => setNameEditKey(null)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === 'Escape') setNameEditKey(null);
+                          }}
+                          placeholder={`Bloque ${bi + 1}`}
+                          className="min-w-0 flex-1 rounded-md border border-line-2 bg-surface px-2 py-1 text-sm font-bold focus:border-accent/50 focus:outline-none"
+                        />
+                      ) : (
+                        <>
+                          <span className="truncate text-sm font-bold">
+                            {b.name || `Bloque ${bi + 1}`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNameEditKey(b.key);
+                            }}
+                            className="shrink-0 text-[12px] text-faint hover:text-ink-2"
+                            title="Renombrar"
+                          >
+                            ✎
+                          </button>
+                          <span className="flex-1" />
+                        </>
+                      )}
                       <label
                         onClick={(e) => e.stopPropagation()}
                         className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2"
