@@ -306,6 +306,19 @@ appRoute.get('/workouts/:id', async (c) => {
     }
   }
 
+  // Most recent session of this rutina by the user (for AMRAP "última vez").
+  const [lastLog] = await db
+    .select({
+      roundsCompleted: workoutLogs.roundsCompleted,
+      totalVolume: workoutLogs.totalVolume,
+      durationSeconds: workoutLogs.durationSeconds,
+      completedAt: workoutLogs.completedAt,
+    })
+    .from(workoutLogs)
+    .where(and(eq(workoutLogs.userId, c.get('user')!.id), eq(workoutLogs.workoutId, w.id)))
+    .orderBy(desc(workoutLogs.createdAt))
+    .limit(1);
+
   const media = await resolveMediaUrls(db, c.env, [
     w.thumbnailAssetId,
     w.videoAssetId,
@@ -334,6 +347,14 @@ appRoute.get('/workouts/:id', async (c) => {
     videoDurationSeconds: w.videoDurationSeconds,
     formatConfig: w.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
+    lastLog: lastLog
+      ? {
+          roundsCompleted: lastLog.roundsCompleted,
+          totalVolume: lastLog.totalVolume,
+          durationSeconds: lastLog.durationSeconds,
+          completedAt: lastLog.completedAt ? lastLog.completedAt.toISOString() : null,
+        }
+      : null,
     blocks: blocks.map((b) => ({
       id: b.id,
       type: b.type,

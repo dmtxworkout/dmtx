@@ -12,6 +12,7 @@ import {
   type MarkRow,
   type Nav,
 } from '../../../components/player';
+import { AmrapPlayer } from '../../../components/player-amrap';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
 import { mmss } from '../../../lib/format';
@@ -44,6 +45,7 @@ export default function Entrenar() {
       </View>
     );
   }
+  if (q.data.format === 'amrap') return <AmrapPlayer workout={q.data} />;
   return <Player workout={q.data} />;
 }
 

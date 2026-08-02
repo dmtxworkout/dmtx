@@ -125,6 +125,12 @@ export interface WorkoutDetail {
   videoDurationSeconds: number | null;
   formatConfig: unknown;
   scoringGoal: Goal | null;
+  lastLog: {
+    roundsCompleted: number | null;
+    totalVolume: number | null;
+    durationSeconds: number | null;
+    completedAt: string | null;
+  } | null;
   blocks: WorkoutBlock[];
 }
 
