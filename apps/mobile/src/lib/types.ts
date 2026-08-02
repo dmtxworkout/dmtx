@@ -106,6 +106,7 @@ export interface WorkoutBlock {
   type: 'single' | 'superset' | 'circuit' | 'emom' | 'tabata';
   label: string | null;
   rounds: number | null;
+  restBetweenExercisesSeconds: number | null;
   restAfterSeconds: number | null;
   notes: string | null;
   items: WorkoutItem[];

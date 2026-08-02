@@ -51,6 +51,13 @@ body {
   border-color: var(--color-line);
 }
 
+/* Tailwind v4 sets buttons to cursor:default; restore pointer for clickables. */
+button:not(:disabled),
+[role='button'],
+summary {
+  cursor: pointer;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

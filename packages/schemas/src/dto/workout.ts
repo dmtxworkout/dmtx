@@ -30,6 +30,7 @@ export type WorkoutItemInput = z.infer<typeof workoutItemInputSchema>;
 export const workoutBlockInputSchema = z.object({
   type: blockTypeSchema.default('single'),
   rounds: z.number().int().positive().nullish(),
+  restBetweenExercisesSeconds: z.number().int().nonnegative().nullish(),
   restAfterSeconds: z.number().int().nonnegative().nullish(),
   label: z.string().max(200).nullish(),
   notes: z.string().max(2000).nullish(),
@@ -64,6 +65,7 @@ export const workoutBlockSchema = z.object({
   id: uuidSchema,
   type: blockTypeSchema,
   rounds: z.number().nullable(),
+  restBetweenExercisesSeconds: z.number().nullable(),
   restAfterSeconds: z.number().nullable(),
   label: z.string().nullable(),
   notes: z.string().nullable(),

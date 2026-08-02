@@ -112,6 +112,7 @@ type BlockState = {
   name: string;
   type: BlockType;
   rounds: string;
+  restBetween: string;
   restAfterSeconds: string;
   items: ItemState[];
 };
@@ -121,6 +122,7 @@ const emptyBlock = (): BlockState => ({
   name: '',
   type: 'single',
   rounds: '',
+  restBetween: '',
   restAfterSeconds: '',
   items: [],
 });
@@ -204,6 +206,7 @@ function initBlocks(w?: Workout): BlockState[] {
     name: b.label ?? '',
     type: b.type,
     rounds: b.rounds?.toString() ?? '',
+    restBetween: b.restBetweenExercisesSeconds?.toString() ?? '',
     restAfterSeconds: b.restAfterSeconds?.toString() ?? '',
     items: b.items.map((it) => ({
       key: uid(),
@@ -262,6 +265,20 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
   const toggleCollapse = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  const duplicateBlock = (index: number) =>
+    setBlocks((bs) => {
+      const b = bs[index];
+      if (!b) return bs;
+      const copy: BlockState = {
+        ...b,
+        key: uid(),
+        name: b.name ? `${b.name} (copia)` : '',
+        items: b.items.map((it) => ({ ...it, key: uid() })),
+      };
+      const next = [...bs];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
   const dropBlock = (target: number) => {
     setBlocks((bs) => {
       if (dragIndex === null || dragIndex === target) return bs;
@@ -416,6 +433,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         type: b.type,
         label: b.name.trim() || null,
         rounds: num(b.rounds),
+        restBetweenExercisesSeconds: num(b.restBetween),
         restAfterSeconds: num(b.restAfterSeconds),
         items: b.items.map(toItem),
       }));
@@ -604,37 +622,37 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           <span className="flex-1" />
                         </>
                       )}
-                      <label
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          duplicateBlock(bi);
+                        }}
+                        className="inline-flex shrink-0 items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
+                        title="Duplicar bloque"
                       >
-                        {es.workouts.rounds}
-                        <input
-                          placeholder="1"
-                          value={b.rounds}
-                          onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
-                          className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                        />
-                      </label>
-                      <label
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2"
-                      >
-                        Desc
-                        <input
-                          placeholder="seg"
-                          value={b.restAfterSeconds}
-                          onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
-                          className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                        />
-                      </label>
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                        </svg>
+                      </button>
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setBlocks((bs) => bs.filter((x) => x.key !== b.key));
                         }}
-                        className="text-faint-2 hover:text-accent-dark"
+                        className="inline-flex shrink-0 items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
+                        title="Eliminar bloque"
                       >
                         ✕
                       </button>
@@ -646,6 +664,35 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                       </div>
                     ) : (
                       <>
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-[#f4f1eb] px-3.5 py-2">
+                          <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                            {es.workouts.rounds}
+                            <input
+                              placeholder="1"
+                              value={b.rounds}
+                              onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
+                              className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                            Descanso entre ejercicios
+                            <input
+                              placeholder="seg"
+                              value={b.restBetween}
+                              onChange={(e) => updateBlock(b.key, { restBetween: e.target.value })}
+                              className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                            />
+                          </label>
+                          <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                            Descanso al final
+                            <input
+                              placeholder="seg"
+                              value={b.restAfterSeconds}
+                              onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
+                              className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                            />
+                          </label>
+                        </div>
                         {b.items.length > 0 && itemHeader()}
                         {b.items.map((it) => itemRow(b.key, it))}
                         {addExerciseButton(() => addExerciseTo(b.key))}

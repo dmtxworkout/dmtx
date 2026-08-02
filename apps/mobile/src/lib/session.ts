@@ -143,9 +143,10 @@ function buildSequential(workout: WorkoutDetail, defaultRounds: number): Step[] 
             steps.push(restStep(item.restBetweenSeconds, item.exercise?.name ?? null));
           }
         }
-        // rest between exercises inside the block isn't modelled separately here;
-        // block.restAfterSeconds covers the end of each round.
-        void ii;
+        // Rest between exercises within the block.
+        if (block.restBetweenExercisesSeconds && ii < block.items.length - 1) {
+          steps.push(restStep(block.restBetweenExercisesSeconds, block.items[ii + 1]?.exercise?.name ?? null));
+        }
       });
       if (block.restAfterSeconds) {
         const next = firstName(workout, bi, 0) ?? firstName(workout, bi + 1, 0);

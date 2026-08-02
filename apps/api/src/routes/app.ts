@@ -360,6 +360,7 @@ appRoute.get('/workouts/:id', async (c) => {
       type: b.type,
       label: b.label,
       rounds: b.rounds,
+      restBetweenExercisesSeconds: b.restBetweenExercisesSeconds,
       restAfterSeconds: b.restAfterSeconds,
       notes: b.notes,
       items: (itemsByBlock.get(b.id) ?? []).map((it) => {

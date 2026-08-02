@@ -48,6 +48,7 @@ export const workoutBlocks = pgTable('workout_blocks', {
   position: integer().notNull().default(0),
   type: blockTypeEnum().notNull().default('single'),
   rounds: integer(),
+  restBetweenExercisesSeconds: integer(),
   restAfterSeconds: integer(),
   label: text(),
   notes: text(),
