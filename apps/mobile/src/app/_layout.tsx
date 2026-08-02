@@ -44,9 +44,11 @@ function AuthGate() {
 
   useEffect(() => {
     if (isPending && !ready) return;
-    const inAuth = segments[0] === '(auth)';
-    if (!session && !inAuth) router.replace('/(auth)/intro');
-    else if (session && inAuth) router.replace('/(app)/(tabs)/inicio');
+    const group = segments[0];
+    // Logged out → must be in (auth). Logged in → must be in (app). This also
+    // routes the initial `index` route (which is in neither group).
+    if (!session && group !== '(auth)') router.replace('/(auth)/intro');
+    else if (session && group !== '(app)') router.replace('/(app)/(tabs)/inicio');
   }, [session, isPending, ready, segments, router]);
 
   return (
