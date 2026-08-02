@@ -131,7 +131,7 @@ export const es = {
     duration: 'Duración estimada (min)',
     blocks: 'Bloques',
     addBlock: '+ Bloque',
-    blockType: 'Tipo de bloque',
+    blockType: 'Agrupación',
     rounds: 'Rondas',
     restAfter: 'Descanso después (seg)',
     addExercise: '+ Ejercicio',

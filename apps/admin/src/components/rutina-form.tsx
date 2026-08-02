@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BLOCK_TYPE, CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
+import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
   BlockType,
   CreateWorkoutInput,
@@ -57,6 +57,9 @@ const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
     { key: 'timeCapSeconds', label: 'Tiempo límite (seg)' },
   ],
 };
+
+// How the exercises inside a block are grouped (workout-level timing lives in FORMATO).
+const GROUPING: BlockType[] = ['single', 'superset', 'circuit'];
 
 type ItemState = { key: string; exerciseId: string; sets: string; reps: string; carga: string };
 type BlockState = {
@@ -337,12 +340,15 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
                     <span className="font-mono text-[13px] text-faint">⠿</span>
                     <span className="text-sm font-bold">Bloque {bi + 1}</span>
+                    <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2">
+                      {es.workouts.blockType}
+                    </span>
                     <Select
                       value={b.type}
                       onChange={(e) => updateBlock(b.key, { type: e.target.value as BlockType })}
                       className="h-7 w-auto rounded-md text-[12px]"
                     >
-                      {BLOCK_TYPE.map((t) => (
+                      {GROUPING.map((t) => (
                         <option key={t} value={t}>
                           {es.workouts.blockLabels[t]}
                         </option>
