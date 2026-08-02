@@ -61,7 +61,7 @@ const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
 
 // Plain-language explainer so the per-exercise fields make sense for the format.
 const FORMAT_HELP: Record<WorkoutFormat, string> = {
-  amrap: 'Repite el circuito las rondas que puedas dentro del tiempo límite. No hay series: define las reps objetivo por ejercicio.',
+  amrap: 'Repite todos los bloques, en orden, hasta que se acabe el tiempo. Usa "Rondas" del bloque para sub-secciones (p. ej. un bloque de "3 rondas de…").',
   emom: 'En cada intervalo haces el trabajo de un ejercicio y descansas el resto del minuto.',
   tabata: 'Trabajo/descanso fijos por N rondas (global). Los ejercicios rotan; sólo indica cuáles y su carga.',
   strength: 'Series × reps con carga y descanso entre series.',
@@ -76,8 +76,6 @@ function itemColumns(format: WorkoutFormat) {
   return { showSets: strength, showRest: strength, showTarget: format !== 'tabata' };
 }
 
-/** Formats configured as a single flat list of exercises (no blocks / grouping). */
-const FLAT_FORMATS: WorkoutFormat[] = ['amrap'];
 
 type TargetField = 'reps' | 'workSeconds' | 'distanceMeters';
 /** The prescription field follows the exercise's own measurement type. */
@@ -276,20 +274,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     .filter(Boolean)
     .join(' ');
 
-  // Some formats (AMRAP) are a single flat list of exercises, not blocks.
-  const flat = type === 'structured' && FLAT_FORMATS.includes(format);
-  const flatItems = blocks.flatMap((b) => b.items.map((it) => ({ bk: b.key, it })));
-
   const addExerciseTo = (blockKey: string) => setPickerBlock(blockKey);
-  const openFlatPicker = () => {
-    if (blocks.length === 0) {
-      const key = uid();
-      setBlocks([{ key, type: 'single', rounds: '', restAfterSeconds: '', items: [] }]);
-      setPickerBlock(key);
-    } else {
-      setPickerBlock(blocks[0]!.key);
-    }
-  };
 
   // Item header + row, reused by the flat list and the block editor.
   const itemHeader = () => (
@@ -400,22 +385,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         loadPrescription: strToLoad(it.carga),
         perSide: false,
       });
-      // Flat formats (AMRAP) collapse to a single block.
-      const blocksPayload = flat
-        ? [
-            {
-              type: 'single' as BlockType,
-              rounds: null,
-              restAfterSeconds: null,
-              items: blocks.flatMap((b) => b.items).map(toItem),
-            },
-          ]
-        : blocks.map((b) => ({
-            type: b.type,
-            rounds: num(b.rounds),
-            restAfterSeconds: num(b.restAfterSeconds),
-            items: b.items.map(toItem),
-          }));
+      const blocksPayload = blocks.map((b) => ({
+        type: b.type,
+        rounds: num(b.rounds),
+        restAfterSeconds: num(b.restAfterSeconds),
+        items: b.items.map(toItem),
+      }));
       const payload: CreateWorkoutInput = {
         name,
         description: description || null,
@@ -506,22 +481,20 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           {type === 'structured' ? (
             <>
               <div className="flex items-center justify-between">
-                <h2 className="text-[15px] font-bold">{flat ? 'Ejercicios' : es.workouts.blocks}</h2>
-                {!flat && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setBlocks((bs) => [
-                        ...bs,
-                        { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
-                      ])
-                    }
-                  >
-                    {es.workouts.addBlock}
-                  </Button>
-                )}
+                <h2 className="text-[15px] font-bold">{es.workouts.blocks}</h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setBlocks((bs) => [
+                      ...bs,
+                      { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
+                    ])
+                  }
+                >
+                  {es.workouts.addBlock}
+                </Button>
               </div>
 
               <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent-tint/30 px-3 py-2.5">
@@ -531,57 +504,48 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 <p className="text-[12.5px] leading-snug text-ink-2">{FORMAT_HELP[format]}</p>
               </div>
 
-              {flat ? (
-                <div className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
-                  {flatItems.length > 0 && itemHeader()}
-                  {flatItems.map(({ bk, it }) => itemRow(bk, it))}
-                  {flatItems.length === 0 && (
-                    <p className="px-3.5 py-5 text-center text-[13px] text-ink-3">
-                      Agrega los ejercicios del circuito.
-                    </p>
-                  )}
-                  {addExerciseButton(openFlatPicker)}
+              {blocks.map((b, bi) => (
+                <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
+                  <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
+                    <span className="font-mono text-[13px] text-faint">⠿</span>
+                    <span className="text-sm font-bold">Bloque {bi + 1}</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                        {es.workouts.rounds}
+                        <input
+                          placeholder="1"
+                          value={b.rounds}
+                          onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
+                          className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                        />
+                      </label>
+                      <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                        Desc
+                        <input
+                          placeholder="seg"
+                          value={b.restAfterSeconds}
+                          onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
+                          className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
+                        className="text-faint-2 hover:text-accent-dark"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                  {b.items.length > 0 && itemHeader()}
+                  {b.items.map((it) => itemRow(b.key, it))}
+                  {addExerciseButton(() => addExerciseTo(b.key))}
                 </div>
-              ) : (
-                <>
-                  {blocks.map((b, bi) => (
-                    <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
-                      <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
-                        <span className="font-mono text-[13px] text-faint">⠿</span>
-                        <span className="text-sm font-bold">Bloque {bi + 1}</span>
-                        <div className="ml-auto flex items-center gap-2">
-                          <input
-                            placeholder={es.workouts.rounds}
-                            value={b.rounds}
-                            onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
-                            className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                          />
-                          <input
-                            placeholder="descanso"
-                            value={b.restAfterSeconds}
-                            onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
-                            className="h-7 w-20 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
-                            className="text-faint-2 hover:text-accent-dark"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      </div>
-                      {b.items.length > 0 && itemHeader()}
-                      {b.items.map((it) => itemRow(b.key, it))}
-                      {addExerciseButton(() => addExerciseTo(b.key))}
-                    </div>
-                  ))}
-                  {blocks.length === 0 && (
-                    <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
-                      {es.workouts.noBlocks}
-                    </div>
-                  )}
-                </>
+              ))}
+              {blocks.length === 0 && (
+                <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
+                  {es.workouts.noBlocks}
+                </div>
               )}
             </>
           ) : (
