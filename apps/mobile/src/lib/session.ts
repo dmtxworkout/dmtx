@@ -1,5 +1,5 @@
 import type { FormatConfig, Tempo, WorkoutFormat } from '@dmtx/schemas';
-import type { WorkoutBlock, WorkoutDetail, WorkoutItem } from './types';
+import type { LastResult, WorkoutBlock, WorkoutDetail, WorkoutItem } from './types';
 import { loadLabel } from './format';
 
 /**
@@ -37,6 +37,8 @@ export interface ExerciseStep {
   totalSets: number | null;
   /** For EMOM: reps to complete within the interval (shown alongside the timer). */
   withinReps: number | null;
+  /** This user's most recent result for the exercise ("beat your last"). */
+  last: LastResult | null;
 }
 
 export interface RestStep {
@@ -106,6 +108,7 @@ function exerciseStep(
     set,
     totalSets,
     withinReps: opts?.withinReps ?? null,
+    last: item.exercise?.lastResult ?? null,
   };
 }
 

@@ -278,6 +278,34 @@ appRoute.get('/workouts/:id', async (c) => {
     : [];
   const exBy = new Map<string, ExerciseRow>(exRows.map((e) => [e.id, e]));
 
+  // Each exercise's most recent logged result for this user ("beat your last").
+  const lastRows = exIds.length
+    ? await db
+        .select({
+          exerciseId: setResults.exerciseId,
+          reps: setResults.reps,
+          seconds: setResults.seconds,
+          distanceMeters: setResults.distanceMeters,
+          loadKg: setResults.loadKg,
+        })
+        .from(setResults)
+        .innerJoin(workoutLogs, eq(setResults.workoutLogId, workoutLogs.id))
+        .where(and(eq(workoutLogs.userId, c.get('user')!.id), inArray(setResults.exerciseId, exIds)))
+        .orderBy(desc(setResults.createdAt))
+        .limit(500)
+    : [];
+  const lastBy = new Map<string, { reps: number | null; seconds: number | null; distanceMeters: number | null; loadKg: number | null }>();
+  for (const r of lastRows) {
+    if (r.exerciseId && !lastBy.has(r.exerciseId)) {
+      lastBy.set(r.exerciseId, {
+        reps: r.reps,
+        seconds: r.seconds,
+        distanceMeters: r.distanceMeters,
+        loadKg: r.loadKg,
+      });
+    }
+  }
+
   const media = await resolveMediaUrls(db, c.env, [
     w.thumbnailAssetId,
     w.videoAssetId,
@@ -339,6 +367,7 @@ appRoute.get('/workouts/:id', async (c) => {
                 defaultTempo: ex.defaultTempo ?? null,
                 demoVideoUrl: url(media, ex.demoVideoAssetId),
                 thumbnailUrl: url(media, ex.thumbnailAssetId),
+                lastResult: lastBy.get(ex.id) ?? null,
               }
             : null,
         };

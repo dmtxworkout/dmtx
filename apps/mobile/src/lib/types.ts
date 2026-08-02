@@ -65,6 +65,13 @@ export interface WorkoutSummary {
   meta: string;
 }
 
+export interface LastResult {
+  reps: number | null;
+  seconds: number | null;
+  distanceMeters: number | null;
+  loadKg: number | null;
+}
+
 export interface PlayerExercise {
   id: string;
   name: string;
@@ -75,6 +82,7 @@ export interface PlayerExercise {
   defaultTempo: Tempo | null;
   demoVideoUrl: string | null;
   thumbnailUrl: string | null;
+  lastResult: LastResult | null;
 }
 
 export interface WorkoutItem {

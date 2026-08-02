@@ -123,7 +123,7 @@ export function RepsScreen({
   onDone: (mark: number) => void;
   onSkip: () => void;
 }) {
-  const [mark, setMark] = useState(step.targetReps ?? 0);
+  const [mark, setMark] = useState(step.last?.reps ?? step.targetReps ?? 0);
 
   return (
     <View className="flex-1 bg-bg pt-14">
@@ -186,9 +186,14 @@ export function RepsScreen({
         </View>
 
         <View className="gap-2.5">
-          <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
-            Tu marca
-          </Text>
+          <View className="flex-row items-center justify-between">
+            <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
+              Tu marca
+            </Text>
+            {step.last?.reps != null ? (
+              <Text className="font-mono text-[11px] text-ink-4">Antes: {step.last.reps} reps</Text>
+            ) : null}
+          </View>
           <View className="flex-row items-center gap-3">
             <Pressable
               onPress={() => setMark((m) => Math.max(0, m - 1))}
@@ -271,6 +276,11 @@ export function TimeScreen({
             </Text>
           ) : step.cue ? (
             <Text className="font-mono text-[12px] text-ink-3">{step.cue}</Text>
+          ) : null}
+          {step.last?.seconds != null ? (
+            <Text className="font-mono text-[11px] text-ink-4">
+              Antes: {step.last.seconds >= 60 ? mmss(step.last.seconds) : `${step.last.seconds} s`}
+            </Text>
           ) : null}
         </View>
 
@@ -387,6 +397,8 @@ export function RestScreen({
 export interface MarkRow {
   name: string;
   value: string;
+  prev?: string | null;
+  improved?: boolean;
 }
 
 /** Post-workout summary. */
@@ -436,10 +448,19 @@ export function SummaryScreen({
         ) : (
           marks.map((m, i) => (
             <View key={i} className="flex-row items-center gap-3 border-b border-line-2 py-2.5">
-              <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[14px] text-ink">
-                {m.name}
+              <View className="min-w-0 flex-1">
+                <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
+                  {m.name}
+                </Text>
+                {m.prev ? (
+                  <Text className="font-mono text-[10px] text-ink-4">antes: {m.prev}</Text>
+                ) : null}
+              </View>
+              <Text
+                className={`font-mono-semibold text-[14px] ${m.improved ? 'text-success' : 'text-ink-2'}`}
+              >
+                {m.value}
               </Text>
-              <Text className="font-mono-semibold text-[14px] text-ink-2">{m.value}</Text>
             </View>
           ))
         )}

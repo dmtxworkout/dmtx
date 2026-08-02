@@ -28,6 +28,8 @@ interface Mark {
   distanceMeters: number | null;
   loadKg: number | null;
   display: string;
+  prevDisplay: string | null;
+  improved: boolean;
 }
 
 export default function Entrenar() {
@@ -116,6 +118,16 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
     s: ExerciseStep,
     opts: { reps?: number; seconds?: number; display: string },
   ) => {
+    const lastVal = s.measure === 'time' ? (s.last?.seconds ?? null) : (s.last?.reps ?? null);
+    const cur = opts.reps ?? opts.seconds ?? null;
+    const prevDisplay =
+      lastVal != null
+        ? s.measure === 'time'
+          ? lastVal >= 60
+            ? mmss(lastVal)
+            : `${lastVal} s`
+          : `${lastVal} reps`
+        : null;
     setMarks((m) => ({
       ...m,
       [`${s.key}:${round}`]: {
@@ -129,6 +141,8 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
         distanceMeters: null,
         loadKg: s.loadKg,
         display: opts.display,
+        prevDisplay,
+        improved: lastVal != null && cur != null && cur > lastVal,
       },
     }));
   };
@@ -159,7 +173,12 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
     stats.push({ k: 'Tiempo', v: mmss(elapsed) });
     stats.push({ k: 'Ejercicios', v: String(list.length) });
     if (volume > 0) stats.push({ k: 'Volumen', v: `${volume}` });
-    const markRows: MarkRow[] = list.map((m) => ({ name: m.name, value: m.display }));
+    const markRows: MarkRow[] = list.map((m) => ({
+      name: m.name,
+      value: m.display,
+      prev: m.prevDisplay,
+      improved: m.improved,
+    }));
 
     const save = () => {
       setSaveError(null);
