@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin } from 'better-auth/plugins';
+import { expo } from '@better-auth/expo';
 import { createDb } from '@dmtx/db';
 import { Resend } from 'resend';
 import { ac, roles } from './permissions';
@@ -13,6 +14,8 @@ export interface AuthEnv {
   TRUSTED_ORIGINS?: string;
   /** The admin app origin — auto-added to trusted origins for cross-origin login. */
   ADMIN_ORIGIN?: string;
+  /** The mobile app origin (web build), if any. */
+  APP_ORIGIN?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
 }
@@ -30,6 +33,9 @@ export function createAuth(env: AuthEnv) {
   const trustedOrigins = [
     ...(env.TRUSTED_ORIGINS?.split(',').map((s) => s.trim()) ?? []),
     env.ADMIN_ORIGIN,
+    env.APP_ORIGIN,
+    // Mobile app deep-link scheme (see apps/mobile app.json `scheme`).
+    'dmtx://',
   ].filter((v): v is string => Boolean(v));
 
   return betterAuth({
@@ -68,6 +74,9 @@ export function createAuth(env: AuthEnv) {
         defaultRole: 'user',
         adminRoles: ['admin'],
       }),
+      // Mobile app support: trusted-origin handling for the app scheme and
+      // SecureStore-backed session cookies from the Expo client.
+      expo(),
     ],
   });
 }
