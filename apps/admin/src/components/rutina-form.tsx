@@ -502,10 +502,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         <p className="mx-7 mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark">{serverError}</p>
       )}
 
-      {/* Two columns */}
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        {/* Left: exercises / blocks (or video) */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
+      {/* Single scrollable two-column area */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="flex flex-col lg:flex-row lg:items-start">
+          {/* Left: exercises / blocks (or video) */}
+          <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-7 py-5">
           {type === 'structured' ? (
             <>
               <div className="flex items-center justify-between">
@@ -570,9 +571,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                         title="Arrastra para reordenar"
                       >
                         ⠿
-                      </span>
-                      <span className="select-none text-[11px] text-muted">
-                        {isCollapsed ? '▸' : '▾'}
                       </span>
                       {nameEditKey === b.key ? (
                         <input
@@ -685,7 +683,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         </div>
 
         {/* Right: config sidebar */}
-        <aside className="flex min-h-0 w-full shrink-0 flex-col gap-[22px] overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
+          <aside className="flex w-full flex-col gap-[22px] border-t border-line bg-surface px-[22px] py-[22px] lg:sticky lg:top-0 lg:w-[360px] lg:border-l lg:border-t-0">
           <div className="flex flex-col gap-2.5">
             <MonoLabel>{es.workouts.type}</MonoLabel>
             <div className="grid grid-cols-2 gap-1.5">
@@ -790,7 +788,8 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             <MonoLabel>{es.fields.thumbnail}</MonoLabel>
             <MediaField kind="image" label={es.fields.thumbnail} value={thumbnailAssetId} onChange={setThumbnailAssetId} />
           </div>
-        </aside>
+          </aside>
+        </div>
       </div>
 
       <EntityPicker<ExerciseListItem>
