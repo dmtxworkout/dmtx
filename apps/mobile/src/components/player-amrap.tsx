@@ -41,6 +41,7 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
     () =>
       workout.blocks
         .map((b) => ({
+          name: b.label,
           rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
           items: b.items.filter((it) => it.exercise),
         }))
@@ -180,11 +181,15 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
           El circuito
         </Text>
         <ScrollView contentContainerClassName="gap-3 px-5 pb-4">
-          {blocksView.map((bv, i) => (
+          {blocksView.map((bv, i) => {
+            const label = [bv.name, bv.rounds > 1 ? `× ${bv.rounds} rondas` : '']
+              .filter(Boolean)
+              .join('  ·  ');
+            return (
             <View key={i} className="gap-0.5">
-              {bv.rounds > 1 ? (
+              {label ? (
                 <Text className="pb-0.5 font-mono-semibold text-[11px] uppercase tracking-wider text-accent">
-                  × {bv.rounds} rondas
+                  {label}
                 </Text>
               ) : null}
               {bv.items.map((it) => (
@@ -199,7 +204,8 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
                 </View>
               ))}
             </View>
-          ))}
+            );
+          })}
         </ScrollView>
 
         <View className="px-5" style={{ paddingBottom: insets.bottom + 12 }}>
