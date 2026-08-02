@@ -8,3 +8,4 @@ export * from './programs';
 export * from './skills';
 export * from './collections';
 export * from './billing';
+export * from './progress';

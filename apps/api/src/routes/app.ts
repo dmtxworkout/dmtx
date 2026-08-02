@@ -5,13 +5,16 @@ import {
   programItems,
   programVideoItems,
   programs,
+  setResults,
   skillLevels,
   skills,
   workoutBlocks,
   workoutItems,
+  workoutLogs,
   workouts,
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
+import { createWorkoutLogSchema } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { resolveMediaUrls } from '../lib/media';
 import { resolveEntitlement } from '../lib/entitlement';
@@ -206,6 +209,7 @@ appRoute.use('/browse', requireAccess);
 appRoute.use('/workouts/*', requireAccess);
 appRoute.use('/programs/*', requireAccess);
 appRoute.use('/skills/*', requireAccess);
+appRoute.use('/logs', requireAccess);
 
 // GET /api/app/home — hero + curated rows.
 appRoute.get('/home', async (c) => {
@@ -472,5 +476,75 @@ appRoute.get('/skills/:id', async (c) => {
         workout: w ? workoutSummary(w, url(media, w.thumbnailAssetId)) : null,
       };
     }),
+  });
+});
+
+// POST /api/app/logs — save a completed workout session.
+appRoute.post('/logs', async (c) => {
+  const user = c.get('user')!;
+  const db = c.get('db');
+  const parsed = createWorkoutLogSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Datos inválidos' }, 400);
+  const input = parsed.data;
+
+  const [log] = await db
+    .insert(workoutLogs)
+    .values({
+      userId: user.id,
+      workoutId: input.workoutId,
+      workoutName: input.workoutName,
+      format: input.format ?? null,
+      startedAt: input.startedAt ? new Date(input.startedAt) : null,
+      completedAt: input.completedAt ? new Date(input.completedAt) : null,
+      durationSeconds: input.durationSeconds ?? null,
+      roundsCompleted: input.roundsCompleted ?? null,
+      totalVolume: input.totalVolume ?? null,
+      notes: input.notes ?? null,
+    })
+    .returning({ id: workoutLogs.id });
+  if (!log) return c.json({ error: 'No se pudo guardar' }, 500);
+
+  if (input.results.length) {
+    await db.insert(setResults).values(
+      input.results.map((r, i) => ({
+        workoutLogId: log.id,
+        exerciseId: r.exerciseId,
+        exerciseName: r.exerciseName,
+        position: r.position ?? i,
+        round: r.round ?? null,
+        setNumber: r.setNumber ?? null,
+        measure: r.measure ?? null,
+        reps: r.reps ?? null,
+        seconds: r.seconds ?? null,
+        distanceMeters: r.distanceMeters ?? null,
+        loadKg: r.loadKg != null ? Math.round(r.loadKg) : null,
+      })),
+    );
+  }
+
+  return c.json({ id: log.id }, 201);
+});
+
+// GET /api/app/logs — recent sessions for the current user.
+appRoute.get('/logs', async (c) => {
+  const db = c.get('db');
+  const rows = await db
+    .select()
+    .from(workoutLogs)
+    .where(eq(workoutLogs.userId, c.get('user')!.id))
+    .orderBy(desc(workoutLogs.createdAt))
+    .limit(30);
+  return c.json({
+    data: rows.map((l) => ({
+      id: l.id,
+      workoutId: l.workoutId,
+      workoutName: l.workoutName,
+      format: l.format,
+      durationSeconds: l.durationSeconds,
+      roundsCompleted: l.roundsCompleted,
+      totalVolume: l.totalVolume,
+      completedAt: l.completedAt ? l.completedAt.toISOString() : null,
+      createdAt: l.createdAt.toISOString(),
+    })),
   });
 });

@@ -31,6 +31,7 @@ export interface ExerciseStep {
   targetSeconds: number | null;
   targetDistance: number | null;
   loadLabel: string;
+  loadKg: number | null;
   perSide: boolean;
   set: number | null;
   totalSets: number | null;
@@ -80,6 +81,9 @@ function exerciseStep(
   opts?: { measure?: StepMeasure; targetSeconds?: number | null; withinReps?: number | null },
 ): ExerciseStep {
   const measure = opts?.measure ?? measureOf(item);
+  const load = item.loadPrescription;
+  const loadKg =
+    load?.type === 'absolute' ? Math.round(load.unit === 'lb' ? load.value * 0.4536 : load.value) : null;
   return {
     type: 'exercise',
     key: nextKey(),
@@ -97,6 +101,7 @@ function exerciseStep(
     targetSeconds: opts?.targetSeconds !== undefined ? opts.targetSeconds : measure === 'time' ? item.workSeconds : null,
     targetDistance: measure === 'distance' ? item.distanceMeters : null,
     loadLabel: loadLabel(item.loadPrescription),
+    loadKg,
     perSide: item.perSide,
     set,
     totalSets,

@@ -10,3 +10,4 @@ export * from './dto/exercise';
 export * from './dto/workout';
 export * from './dto/program';
 export * from './dto/skill';
+export * from './dto/progress';

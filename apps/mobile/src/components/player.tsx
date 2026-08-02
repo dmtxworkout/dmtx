@@ -395,11 +395,15 @@ export function SummaryScreen({
   stats,
   marks,
   onSave,
+  saving = false,
+  error = null,
 }: {
   name: string;
   stats: { k: string; v: string }[];
   marks: MarkRow[];
   onSave: () => void;
+  saving?: boolean;
+  error?: string | null;
 }) {
   return (
     <View className="flex-1 bg-bg px-6 pt-16">
@@ -441,11 +445,17 @@ export function SummaryScreen({
         )}
       </ScrollView>
 
+      {error ? (
+        <Text className="mt-3 text-center font-medium text-[13px] text-accent">{error}</Text>
+      ) : null}
       <Pressable
         onPress={onSave}
-        className="mb-9 mt-3 h-[54px] items-center justify-center rounded-xl bg-accent active:opacity-80"
+        disabled={saving}
+        className={`mb-9 mt-3 h-[54px] items-center justify-center rounded-xl bg-accent ${saving ? 'opacity-60' : 'active:opacity-80'}`}
       >
-        <Text className="font-bold text-[17px] text-white">Guardar y salir</Text>
+        <Text className="font-bold text-[17px] text-white">
+          {saving ? 'Guardando…' : 'Guardar y salir'}
+        </Text>
       </Pressable>
     </View>
   );
