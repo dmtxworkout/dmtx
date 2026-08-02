@@ -8,6 +8,8 @@ import { mediaRoute } from './routes/media';
 import { workoutsRoute } from './routes/workouts';
 import { programsRoute } from './routes/programs';
 import { skillsRoute } from './routes/skills';
+import { subscriptionsRoute } from './routes/subscriptions';
+import { appRoute } from './routes/app';
 
 const app = createApp();
 
@@ -40,6 +42,9 @@ app.route('/api/media', mediaRoute);
 app.route('/api/workouts', workoutsRoute);
 app.route('/api/programs', programsRoute);
 app.route('/api/skills', skillsRoute);
+app.route('/api/subscriptions', subscriptionsRoute);
+// Consumer / mobile-app API (read published content, entitlement-gated).
+app.route('/api/app', appRoute);
 
 // OpenAPI document (consumed by @dmtx/api-client codegen).
 app.doc('/doc', {

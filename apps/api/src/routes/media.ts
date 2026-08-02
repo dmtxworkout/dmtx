@@ -1,38 +1,12 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { AwsClient } from 'aws4fetch';
 import { and, count, desc, eq, ilike, isNull } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { mediaAssets } from '@dmtx/db';
 import { paginated, paginationQuerySchema, slugify } from '@dmtx/schemas';
 import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
+import { displayName, r2Client, r2Endpoint, viewUrl } from '../lib/media';
 import { requireAdmin } from '../middleware/auth';
-
-function r2Client(env: Env) {
-  return new AwsClient({
-    accessKeyId: env.R2_ACCESS_KEY_ID,
-    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
-    region: 'auto',
-    service: 's3',
-  });
-}
-
-function r2Endpoint(env: Env, key: string) {
-  return `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${env.R2_BUCKET}/${key}`;
-}
-
-/** Human display name from an r2 key like `image/<uuid>-nombre.png` → `nombre.png`. */
-function displayName(r2Key: string): string {
-  const base = r2Key.split('/').pop() ?? r2Key;
-  return base.replace(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i, '');
-}
-
-async function viewUrl(env: Env, key: string): Promise<string> {
-  const url = new URL(r2Endpoint(env, key));
-  url.searchParams.set('X-Amz-Expires', '3600');
-  const signed = await r2Client(env).sign(url.toString(), { method: 'GET', aws: { signQuery: true } });
-  return signed.url;
-}
 
 const kindEnum = z.enum(['video', 'image']);
 

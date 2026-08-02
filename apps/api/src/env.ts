@@ -7,6 +7,10 @@ export interface Env {
   ADMIN_ORIGIN?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  // Mobile app / consumer entitlement
+  APP_ORIGIN?: string;
+  TRIAL_DAYS?: string;
+  DEFAULT_PLAN_AMOUNT_CENTS?: string;
   // Cloudflare R2 (S3-compatible)
   R2_ACCOUNT_ID: string;
   R2_ACCESS_KEY_ID: string;
