@@ -109,11 +109,21 @@ const emptyItem = (exerciseId: string): ItemState => ({
 });
 type BlockState = {
   key: string;
+  name: string;
   type: BlockType;
   rounds: string;
   restAfterSeconds: string;
   items: ItemState[];
 };
+
+const emptyBlock = (): BlockState => ({
+  key: uid(),
+  name: '',
+  type: 'single',
+  rounds: '',
+  restAfterSeconds: '',
+  items: [],
+});
 
 const uid = () => crypto.randomUUID();
 const num = (s: string): number | null => {
@@ -188,9 +198,10 @@ function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): 
 }
 
 function initBlocks(w?: Workout): BlockState[] {
-  if (!w) return [{ key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] }];
+  if (!w) return [emptyBlock()];
   return w.blocks.map((b) => ({
     key: uid(),
+    name: b.label ?? '',
     type: b.type,
     rounds: b.rounds?.toString() ?? '',
     restAfterSeconds: b.restAfterSeconds?.toString() ?? '',
@@ -236,6 +247,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const { data: exList } = useQuery({
     queryKey: ['exercises', 'all'],
@@ -246,6 +258,15 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const setCfg = (k: string, v: string) => setFormatCfg((c) => ({ ...c, [k]: v }));
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
+  const toggleCollapse = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  const moveBlock = (index: number, dir: -1 | 1) =>
+    setBlocks((bs) => {
+      const next = index + dir;
+      if (next < 0 || next >= bs.length) return bs;
+      const copy = [...bs];
+      [copy[index], copy[next]] = [copy[next]!, copy[index]!];
+      return copy;
+    });
   const updateItem = (bk: string, ik: string, patch: Partial<ItemState>) =>
     setBlocks((bs) =>
       bs.map((b) =>
@@ -387,6 +408,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       });
       const blocksPayload = blocks.map((b) => ({
         type: b.type,
+        label: b.name.trim() || null,
         rounds: num(b.rounds),
         restAfterSeconds: num(b.restAfterSeconds),
         items: b.items.map(toItem),
@@ -475,7 +497,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       )}
 
       {/* Two columns */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)] lg:grid-rows-[minmax(0,1fr)]">
         {/* Left: exercises / blocks (or video) */}
         <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto px-7 py-5">
           {type === 'structured' ? (
@@ -486,12 +508,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setBlocks((bs) => [
-                      ...bs,
-                      { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
-                    ])
-                  }
+                  onClick={() => setBlocks((bs) => [...bs, emptyBlock()])}
                 >
                   {es.workouts.addBlock}
                 </Button>
@@ -504,12 +521,44 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 <p className="text-[12.5px] leading-snug text-ink-2">{FORMAT_HELP[format]}</p>
               </div>
 
-              {blocks.map((b, bi) => (
-                <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
-                  <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
-                    <span className="font-mono text-[13px] text-faint">⠿</span>
-                    <span className="text-sm font-bold">Bloque {bi + 1}</span>
-                    <div className="ml-auto flex items-center gap-2">
+              {blocks.map((b, bi) => {
+                const isCollapsed = collapsed[b.key];
+                const r = num(b.rounds);
+                return (
+                  <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
+                    <div className="flex items-center gap-2 border-b border-[#eeeae2] bg-surface-2 px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleCollapse(b.key)}
+                        className="flex h-7 w-5 items-center justify-center text-[11px] text-muted hover:text-ink-2"
+                        title={isCollapsed ? 'Expandir' : 'Contraer'}
+                      >
+                        {isCollapsed ? '▸' : '▾'}
+                      </button>
+                      <div className="flex flex-col">
+                        <button
+                          type="button"
+                          disabled={bi === 0}
+                          onClick={() => moveBlock(bi, -1)}
+                          className="text-[9px] leading-none text-faint hover:text-ink-2 disabled:opacity-25"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          type="button"
+                          disabled={bi === blocks.length - 1}
+                          onClick={() => moveBlock(bi, 1)}
+                          className="text-[9px] leading-none text-faint hover:text-ink-2 disabled:opacity-25"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                      <input
+                        value={b.name}
+                        onChange={(e) => updateBlock(b.key, { name: e.target.value })}
+                        placeholder={`Bloque ${bi + 1}`}
+                        className="min-w-0 flex-1 bg-transparent text-sm font-bold placeholder:font-bold placeholder:text-faint focus:outline-none"
+                      />
                       <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
                         {es.workouts.rounds}
                         <input
@@ -536,12 +585,21 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                         ✕
                       </button>
                     </div>
+                    {isCollapsed ? (
+                      <div className="px-4 py-2.5 font-mono text-[11px] text-muted">
+                        {b.items.length} ejercicio{b.items.length === 1 ? '' : 's'}
+                        {r && r > 1 ? ` · ${r} rondas` : ''}
+                      </div>
+                    ) : (
+                      <>
+                        {b.items.length > 0 && itemHeader()}
+                        {b.items.map((it) => itemRow(b.key, it))}
+                        {addExerciseButton(() => addExerciseTo(b.key))}
+                      </>
+                    )}
                   </div>
-                  {b.items.length > 0 && itemHeader()}
-                  {b.items.map((it) => itemRow(b.key, it))}
-                  {addExerciseButton(() => addExerciseTo(b.key))}
-                </div>
-              ))}
+                );
+              })}
               {blocks.length === 0 && (
                 <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
                   {es.workouts.noBlocks}
