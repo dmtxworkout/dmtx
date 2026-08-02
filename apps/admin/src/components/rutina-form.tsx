@@ -9,6 +9,7 @@ import type {
   CreateWorkoutInput,
   FormatConfig,
   LoadPrescription,
+  MeasurementType,
   Workout,
   WorkoutFormat,
 } from '@dmtx/schemas';
@@ -61,7 +62,53 @@ const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
 // How the exercises inside a block are grouped (workout-level timing lives in FORMATO).
 const GROUPING: BlockType[] = ['single', 'superset', 'circuit'];
 
-type ItemState = { key: string; exerciseId: string; sets: string; reps: string; carga: string };
+// Plain-language explainer so the per-exercise fields make sense for the format.
+const FORMAT_HELP: Record<WorkoutFormat, string> = {
+  amrap: 'Repite el circuito las rondas que puedas dentro del tiempo límite. No hay series: define las reps objetivo por ejercicio.',
+  emom: 'En cada intervalo haces el trabajo de un ejercicio y descansas el resto del minuto.',
+  tabata: 'Trabajo/descanso fijos por N rondas (global). Los ejercicios rotan; sólo indica cuáles y su carga.',
+  strength: 'Series × reps con carga y descanso entre series.',
+  chipper: 'Haz cada ejercicio una vez, en orden, lo más rápido posible.',
+  for_time: 'Completa el trabajo prescrito lo antes posible (opcional: tiempo límite).',
+  circuit: 'Vueltas al circuito; las reps son por estación (las rondas se definen arriba).',
+};
+
+/** Which per-exercise columns a format shows. Only strength uses sets + rest-per-set. */
+function itemColumns(format: WorkoutFormat) {
+  const strength = format === 'strength';
+  return { showSets: strength, showRest: strength, showTarget: format !== 'tabata' };
+}
+
+type TargetField = 'reps' | 'workSeconds' | 'distanceMeters';
+/** The prescription field follows the exercise's own measurement type. */
+function targetField(m?: MeasurementType): TargetField {
+  if (m === 'time') return 'workSeconds';
+  if (m === 'distance') return 'distanceMeters';
+  return 'reps';
+}
+const TARGET_UNIT: Record<TargetField, string> = { reps: 'reps', workSeconds: 'seg', distanceMeters: 'm' };
+
+type ItemState = {
+  key: string;
+  exerciseId: string;
+  sets: string;
+  reps: string;
+  workSeconds: string;
+  distanceMeters: string;
+  rest: string;
+  carga: string;
+};
+
+const emptyItem = (exerciseId: string): ItemState => ({
+  key: uid(),
+  exerciseId,
+  sets: '',
+  reps: '',
+  workSeconds: '',
+  distanceMeters: '',
+  rest: '',
+  carga: '',
+});
 type BlockState = {
   key: string;
   type: BlockType;
@@ -154,6 +201,9 @@ function initBlocks(w?: Workout): BlockState[] {
       exerciseId: it.exerciseId,
       sets: it.sets?.toString() ?? '',
       reps: it.reps?.toString() ?? '',
+      workSeconds: it.workSeconds?.toString() ?? '',
+      distanceMeters: it.distanceMeters?.toString() ?? '',
+      rest: it.restBetweenSeconds?.toString() ?? '',
       carga: loadToStr(it.loadPrescription),
     })),
   }));
@@ -213,9 +263,23 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     .filter(Boolean)
     .join(' · ');
 
+  // Per-exercise columns adapt to the selected format.
+  const cols = itemColumns(format);
+  const itemGtc = [
+    'minmax(0,1fr)',
+    cols.showSets && '56px',
+    cols.showTarget && '72px',
+    '74px',
+    cols.showRest && '60px',
+    '26px',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   const save = useMutation({
     mutationFn: () => {
       const structured = type === 'structured';
+      const cols = itemColumns(format);
       const payload: CreateWorkoutInput = {
         name,
         description: description || null,
@@ -234,8 +298,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               restAfterSeconds: num(b.restAfterSeconds),
               items: b.items.map((it) => ({
                 exerciseId: it.exerciseId,
-                sets: num(it.sets),
+                sets: cols.showSets ? num(it.sets) : null,
                 reps: num(it.reps),
+                workSeconds: num(it.workSeconds),
+                distanceMeters: num(it.distanceMeters),
+                restBetweenSeconds: cols.showRest ? num(it.rest) : null,
                 loadPrescription: strToLoad(it.carga),
                 perSide: false,
               })),
@@ -335,6 +402,13 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 </Button>
               </div>
 
+              <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent-tint/30 px-3 py-2.5">
+                <span className="mt-px font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
+                  {FORMAT_LABEL[format]}
+                </span>
+                <p className="text-[12.5px] leading-snug text-ink-2">{FORMAT_HELP[format]}</p>
+              </div>
+
               {blocks.map((b, bi) => (
                 <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
                   <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
@@ -378,21 +452,27 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   </div>
 
                   {b.items.length > 0 && (
-                    <div className="grid grid-cols-[1fr_62px_62px_74px_26px] gap-3 border-b border-[#f4f1eb] px-3.5 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2">
+                    <div
+                      className="grid gap-3 border-b border-[#f4f1eb] px-3.5 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2"
+                      style={{ gridTemplateColumns: itemGtc }}
+                    >
                       <span>{es.pick.exercise.replace('Elegir ', '')}</span>
-                      <span className="text-center">{es.workouts.sets}</span>
-                      <span className="text-center">{es.workouts.reps}</span>
+                      {cols.showSets && <span className="text-center">{es.workouts.sets}</span>}
+                      {cols.showTarget && <span className="text-center">Objetivo</span>}
                       <span className="text-center">Carga</span>
+                      {cols.showRest && <span className="text-center">Descanso</span>}
                       <span />
                     </div>
                   )}
 
                   {b.items.map((it) => {
                     const ex = exercise(it.exerciseId);
+                    const tf = targetField(ex?.measurementType);
                     return (
                       <div
                         key={it.key}
-                        className="grid grid-cols-[1fr_62px_62px_74px_26px] items-center gap-3 border-b border-[#f4f1eb] px-3.5 py-2"
+                        className="grid items-center gap-3 border-b border-[#f4f1eb] px-3.5 py-2"
+                        style={{ gridTemplateColumns: itemGtc }}
                       >
                         <div className="flex min-w-0 items-center gap-2.5">
                           {ex?.thumbnailAssetId ? (
@@ -410,9 +490,30 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                             </div>
                           </div>
                         </div>
-                        <input value={it.sets} onChange={(e) => updateItem(b.key, it.key, { sets: e.target.value })} className={boxCls} />
-                        <input value={it.reps} onChange={(e) => updateItem(b.key, it.key, { reps: e.target.value })} className={boxCls} />
+                        {cols.showSets && (
+                          <input
+                            value={it.sets}
+                            onChange={(e) => updateItem(b.key, it.key, { sets: e.target.value })}
+                            className={boxCls}
+                          />
+                        )}
+                        {cols.showTarget && (
+                          <input
+                            value={it[tf]}
+                            placeholder={TARGET_UNIT[tf]}
+                            onChange={(e) => updateItem(b.key, it.key, { [tf]: e.target.value })}
+                            className={boxCls}
+                          />
+                        )}
                         <input value={it.carga} onChange={(e) => updateItem(b.key, it.key, { carga: e.target.value })} className={boxCls} />
+                        {cols.showRest && (
+                          <input
+                            value={it.rest}
+                            placeholder="seg"
+                            onChange={(e) => updateItem(b.key, it.key, { rest: e.target.value })}
+                            className={boxCls}
+                          />
+                        )}
                         <button
                           type="button"
                           onClick={() => updateBlock(b.key, { items: b.items.filter((x) => x.key !== it.key) })}
@@ -573,9 +674,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           if (pickerBlock) {
             setBlocks((bs) =>
               bs.map((b) =>
-                b.key === pickerBlock
-                  ? { ...b, items: [...b.items, { key: uid(), exerciseId: e.id, sets: '', reps: '', carga: '' }] }
-                  : b,
+                b.key === pickerBlock ? { ...b, items: [...b.items, emptyItem(e.id)] } : b,
               ),
             );
           }
