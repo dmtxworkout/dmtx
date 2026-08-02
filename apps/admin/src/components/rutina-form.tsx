@@ -59,9 +59,6 @@ const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
   ],
 };
 
-// How the exercises inside a block are grouped (workout-level timing lives in FORMATO).
-const GROUPING: BlockType[] = ['single', 'superset', 'circuit'];
-
 // Plain-language explainer so the per-exercise fields make sense for the format.
 const FORMAT_HELP: Record<WorkoutFormat, string> = {
   amrap: 'Repite el circuito las rondas que puedas dentro del tiempo límite. No hay series: define las reps objetivo por ejercicio.',
@@ -78,6 +75,9 @@ function itemColumns(format: WorkoutFormat) {
   const strength = format === 'strength';
   return { showSets: strength, showRest: strength, showTarget: format !== 'tabata' };
 }
+
+/** Formats configured as a single flat list of exercises (no blocks / grouping). */
+const FLAT_FORMATS: WorkoutFormat[] = ['amrap'];
 
 type TargetField = 'reps' | 'workSeconds' | 'distanceMeters';
 /** The prescription field follows the exercise's own measurement type. */
@@ -276,10 +276,146 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     .filter(Boolean)
     .join(' ');
 
+  // Some formats (AMRAP) are a single flat list of exercises, not blocks.
+  const flat = type === 'structured' && FLAT_FORMATS.includes(format);
+  const flatItems = blocks.flatMap((b) => b.items.map((it) => ({ bk: b.key, it })));
+
+  const addExerciseTo = (blockKey: string) => setPickerBlock(blockKey);
+  const openFlatPicker = () => {
+    if (blocks.length === 0) {
+      const key = uid();
+      setBlocks([{ key, type: 'single', rounds: '', restAfterSeconds: '', items: [] }]);
+      setPickerBlock(key);
+    } else {
+      setPickerBlock(blocks[0]!.key);
+    }
+  };
+
+  // Item header + row, reused by the flat list and the block editor.
+  const itemHeader = () => (
+    <div
+      className="grid gap-3 border-b border-[#f4f1eb] px-3.5 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2"
+      style={{ gridTemplateColumns: itemGtc }}
+    >
+      <span>{es.pick.exercise.replace('Elegir ', '')}</span>
+      {cols.showSets && <span className="text-center">{es.workouts.sets}</span>}
+      {cols.showTarget && <span className="text-center">Objetivo</span>}
+      <span className="text-center">Carga</span>
+      {cols.showRest && <span className="text-center">Descanso</span>}
+      <span />
+    </div>
+  );
+
+  const itemRow = (bk: string, it: ItemState) => {
+    const ex = exercise(it.exerciseId);
+    const tf = targetField(ex?.measurementType);
+    return (
+      <div
+        key={it.key}
+        className="grid items-center gap-3 border-b border-[#f4f1eb] px-3.5 py-2"
+        style={{ gridTemplateColumns: itemGtc }}
+      >
+        <div className="flex min-w-0 items-center gap-2.5">
+          {ex?.thumbnailAssetId ? (
+            <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
+          ) : (
+            <div
+              className="h-9 w-[58px] shrink-0 rounded-md"
+              style={{ background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' }}
+            />
+          )}
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
+            <div className="truncate font-mono text-[11px] text-muted">
+              {ex ? es.measurement[ex.measurementType] : ''}
+            </div>
+          </div>
+        </div>
+        {cols.showSets && (
+          <input
+            value={it.sets}
+            onChange={(e) => updateItem(bk, it.key, { sets: e.target.value })}
+            className={boxCls}
+          />
+        )}
+        {cols.showTarget && (
+          <input
+            value={it[tf]}
+            placeholder={TARGET_UNIT[tf]}
+            onChange={(e) => updateItem(bk, it.key, { [tf]: e.target.value })}
+            className={boxCls}
+          />
+        )}
+        <input
+          value={it.carga}
+          onChange={(e) => updateItem(bk, it.key, { carga: e.target.value })}
+          className={boxCls}
+        />
+        {cols.showRest && (
+          <input
+            value={it.rest}
+            placeholder="seg"
+            onChange={(e) => updateItem(bk, it.key, { rest: e.target.value })}
+            className={boxCls}
+          />
+        )}
+        <button
+          type="button"
+          onClick={() =>
+            setBlocks((bs) =>
+              bs.map((b) => (b.key === bk ? { ...b, items: b.items.filter((x) => x.key !== it.key) } : b)),
+            )
+          }
+          className="text-center text-faint-2 hover:text-accent-dark"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  };
+
+  const addExerciseButton = (onClick: () => void) => (
+    <div className="p-3">
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex h-[30px] items-center rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
+      >
+        {es.workouts.addExercise}
+      </button>
+    </div>
+  );
+
   const save = useMutation({
     mutationFn: () => {
       const structured = type === 'structured';
       const cols = itemColumns(format);
+      const toItem = (it: ItemState) => ({
+        exerciseId: it.exerciseId,
+        sets: cols.showSets ? num(it.sets) : null,
+        reps: num(it.reps),
+        workSeconds: num(it.workSeconds),
+        distanceMeters: num(it.distanceMeters),
+        restBetweenSeconds: cols.showRest ? num(it.rest) : null,
+        loadPrescription: strToLoad(it.carga),
+        perSide: false,
+      });
+      // Flat formats (AMRAP) collapse to a single block.
+      const blocksPayload = flat
+        ? [
+            {
+              type: 'single' as BlockType,
+              rounds: null,
+              restAfterSeconds: null,
+              items: blocks.flatMap((b) => b.items).map(toItem),
+            },
+          ]
+        : blocks.map((b) => ({
+            type: b.type,
+            rounds: num(b.rounds),
+            restAfterSeconds: num(b.restAfterSeconds),
+            items: b.items.map(toItem),
+          }));
       const payload: CreateWorkoutInput = {
         name,
         description: description || null,
@@ -291,23 +427,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         thumbnailAssetId,
         videoAssetId: structured ? null : videoAssetId,
         formatConfig: structured ? buildFormatConfig(format, formatCfg) : null,
-        blocks: structured
-          ? blocks.map((b) => ({
-              type: b.type,
-              rounds: num(b.rounds),
-              restAfterSeconds: num(b.restAfterSeconds),
-              items: b.items.map((it) => ({
-                exerciseId: it.exerciseId,
-                sets: cols.showSets ? num(it.sets) : null,
-                reps: num(it.reps),
-                workSeconds: num(it.workSeconds),
-                distanceMeters: num(it.distanceMeters),
-                restBetweenSeconds: cols.showRest ? num(it.rest) : null,
-                loadPrescription: strToLoad(it.carga),
-                perSide: false,
-              })),
-            }))
-          : [],
+        blocks: structured ? blocksPayload : [],
       };
       return workout ? api.workouts.update(workout.id, payload) : api.workouts.create(payload);
     },
@@ -381,25 +501,27 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
 
       {/* Two columns */}
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)]">
-        {/* Left: blocks (or video) */}
-        <div className="flex min-w-0 flex-col gap-3.5 overflow-y-auto px-7 py-5">
+        {/* Left: exercises / blocks (or video) */}
+        <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto px-7 py-5">
           {type === 'structured' ? (
             <>
               <div className="flex items-center justify-between">
-                <h2 className="text-[15px] font-bold">{es.workouts.blocks}</h2>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setBlocks((bs) => [
-                      ...bs,
-                      { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
-                    ])
-                  }
-                >
-                  {es.workouts.addBlock}
-                </Button>
+                <h2 className="text-[15px] font-bold">{flat ? 'Ejercicios' : es.workouts.blocks}</h2>
+                {!flat && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setBlocks((bs) => [
+                        ...bs,
+                        { key: uid(), type: 'single', rounds: '', restAfterSeconds: '', items: [] },
+                      ])
+                    }
+                  >
+                    {es.workouts.addBlock}
+                  </Button>
+                )}
               </div>
 
               <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent-tint/30 px-3 py-2.5">
@@ -409,138 +531,57 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 <p className="text-[12.5px] leading-snug text-ink-2">{FORMAT_HELP[format]}</p>
               </div>
 
-              {blocks.map((b, bi) => (
-                <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
-                  <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
-                    <span className="font-mono text-[13px] text-faint">⠿</span>
-                    <span className="text-sm font-bold">Bloque {bi + 1}</span>
-                    <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2">
-                      {es.workouts.blockType}
-                    </span>
-                    <Select
-                      value={b.type}
-                      onChange={(e) => updateBlock(b.key, { type: e.target.value as BlockType })}
-                      className="h-7 w-auto rounded-md text-[12px]"
-                    >
-                      {GROUPING.map((t) => (
-                        <option key={t} value={t}>
-                          {es.workouts.blockLabels[t]}
-                        </option>
-                      ))}
-                    </Select>
-                    <div className="ml-auto flex items-center gap-2">
-                      <input
-                        placeholder={es.workouts.rounds}
-                        value={b.rounds}
-                        onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
-                        className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                      />
-                      <input
-                        placeholder="descanso"
-                        value={b.restAfterSeconds}
-                        onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
-                        className="h-7 w-20 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
-                        className="text-faint-2 hover:text-accent-dark"
-                      >
-                        ✕
-                      </button>
+              {flat ? (
+                <div className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
+                  {flatItems.length > 0 && itemHeader()}
+                  {flatItems.map(({ bk, it }) => itemRow(bk, it))}
+                  {flatItems.length === 0 && (
+                    <p className="px-3.5 py-5 text-center text-[13px] text-ink-3">
+                      Agrega los ejercicios del circuito.
+                    </p>
+                  )}
+                  {addExerciseButton(openFlatPicker)}
+                </div>
+              ) : (
+                <>
+                  {blocks.map((b, bi) => (
+                    <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
+                      <div className="flex flex-wrap items-center gap-3 border-b border-[#eeeae2] bg-surface-2 px-3.5 py-2.5">
+                        <span className="font-mono text-[13px] text-faint">⠿</span>
+                        <span className="text-sm font-bold">Bloque {bi + 1}</span>
+                        <div className="ml-auto flex items-center gap-2">
+                          <input
+                            placeholder={es.workouts.rounds}
+                            value={b.rounds}
+                            onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
+                            className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                          />
+                          <input
+                            placeholder="descanso"
+                            value={b.restAfterSeconds}
+                            onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
+                            className="h-7 w-20 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
+                            className="text-faint-2 hover:text-accent-dark"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                      {b.items.length > 0 && itemHeader()}
+                      {b.items.map((it) => itemRow(b.key, it))}
+                      {addExerciseButton(() => addExerciseTo(b.key))}
                     </div>
-                  </div>
-
-                  {b.items.length > 0 && (
-                    <div
-                      className="grid gap-3 border-b border-[#f4f1eb] px-3.5 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2"
-                      style={{ gridTemplateColumns: itemGtc }}
-                    >
-                      <span>{es.pick.exercise.replace('Elegir ', '')}</span>
-                      {cols.showSets && <span className="text-center">{es.workouts.sets}</span>}
-                      {cols.showTarget && <span className="text-center">Objetivo</span>}
-                      <span className="text-center">Carga</span>
-                      {cols.showRest && <span className="text-center">Descanso</span>}
-                      <span />
+                  ))}
+                  {blocks.length === 0 && (
+                    <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
+                      {es.workouts.noBlocks}
                     </div>
                   )}
-
-                  {b.items.map((it) => {
-                    const ex = exercise(it.exerciseId);
-                    const tf = targetField(ex?.measurementType);
-                    return (
-                      <div
-                        key={it.key}
-                        className="grid items-center gap-3 border-b border-[#f4f1eb] px-3.5 py-2"
-                        style={{ gridTemplateColumns: itemGtc }}
-                      >
-                        <div className="flex min-w-0 items-center gap-2.5">
-                          {ex?.thumbnailAssetId ? (
-                            <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
-                          ) : (
-                            <div
-                              className="h-9 w-[58px] shrink-0 rounded-md"
-                              style={{ background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' }}
-                            />
-                          )}
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
-                            <div className="truncate font-mono text-[11px] text-muted">
-                              {ex ? es.measurement[ex.measurementType] : ''}
-                            </div>
-                          </div>
-                        </div>
-                        {cols.showSets && (
-                          <input
-                            value={it.sets}
-                            onChange={(e) => updateItem(b.key, it.key, { sets: e.target.value })}
-                            className={boxCls}
-                          />
-                        )}
-                        {cols.showTarget && (
-                          <input
-                            value={it[tf]}
-                            placeholder={TARGET_UNIT[tf]}
-                            onChange={(e) => updateItem(b.key, it.key, { [tf]: e.target.value })}
-                            className={boxCls}
-                          />
-                        )}
-                        <input value={it.carga} onChange={(e) => updateItem(b.key, it.key, { carga: e.target.value })} className={boxCls} />
-                        {cols.showRest && (
-                          <input
-                            value={it.rest}
-                            placeholder="seg"
-                            onChange={(e) => updateItem(b.key, it.key, { rest: e.target.value })}
-                            className={boxCls}
-                          />
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => updateBlock(b.key, { items: b.items.filter((x) => x.key !== it.key) })}
-                          className="text-center text-faint-2 hover:text-accent-dark"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    );
-                  })}
-
-                  <div className="p-3">
-                    <button
-                      type="button"
-                      onClick={() => setPickerBlock(b.key)}
-                      className="inline-flex h-[30px] items-center rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
-                    >
-                      {es.workouts.addExercise}
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {blocks.length === 0 && (
-                <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
-                  {es.workouts.noBlocks}
-                </div>
+                </>
               )}
             </>
           ) : (
@@ -554,7 +595,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         </div>
 
         {/* Right: config sidebar */}
-        <aside className="flex flex-col gap-[22px] overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:border-l lg:border-t-0">
+        <aside className="flex min-h-0 flex-col gap-[22px] overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:border-l lg:border-t-0">
           <div className="flex flex-col gap-2.5">
             <MonoLabel>{es.workouts.type}</MonoLabel>
             <div className="grid grid-cols-2 gap-1.5">
