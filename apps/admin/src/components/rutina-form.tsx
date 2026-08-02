@@ -503,7 +503,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       )}
 
       {/* Two columns */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)] lg:grid-rows-[minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(296px,372px)] lg:grid-rows-1">
         {/* Left: exercises / blocks (or video) */}
         <div className="flex min-h-0 min-w-0 flex-col gap-3.5 overflow-y-auto px-7 py-5">
           {type === 'structured' ? (
@@ -598,10 +598,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                               e.stopPropagation();
                               setNameEditKey(b.key);
                             }}
-                            className="shrink-0 text-[12px] text-faint hover:text-ink-2"
+                            className="shrink-0 rounded p-1 text-[13px] text-ink-3 hover:bg-surface-3 hover:text-accent"
                             title="Renombrar"
                           >
-                            ✎
+                            ✏️
                           </button>
                           <span className="flex-1" />
                         </>
