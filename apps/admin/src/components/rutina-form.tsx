@@ -248,6 +248,8 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   const { data: exList } = useQuery({
     queryKey: ['exercises', 'all'],
@@ -259,14 +261,17 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
   const toggleCollapse = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
-  const moveBlock = (index: number, dir: -1 | 1) =>
+  const dropBlock = (target: number) => {
     setBlocks((bs) => {
-      const next = index + dir;
-      if (next < 0 || next >= bs.length) return bs;
+      if (dragIndex === null || dragIndex === target) return bs;
       const copy = [...bs];
-      [copy[index], copy[next]] = [copy[next]!, copy[index]!];
+      const [moved] = copy.splice(dragIndex, 1);
+      if (moved) copy.splice(target, 0, moved);
       return copy;
     });
+    setDragIndex(null);
+    setOverIndex(null);
+  };
   const updateItem = (bk: string, ik: string, patch: Partial<ItemState>) =>
     setBlocks((bs) =>
       bs.map((b) =>
@@ -524,42 +529,56 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               {blocks.map((b, bi) => {
                 const isCollapsed = collapsed[b.key];
                 const r = num(b.rounds);
+                const isDropTarget = dragIndex !== null && dragIndex !== bi && overIndex === bi;
                 return (
-                  <div key={b.key} className="overflow-hidden rounded-xl border border-[#e2ded5] bg-surface">
-                    <div className="flex items-center gap-2 border-b border-[#eeeae2] bg-surface-2 px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleCollapse(b.key)}
-                        className="flex h-7 w-5 items-center justify-center text-[11px] text-muted hover:text-ink-2"
-                        title={isCollapsed ? 'Expandir' : 'Contraer'}
+                  <div
+                    key={b.key}
+                    onDragOver={(e) => {
+                      if (dragIndex === null) return;
+                      e.preventDefault();
+                      if (overIndex !== bi) setOverIndex(bi);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      dropBlock(bi);
+                    }}
+                    className={cn(
+                      'overflow-hidden rounded-xl border bg-surface',
+                      dragIndex === bi ? 'opacity-40' : '',
+                      isDropTarget ? 'border-accent ring-1 ring-accent/40' : 'border-[#e2ded5]',
+                    )}
+                  >
+                    <div
+                      onClick={() => toggleCollapse(b.key)}
+                      className="flex cursor-pointer items-center gap-2 border-b border-[#eeeae2] bg-surface-2 px-3 py-2"
+                    >
+                      <span
+                        draggable
+                        onDragStart={(e) => {
+                          setDragIndex(bi);
+                          e.dataTransfer.effectAllowed = 'move';
+                        }}
+                        onDragEnd={() => {
+                          setDragIndex(null);
+                          setOverIndex(null);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="cursor-grab select-none px-0.5 font-mono text-[15px] text-faint hover:text-ink-3 active:cursor-grabbing"
+                        title="Arrastra para reordenar"
                       >
-                        {isCollapsed ? '▸' : '▾'}
-                      </button>
-                      <div className="flex flex-col">
-                        <button
-                          type="button"
-                          disabled={bi === 0}
-                          onClick={() => moveBlock(bi, -1)}
-                          className="text-[9px] leading-none text-faint hover:text-ink-2 disabled:opacity-25"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          type="button"
-                          disabled={bi === blocks.length - 1}
-                          onClick={() => moveBlock(bi, 1)}
-                          className="text-[9px] leading-none text-faint hover:text-ink-2 disabled:opacity-25"
-                        >
-                          ▼
-                        </button>
-                      </div>
+                        ⠿
+                      </span>
                       <input
                         value={b.name}
                         onChange={(e) => updateBlock(b.key, { name: e.target.value })}
+                        onClick={(e) => e.stopPropagation()}
                         placeholder={`Bloque ${bi + 1}`}
                         className="min-w-0 flex-1 bg-transparent text-sm font-bold placeholder:font-bold placeholder:text-faint focus:outline-none"
                       />
-                      <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                      <label
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2"
+                      >
                         {es.workouts.rounds}
                         <input
                           placeholder="1"
@@ -568,7 +587,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
                         />
                       </label>
-                      <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                      <label
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2"
+                      >
                         Desc
                         <input
                           placeholder="seg"
@@ -579,7 +601,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                       </label>
                       <button
                         type="button"
-                        onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBlocks((bs) => bs.filter((x) => x.key !== b.key));
+                        }}
                         className="text-faint-2 hover:text-accent-dark"
                       >
                         ✕
