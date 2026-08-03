@@ -368,6 +368,7 @@ appRoute.get('/workouts/:id', async (c) => {
           id: it.id,
           kind: it.kind,
           exerciseId: it.exerciseId,
+          measure: it.measure ?? null,
           sets: it.sets,
           reps: it.reps,
           workSeconds: it.workSeconds,

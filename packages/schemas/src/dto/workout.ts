@@ -5,6 +5,7 @@ import {
   contentStatusSchema,
   difficultySchema,
   itemKindSchema,
+  measurementTypeSchema,
   workoutFormatSchema,
   workoutTypeSchema,
 } from '../enums';
@@ -18,6 +19,8 @@ export const workoutItemInputSchema = z.object({
   kind: itemKindSchema.default('exercise'),
   // null for rest items; workSeconds holds the rest duration then
   exerciseId: uuidSchema.nullish(),
+  // Per-item measurement; null falls back to the exercise's measurementType.
+  measure: measurementTypeSchema.nullish(),
   sets: z.number().int().positive().nullish(),
   reps: z.number().int().positive().nullish(),
   workSeconds: z.number().int().positive().nullish(),

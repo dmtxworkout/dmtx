@@ -1,0 +1,1 @@
+ALTER TABLE "workout_items" ADD COLUMN "measure" "measurement_type";

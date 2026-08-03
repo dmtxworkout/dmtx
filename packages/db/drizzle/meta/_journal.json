@@ -43,6 +43,13 @@
       "when": 1785776428401,
       "tag": "0005_absent_luckman",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785777761816,
+      "tag": "0006_tidy_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

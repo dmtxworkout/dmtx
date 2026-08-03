@@ -6,6 +6,7 @@ import {
   contentStatusEnum,
   difficultyEnum,
   itemKindEnum,
+  measurementTypeEnum,
   primaryId,
   publishable,
   softDelete,
@@ -65,6 +66,8 @@ export const workoutItems = pgTable('workout_items', {
   position: integer().notNull().default(0),
   kind: itemKindEnum().notNull().default('exercise'),
   exerciseId: uuid().references(() => exercises.id, { onDelete: 'restrict' }),
+  // Per-item measurement override; null falls back to the exercise's type.
+  measure: measurementTypeEnum(),
   // EMOM/Tabata: which minute/interval this item belongs to
   intervalIndex: integer(),
   sets: integer(),

@@ -88,6 +88,13 @@ function targetField(m?: MeasurementType): TargetField {
 }
 const TARGET_UNIT: Record<TargetField, string> = { reps: 'reps', workSeconds: 'seg', distanceMeters: 'm' };
 
+// Per-item measurement toggle (overrides the exercise's default type).
+const MEASURES: { v: MeasurementType; label: string }[] = [
+  { v: 'reps', label: 'reps' },
+  { v: 'time', label: 'seg' },
+  { v: 'distance', label: 'm' },
+];
+
 // Tempo is set per rutina item (not on the exercise): a push-up is a push-up;
 // whether it's tempo depends on the workout. Stored as the item's tempoOverride.
 const TEMPO_PHASES = ['holdTop', 'eccentric', 'holdBottom', 'concentric'] as const;
@@ -125,6 +132,7 @@ type ItemState = {
   key: string;
   kind: ItemKind;
   exerciseId: string;
+  measure: MeasurementType | ''; // '' inherits the exercise's default
   sets: string;
   reps: string;
   workSeconds: string; // rest items store their duration here
@@ -138,6 +146,7 @@ const emptyItem = (exerciseId: string): ItemState => ({
   key: uid(),
   kind: 'exercise',
   exerciseId,
+  measure: '',
   sets: '',
   reps: '',
   workSeconds: '',
@@ -254,6 +263,7 @@ function initBlocks(w?: Workout): BlockState[] {
       key: uid(),
       kind: it.kind,
       exerciseId: it.exerciseId ?? '',
+      measure: it.measure ?? '',
       sets: it.sets?.toString() ?? '',
       reps: it.reps?.toString() ?? '',
       workSeconds: it.workSeconds?.toString() ?? '',
@@ -473,10 +483,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       );
     }
     const ex = exercise(it.exerciseId);
-    const tf = targetField(ex?.measurementType);
+    // Effective measurement: item override, else the exercise's default.
+    const measure: MeasurementType = it.measure || ex?.measurementType || 'reps';
+    const tf = targetField(measure);
     const tLabel = tempoLabel(it.tempo);
     // Tempo describes the phases of a rep — meaningless for distance work.
-    const showTempo = ex?.measurementType !== 'distance';
+    const showTempo = measure !== 'distance';
     return (
       <div
         key={it.key}
@@ -504,9 +516,27 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
               <div className="flex items-center gap-2">
-                <span className="truncate font-mono text-[11px] text-muted">
-                  {ex ? es.measurement[ex.measurementType] : ''}
-                </span>
+                {cols.showTarget ? (
+                  <div className="inline-flex shrink-0 overflow-hidden rounded-md border border-line-2">
+                    {MEASURES.map((m) => (
+                      <button
+                        key={m.v}
+                        type="button"
+                        onClick={() => updateItem(bk, it.key, { measure: m.v })}
+                        className={cn(
+                          'px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em]',
+                          measure === m.v ? 'bg-accent text-white' : 'text-muted hover:bg-surface-3',
+                        )}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : ex ? (
+                  <span className="truncate font-mono text-[11px] text-muted">
+                    {es.measurement[measure]}
+                  </span>
+                ) : null}
                 {showTempo && (
                   <button
                     type="button"
@@ -608,6 +638,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         return {
           kind: it.kind,
           exerciseId: rest ? null : it.exerciseId,
+          measure: rest ? null : it.measure || null,
           sets: rest ? null : cols.showSets ? num(it.sets) : null,
           reps: rest ? null : num(it.reps),
           workSeconds: num(it.workSeconds),

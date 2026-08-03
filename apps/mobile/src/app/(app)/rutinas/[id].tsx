@@ -13,8 +13,9 @@ import type { WorkoutBlock, WorkoutItem } from '../../../lib/types';
 function itemSub(item: WorkoutItem, units: Units): string {
   const tempo = item.tempoOverride ?? item.exercise?.defaultTempo ?? null;
   const parts: string[] = [];
+  const mt = item.measure ?? item.exercise?.measurementType;
   if (tempo) parts.push(`Tempo ${tempoDash(tempo)}`);
-  else if (item.exercise) parts.push(es.measurement[item.exercise.measurementType]);
+  else if (mt) parts.push(es.measurement[mt]);
   const load = loadLabel(item.loadPrescription, units.weight);
   if (load) parts.push(load);
   if (item.perSide) parts.push('bilateral');

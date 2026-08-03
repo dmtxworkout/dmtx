@@ -89,6 +89,8 @@ export interface WorkoutItem {
   id: string;
   kind: 'exercise' | 'rest';
   exerciseId: string | null;
+  /** Per-item measurement override; null falls back to the exercise's type. */
+  measure: 'reps' | 'time' | 'distance' | null;
   sets: number | null;
   reps: number | null;
   workSeconds: number | null;
