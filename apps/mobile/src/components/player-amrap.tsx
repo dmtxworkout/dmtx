@@ -36,7 +36,13 @@ function targetText(it: WorkoutItem, du: DistanceUnit): string {
  * circuit shown for reference, and a partial-round entry at the end so the total
  * reps come out exact ("12 rondas + 10 pushups + 8 toes-to-bar").
  */
-export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
+export function AmrapPlayer({
+  workout,
+  onFinish,
+}: {
+  workout: WorkoutDetail;
+  onFinish?: () => void;
+}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { units } = useUnits();
@@ -118,7 +124,7 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateWorkoutLogInput) => api.saveLog(payload),
-    onSuccess: () => router.back(),
+    onSuccess: () => (onFinish ? onFinish() : router.back()),
     onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
   });
 

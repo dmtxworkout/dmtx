@@ -16,6 +16,8 @@ import {
 } from '../../../components/player';
 import { AmrapPlayer } from '../../../components/player-amrap';
 import { EmomPlayer } from '../../../components/player-emom';
+import { GuidedPlayer, SectionIntro } from '../../../components/player-guided';
+import type { WorkoutDetail } from '../../../lib/types';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
 import { mmss } from '../../../lib/format';
@@ -50,12 +52,81 @@ export default function Entrenar() {
       </View>
     );
   }
-  if (q.data.format === 'amrap') return <AmrapPlayer workout={q.data} />;
-  if (q.data.format === 'emom') return <EmomPlayer workout={q.data} />;
-  return <Player workout={q.data} />;
+  return <Session workout={q.data} />;
 }
 
-function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof api.workout>>> }) {
+const sectionWorkout = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail => ({
+  ...w,
+  blocks: w.blocks.filter((b) => (b.section ?? 'main') === section),
+});
+const hasExercises = (w: WorkoutDetail) =>
+  w.blocks.some((b) => b.items.some((it) => it.kind === 'exercise' && it.exercise));
+
+/**
+ * Sequences the optional warmup and cooldown around the tracked main workout.
+ * Warmup/cooldown are guided but not recorded and never appear in the results.
+ */
+function Session({ workout }: { workout: WorkoutDetail }) {
+  const router = useRouter();
+  const warmup = useMemo(() => sectionWorkout(workout, 'warmup'), [workout]);
+  const main = useMemo(() => sectionWorkout(workout, 'main'), [workout]);
+  const cooldown = useMemo(() => sectionWorkout(workout, 'cooldown'), [workout]);
+  const hasWarmup = useMemo(() => hasExercises(warmup), [warmup]);
+  const hasCooldown = useMemo(() => hasExercises(cooldown), [cooldown]);
+
+  const [phase, setPhase] = useState<
+    'warmup-intro' | 'warmup' | 'main' | 'cooldown-intro' | 'cooldown'
+  >(hasWarmup ? 'warmup-intro' : 'main');
+  const exit = () => router.back();
+
+  if (phase === 'warmup-intro') {
+    return (
+      <SectionIntro
+        workout={warmup}
+        title="Calentamiento"
+        subtitle="¿Quieres calentar?"
+        doLabel="Hacer calentamiento"
+        skipLabel="Saltar"
+        onDo={() => setPhase('warmup')}
+        onSkip={() => setPhase('main')}
+        onExit={exit}
+      />
+    );
+  }
+  if (phase === 'warmup') {
+    return <GuidedPlayer workout={warmup} onComplete={() => setPhase('main')} onExit={exit} />;
+  }
+  if (phase === 'cooldown-intro') {
+    return (
+      <SectionIntro
+        workout={cooldown}
+        title="Enfriamiento"
+        subtitle="¿Quieres enfriar?"
+        doLabel="Hacer enfriamiento"
+        skipLabel="Saltar"
+        onDo={() => setPhase('cooldown')}
+        onSkip={exit}
+        onExit={exit}
+      />
+    );
+  }
+  if (phase === 'cooldown') {
+    return <GuidedPlayer workout={cooldown} onComplete={exit} onExit={exit} />;
+  }
+
+  const onFinish = () => (hasCooldown ? setPhase('cooldown-intro') : exit());
+  if (workout.format === 'amrap') return <AmrapPlayer workout={main} onFinish={onFinish} />;
+  if (workout.format === 'emom') return <EmomPlayer workout={main} onFinish={onFinish} />;
+  return <Player workout={main} onFinish={onFinish} />;
+}
+
+function Player({
+  workout,
+  onFinish,
+}: {
+  workout: NonNullable<Awaited<ReturnType<typeof api.workout>>>;
+  onFinish?: () => void;
+}) {
   const router = useRouter();
   const { units } = useUnits();
   const session = useMemo(() => buildSession(workout), [workout]);
@@ -87,7 +158,7 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateWorkoutLogInput) => api.saveLog(payload),
-    onSuccess: () => router.back(),
+    onSuccess: () => (onFinish ? onFinish() : router.back()),
     onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
   });
 

@@ -14,7 +14,13 @@ import type { WorkoutDetail } from '../lib/types';
  * advances, for N intervals. Shows the work to do (like AMRAP) — the athlete
  * does it and rests whatever's left of the interval.
  */
-export function EmomPlayer({ workout }: { workout: WorkoutDetail }) {
+export function EmomPlayer({
+  workout,
+  onFinish,
+}: {
+  workout: WorkoutDetail;
+  onFinish?: () => void;
+}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -70,7 +76,7 @@ export function EmomPlayer({ workout }: { workout: WorkoutDetail }) {
 
   const saveMutation = useMutation({
     mutationFn: (payload: CreateWorkoutLogInput) => api.saveLog(payload),
-    onSuccess: () => router.back(),
+    onSuccess: () => (onFinish ? onFinish() : router.back()),
     onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
   });
   const save = () => {
