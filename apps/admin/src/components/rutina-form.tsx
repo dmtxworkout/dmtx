@@ -10,6 +10,8 @@ import type {
   FormatConfig,
   LoadPrescription,
   MeasurementType,
+  Tempo,
+  TempoPhase,
   Workout,
   WorkoutFormat,
 } from '@dmtx/schemas';
@@ -86,6 +88,38 @@ function targetField(m?: MeasurementType): TargetField {
 }
 const TARGET_UNIT: Record<TargetField, string> = { reps: 'reps', workSeconds: 'seg', distanceMeters: 'm' };
 
+// Tempo is set per rutina item (not on the exercise): a push-up is a push-up;
+// whether it's tempo depends on the workout. Stored as the item's tempoOverride.
+const TEMPO_PHASES = ['holdTop', 'eccentric', 'holdBottom', 'concentric'] as const;
+type TempoStr = Record<(typeof TEMPO_PHASES)[number], string>;
+const emptyTempo = (): TempoStr => ({ holdTop: '', eccentric: '', holdBottom: '', concentric: '' });
+
+function parsePhase(v: string): TempoPhase | null {
+  const t = v.trim();
+  if (!t) return null;
+  if (t.toUpperCase() === 'X') return 'X';
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+function buildTempo(t: TempoStr): Tempo | null {
+  const phases = TEMPO_PHASES.map((p) => parsePhase(t[p]));
+  if (phases.every((p) => p === null)) return null;
+  const [holdTop, eccentric, holdBottom, concentric] = phases.map((p) => p ?? 0);
+  return { holdTop, eccentric, holdBottom, concentric } as Tempo;
+}
+const tempoStrFrom = (t?: Tempo | null): TempoStr =>
+  t
+    ? {
+        holdTop: String(t.holdTop),
+        eccentric: String(t.eccentric),
+        holdBottom: String(t.holdBottom),
+        concentric: String(t.concentric),
+      }
+    : emptyTempo();
+/** Compact label like "1·2·0·X"; null when unset. */
+const tempoLabel = (t: TempoStr): string | null =>
+  TEMPO_PHASES.some((p) => t[p].trim()) ? TEMPO_PHASES.map((p) => t[p].trim() || '0').join('·') : null;
+
 type ItemKind = 'exercise' | 'rest';
 type ItemState = {
   key: string;
@@ -97,6 +131,7 @@ type ItemState = {
   distanceMeters: string;
   rest: string;
   carga: string;
+  tempo: TempoStr;
 };
 
 const emptyItem = (exerciseId: string): ItemState => ({
@@ -109,6 +144,7 @@ const emptyItem = (exerciseId: string): ItemState => ({
   distanceMeters: '',
   rest: '',
   carga: '',
+  tempo: emptyTempo(),
 });
 const restItem = (): ItemState => ({ ...emptyItem(''), kind: 'rest' });
 
@@ -224,6 +260,7 @@ function initBlocks(w?: Workout): BlockState[] {
       distanceMeters: it.distanceMeters?.toString() ?? '',
       rest: it.restBetweenSeconds?.toString() ?? '',
       carga: loadToStr(it.loadPrescription),
+      tempo: tempoStrFrom(it.tempoOverride),
     })),
   }));
 }
@@ -258,6 +295,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [tempoOpen, setTempoOpen] = useState<Record<string, boolean>>({});
   const [nameEditKey, setNameEditKey] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -272,6 +310,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
   const toggleCollapse = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  const toggleTempo = (key: string) => setTempoOpen((c) => ({ ...c, [key]: !c[key] }));
   const duplicateBlock = (index: number) =>
     setBlocks((bs) => {
       const b = bs[index];
@@ -376,63 +415,102 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     }
     const ex = exercise(it.exerciseId);
     const tf = targetField(ex?.measurementType);
+    const tLabel = tempoLabel(it.tempo);
     return (
-      <div
-        key={it.key}
-        className="grid items-center gap-3 border-b border-[#f4f1eb] px-3.5 py-2"
-        style={{ gridTemplateColumns: itemGtc }}
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          {ex?.thumbnailAssetId ? (
-            <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
-          ) : (
-            <div
-              className="h-9 w-[58px] shrink-0 rounded-md"
-              style={{ background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' }}
-            />
-          )}
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
-            <div className="truncate font-mono text-[11px] text-muted">
-              {ex ? es.measurement[ex.measurementType] : ''}
+      <div key={it.key} className="border-b border-[#f4f1eb]">
+        <div
+          className="grid items-center gap-3 px-3.5 py-2"
+          style={{ gridTemplateColumns: itemGtc }}
+        >
+          <div className="flex min-w-0 items-center gap-2.5">
+            {ex?.thumbnailAssetId ? (
+              <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
+            ) : (
+              <div
+                className="h-9 w-[58px] shrink-0 rounded-md"
+                style={{ background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' }}
+              />
+            )}
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
+              <div className="flex items-center gap-2">
+                <span className="truncate font-mono text-[11px] text-muted">
+                  {ex ? es.measurement[ex.measurementType] : ''}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleTempo(it.key)}
+                  title="Tempo"
+                  className={cn(
+                    'shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]',
+                    tLabel
+                      ? 'border-accent/30 bg-accent/10 text-accent-dark'
+                      : 'border-line-2 text-muted hover:bg-surface-3',
+                  )}
+                >
+                  {tLabel ?? 'Tempo'}
+                </button>
+              </div>
             </div>
           </div>
+          {cols.showSets && (
+            <input
+              value={it.sets}
+              onChange={(e) => updateItem(bk, it.key, { sets: e.target.value })}
+              className={boxCls}
+            />
+          )}
+          {cols.showTarget && (
+            <input
+              value={it[tf]}
+              placeholder={TARGET_UNIT[tf]}
+              onChange={(e) => updateItem(bk, it.key, { [tf]: e.target.value })}
+              className={boxCls}
+            />
+          )}
+          <input
+            value={it.carga}
+            onChange={(e) => updateItem(bk, it.key, { carga: e.target.value })}
+            className={boxCls}
+          />
+          {cols.showRest && (
+            <input
+              value={it.rest}
+              placeholder="seg"
+              onChange={(e) => updateItem(bk, it.key, { rest: e.target.value })}
+              className={boxCls}
+            />
+          )}
+          <button
+            type="button"
+            onClick={() => removeItem(bk, it.key)}
+            className="text-center text-faint-2 hover:text-accent-dark"
+          >
+            ✕
+          </button>
         </div>
-        {cols.showSets && (
-          <input
-            value={it.sets}
-            onChange={(e) => updateItem(bk, it.key, { sets: e.target.value })}
-            className={boxCls}
-          />
+        {tempoOpen[it.key] && (
+          <div className="flex flex-wrap items-end gap-3 px-3.5 pb-2.5 pl-[84px]">
+            {TEMPO_PHASES.map((phase) => (
+              <label key={phase} className="flex flex-col gap-1">
+                <span className="font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                  {es.exercises.tempo[phase]}
+                </span>
+                <input
+                  value={it.tempo[phase]}
+                  placeholder="0"
+                  onChange={(e) =>
+                    updateItem(bk, it.key, { tempo: { ...it.tempo, [phase]: e.target.value } })
+                  }
+                  className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                />
+              </label>
+            ))}
+            <span className="pb-1.5 font-mono text-[10px] text-muted">
+              seg por fase · &quot;X&quot; = explosivo
+            </span>
+          </div>
         )}
-        {cols.showTarget && (
-          <input
-            value={it[tf]}
-            placeholder={TARGET_UNIT[tf]}
-            onChange={(e) => updateItem(bk, it.key, { [tf]: e.target.value })}
-            className={boxCls}
-          />
-        )}
-        <input
-          value={it.carga}
-          onChange={(e) => updateItem(bk, it.key, { carga: e.target.value })}
-          className={boxCls}
-        />
-        {cols.showRest && (
-          <input
-            value={it.rest}
-            placeholder="seg"
-            onChange={(e) => updateItem(bk, it.key, { rest: e.target.value })}
-            className={boxCls}
-          />
-        )}
-        <button
-          type="button"
-          onClick={() => removeItem(bk, it.key)}
-          className="text-center text-faint-2 hover:text-accent-dark"
-        >
-          ✕
-        </button>
       </div>
     );
   };
@@ -464,6 +542,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           distanceMeters: rest ? null : num(it.distanceMeters),
           restBetweenSeconds: rest ? null : cols.showRest ? num(it.rest) : null,
           loadPrescription: rest ? null : strToLoad(it.carga),
+          tempoOverride: rest ? null : buildTempo(it.tempo),
           perSide: false,
         };
       };

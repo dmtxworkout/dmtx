@@ -14,7 +14,7 @@ import {
   MEASUREMENT_TYPE,
   measurementTypeSchema,
 } from '@dmtx/schemas';
-import type { CreateExerciseInput, Exercise, Tempo, TempoPhase } from '@dmtx/schemas';
+import type { CreateExerciseInput, Exercise } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { Button } from '@/components/ui/button';
@@ -33,16 +33,8 @@ const formSchema = z.object({
   measurementType: measurementTypeSchema,
   isUnilateral: z.boolean(),
   status: contentStatusSchema,
-  tempo: z.object({
-    holdTop: z.string(),
-    eccentric: z.string(),
-    holdBottom: z.string(),
-    concentric: z.string(),
-  }),
 });
 type FormValues = z.infer<typeof formSchema>;
-
-const TEMPO_PHASES = ['holdTop', 'eccentric', 'holdBottom', 'concentric'] as const;
 
 const emptyValues: FormValues = {
   name: '',
@@ -52,23 +44,7 @@ const emptyValues: FormValues = {
   measurementType: 'reps',
   isUnilateral: false,
   status: 'draft',
-  tempo: { holdTop: '', eccentric: '', holdBottom: '', concentric: '' },
 };
-
-function parsePhase(v: string): TempoPhase | null {
-  const t = v.trim();
-  if (!t) return null;
-  if (t.toUpperCase() === 'X') return 'X';
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : null;
-}
-
-function buildTempo(t: FormValues['tempo']): Tempo | null {
-  const phases = TEMPO_PHASES.map((p) => parsePhase(t[p]));
-  if (phases.every((p) => p === null)) return null;
-  const [holdTop, eccentric, holdBottom, concentric] = phases.map((p) => p ?? 0);
-  return { holdTop, eccentric, holdBottom, concentric } as Tempo;
-}
 
 function toDefaults(exercise: Exercise): FormValues {
   return {
@@ -79,14 +55,6 @@ function toDefaults(exercise: Exercise): FormValues {
     measurementType: exercise.measurementType,
     isUnilateral: exercise.isUnilateral,
     status: exercise.status,
-    tempo: exercise.defaultTempo
-      ? {
-          holdTop: String(exercise.defaultTempo.holdTop),
-          eccentric: String(exercise.defaultTempo.eccentric),
-          holdBottom: String(exercise.defaultTempo.holdBottom),
-          concentric: String(exercise.defaultTempo.concentric),
-        }
-      : emptyValues.tempo,
   };
 }
 
@@ -117,7 +85,6 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
         measurementType: values.measurementType,
         isUnilateral: values.isUnilateral,
         status: values.status,
-        defaultTempo: buildTempo(values.tempo),
         thumbnailAssetId,
         demoVideoAssetId,
       };
@@ -178,7 +145,7 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
         )}
 
         <div className="grid gap-5 px-8 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          {/* Left: details, cues, tempo */}
+          {/* Left: details, cues */}
           <div className="flex min-w-0 flex-col gap-5">
             <Card>
               <CardContent className="space-y-4 py-5">
@@ -259,27 +226,6 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
                 >
                   {es.exercises.fields.addCue}
                 </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>{es.exercises.fields.tempo}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 py-4">
-                <p className="text-xs text-muted">{es.exercises.tempo.help}</p>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                  {TEMPO_PHASES.map((phase) => (
-                    <div key={phase}>
-                      <Label htmlFor={`tempo-${phase}`}>{es.exercises.tempo[phase]}</Label>
-                      <Input
-                        id={`tempo-${phase}`}
-                        placeholder="0"
-                        {...form.register(`tempo.${phase}` as const)}
-                      />
-                    </div>
-                  ))}
-                </div>
               </CardContent>
             </Card>
           </div>
