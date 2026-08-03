@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMutation } from '@tanstack/react-query';
 import type { CreateWorkoutLogInput, SetResultInput } from '@dmtx/schemas';
 import { api } from '../lib/api';
+import { NumPad } from './num-pad';
 import { mmss } from '../lib/format';
 import { useUnits } from '../lib/units-context';
 import { formatDistance, formatWeight, weightToKg } from '../lib/units';
@@ -71,6 +72,10 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
   const [rounds, setRounds] = useState(0);
   const [phase, setPhase] = useState<'running' | 'partial' | 'summary'>('running');
   const [partial, setPartial] = useState<Record<string, number>>({});
+  // Which value the numeric keypad is editing (round count, or a partial rep).
+  const [pad, setPad] = useState<
+    { kind: 'rounds' } | { kind: 'partial'; id: string; name: string; target: number } | null
+  >(null);
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef(0);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -170,10 +175,10 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
           >
             <Text className="text-[20px] text-ink">−</Text>
           </Pressable>
-          <View className="items-center">
+          <Pressable onPress={() => setPad({ kind: 'rounds' })} className="items-center">
             <Text className="font-extrabold text-[52px] leading-none text-ink">{rounds}</Text>
             <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">Rondas</Text>
-          </View>
+          </Pressable>
           <View className="h-12 w-12" />
         </View>
 
@@ -242,6 +247,16 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
             <Text className="font-bold text-[16px] text-ink">Terminar</Text>
           </Pressable>
         </View>
+
+        {pad?.kind === 'rounds' ? (
+          <NumPad
+            initial={rounds}
+            unit="rondas"
+            label="Rondas"
+            onClose={() => setPad(null)}
+            onSubmit={(v) => setRounds(Math.max(0, Math.round(v)))}
+          />
+        ) : null}
       </View>
     );
   }
@@ -273,7 +288,14 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
                 >
                   <Text className="text-[18px] text-ink">−</Text>
                 </Pressable>
-                <Text className="w-8 text-center font-extrabold text-[18px] text-ink">{val}</Text>
+                <Pressable
+                  onPress={() =>
+                    setPad({ kind: 'partial', id: it.id, name: it.exercise?.name ?? 'Reps', target })
+                  }
+                  className="h-10 w-10 items-center justify-center rounded-lg border border-accent bg-surface"
+                >
+                  <Text className="text-center font-extrabold text-[18px] text-ink">{val}</Text>
+                </Pressable>
                 <Pressable
                   onPress={() => setPartial((p) => ({ ...p, [it.id]: Math.min(target, val + 1) }))}
                   className="h-10 w-10 items-center justify-center rounded-lg bg-surface-2"
@@ -292,6 +314,18 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
             <Text className="font-bold text-[17px] text-white">Ver resumen</Text>
           </Pressable>
         </View>
+
+        {pad?.kind === 'partial' ? (
+          <NumPad
+            initial={partial[pad.id] ?? 0}
+            unit="reps"
+            label={pad.name}
+            onClose={() => setPad(null)}
+            onSubmit={(v) =>
+              setPartial((p) => ({ ...p, [pad.id]: Math.max(0, Math.min(pad.target, Math.round(v))) }))
+            }
+          />
+        ) : null}
       </View>
     );
   }
