@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors } from '../theme';
+import { NumPad } from './num-pad';
 import { es, formatLabel } from '../i18n';
 import { mmss, tempoCompact } from '../lib/format';
 import type { ExerciseStep, RestStep, Session } from '../lib/session';
@@ -127,6 +128,7 @@ export function RepsScreen({
 }) {
   const { units } = useUnits();
   const [mark, setMark] = useState(step.last?.reps ?? step.targetReps ?? 0);
+  const [pad, setPad] = useState(false);
 
   return (
     <View className="flex-1 bg-bg pt-14">
@@ -204,12 +206,15 @@ export function RepsScreen({
             >
               <Text className="text-[22px] text-ink">−</Text>
             </Pressable>
-            <View className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface">
+            <Pressable
+              onPress={() => setPad(true)}
+              className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface"
+            >
               <Text className="font-extrabold text-[28px] text-ink">{mark}</Text>
               <View className="absolute inset-y-0 right-3.5 justify-center">
                 <Text className="font-semibold text-[14px] text-ink-2">reps</Text>
               </View>
-            </View>
+            </Pressable>
             <Pressable
               onPress={() => setMark((m) => m + 1)}
               className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
@@ -219,6 +224,16 @@ export function RepsScreen({
           </View>
         </View>
       </ScrollView>
+
+      {pad ? (
+        <NumPad
+          initial={mark}
+          unit="reps"
+          label="Reps"
+          onClose={() => setPad(false)}
+          onSubmit={(v) => setMark(Math.max(0, Math.round(v)))}
+        />
+      ) : null}
 
       <View className="flex-row gap-2.5 px-5 pb-9 pt-2">
         <Pressable
@@ -260,6 +275,7 @@ export function DistanceScreen({
   // per the user's preference elsewhere.
   const STEP_M = 50;
   const [meters, setMeters] = useState(Math.round(step.last?.distanceMeters ?? step.targetDistance ?? 0));
+  const [pad, setPad] = useState(false);
   const bump = (delta: number) => setMeters((m) => Math.max(0, m + delta));
 
   const target = step.targetDistance != null ? `${Math.round(step.targetDistance)} m` : '—';
@@ -306,12 +322,15 @@ export function DistanceScreen({
           >
             <Text className="text-[22px] text-ink">−</Text>
           </Pressable>
-          <View className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface">
+          <Pressable
+            onPress={() => setPad(true)}
+            className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface"
+          >
             <Text className="font-extrabold text-[28px] text-ink">{meters}</Text>
             <View className="absolute inset-y-0 right-3.5 justify-center">
               <Text className="font-semibold text-[14px] text-ink-2">m</Text>
             </View>
-          </View>
+          </Pressable>
           <Pressable
             onPress={() => bump(STEP_M)}
             className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
@@ -320,6 +339,16 @@ export function DistanceScreen({
           </Pressable>
         </View>
       </ScrollView>
+
+      {pad ? (
+        <NumPad
+          initial={meters}
+          unit="m"
+          label="Distancia"
+          onClose={() => setPad(false)}
+          onSubmit={(v) => setMeters(Math.max(0, Math.round(v)))}
+        />
+      ) : null}
 
       <View className="flex-row gap-2.5 px-5 pb-9 pt-2">
         <Pressable
@@ -339,19 +368,21 @@ export function DistanceScreen({
   );
 }
 
-/** Compact +/- stepper used by the strength set screen. */
+/** Compact +/- stepper used by the strength set screen. Tap the value to type it. */
 function Stepper({
   label,
   value,
   unit,
   onDec,
   onInc,
+  onEdit,
 }: {
   label: string;
   value: string;
   unit: string;
   onDec: () => void;
   onInc: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <View className="gap-2">
@@ -363,12 +394,15 @@ function Stepper({
         >
           <Text className="text-[22px] text-ink">−</Text>
         </Pressable>
-        <View className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface">
+        <Pressable
+          onPress={onEdit}
+          className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface"
+        >
           <Text className="font-extrabold text-[26px] text-ink">{value}</Text>
           <View className="absolute inset-y-0 right-3.5 justify-center">
             <Text className="font-semibold text-[13px] text-ink-2">{unit}</Text>
           </View>
-        </View>
+        </Pressable>
         <Pressable
           onPress={onInc}
           className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
@@ -404,6 +438,7 @@ export function StrengthSetScreen({
   const [reps, setReps] = useState(step.last?.reps ?? step.targetReps ?? 0);
   // Weight is held in display units (lb/kg); converted to kg only on save.
   const [weight, setWeight] = useState(weightPrefill(step.last?.loadKg ?? step.loadKg ?? 0, wu));
+  const [editing, setEditing] = useState<null | 'reps' | 'weight'>(null);
   const setNo = step.set ?? 1;
   const setTotal = step.totalSets ?? 1;
   const setNav: Nav = { ...nav, segIndex: setNo - 1, segCount: setTotal };
@@ -466,6 +501,7 @@ export function StrengthSetScreen({
             unit={step.perSide ? 'reps/lado' : 'reps'}
             onDec={() => setReps((r) => Math.max(0, r - 1))}
             onInc={() => setReps((r) => r + 1)}
+            onEdit={() => setEditing('reps')}
           />
           <Stepper
             label="Peso"
@@ -473,9 +509,30 @@ export function StrengthSetScreen({
             unit={wu}
             onDec={() => bump(-wStep)}
             onInc={() => bump(wStep)}
+            onEdit={() => setEditing('weight')}
           />
         </View>
       </ScrollView>
+
+      {editing === 'reps' ? (
+        <NumPad
+          initial={reps}
+          unit={step.perSide ? 'reps/lado' : 'reps'}
+          label="Reps"
+          onClose={() => setEditing(null)}
+          onSubmit={(v) => setReps(Math.max(0, Math.round(v)))}
+        />
+      ) : null}
+      {editing === 'weight' ? (
+        <NumPad
+          initial={weight}
+          unit={wu}
+          label="Peso"
+          allowDecimal
+          onClose={() => setEditing(null)}
+          onSubmit={(v) => setWeight(Math.max(0, Math.round(v * 10) / 10))}
+        />
+      ) : null}
 
       <View className="flex-row gap-2.5 px-5 pb-9 pt-2">
         <Pressable
