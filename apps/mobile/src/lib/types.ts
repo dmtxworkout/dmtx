@@ -106,6 +106,7 @@ export interface WorkoutItem {
 export interface WorkoutBlock {
   id: string;
   kind: 'group' | 'rest';
+  section: 'warmup' | 'main' | 'cooldown';
   type: 'single' | 'superset' | 'circuit' | 'emom' | 'tabata';
   label: string | null;
   rounds: number | null;

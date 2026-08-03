@@ -358,6 +358,7 @@ appRoute.get('/workouts/:id', async (c) => {
     blocks: blocks.map((b) => ({
       id: b.id,
       kind: b.kind,
+      section: b.section,
       type: b.type,
       label: b.label,
       rounds: b.rounds,

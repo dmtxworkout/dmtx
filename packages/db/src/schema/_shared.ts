@@ -4,6 +4,7 @@ import {
   BILLING_INTERVAL_UNIT,
   BODY_REGION,
   BLOCK_KIND,
+  BLOCK_SECTION,
   BLOCK_TYPE,
   COLLECTION_LAYOUT,
   ITEM_KIND,
@@ -32,6 +33,7 @@ export const workoutTypeEnum = pgEnum('workout_type', WORKOUT_TYPE);
 export const workoutFormatEnum = pgEnum('workout_format', WORKOUT_FORMAT);
 export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
 export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);
+export const blockSectionEnum = pgEnum('block_section', BLOCK_SECTION);
 export const itemKindEnum = pgEnum('item_kind', ITEM_KIND);
 export const programTypeEnum = pgEnum('program_type', PROGRAM_TYPE);
 export const collectionLayoutEnum = pgEnum('collection_layout', COLLECTION_LAYOUT);

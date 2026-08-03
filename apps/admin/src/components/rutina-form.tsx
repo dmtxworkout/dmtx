@@ -5,6 +5,7 @@ import { useState, type DragEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
+  BlockSection,
   BlockType,
   CreateWorkoutInput,
   FormatConfig,
@@ -177,6 +178,7 @@ type BlockKind = 'single' | 'group' | 'rest';
 type BlockState = {
   key: string;
   kind: BlockKind;
+  section: BlockSection;
   name: string;
   type: BlockType;
   rounds: string;
@@ -186,6 +188,7 @@ type BlockState = {
 const emptyBlock = (): BlockState => ({
   key: uid(),
   kind: 'group',
+  section: 'main',
   name: '',
   type: 'single',
   rounds: '',
@@ -193,9 +196,10 @@ const emptyBlock = (): BlockState => ({
 });
 
 /** A loose exercise: one exercise, done once (no block wrapper). */
-const singleBlock = (exerciseId: string): BlockState => ({
+const singleBlock = (exerciseId: string, section: BlockSection = 'main'): BlockState => ({
   ...emptyBlock(),
   kind: 'single',
+  section,
   items: [emptyItem(exerciseId)],
 });
 
@@ -285,6 +289,7 @@ function initBlocks(w?: Workout): BlockState[] {
         : b.items.length === 1 && b.items[0]?.kind === 'exercise' && (b.rounds ?? 1) <= 1
           ? 'single'
           : 'group',
+    section: b.section ?? 'main',
     name: b.label ?? '',
     type: b.type,
     rounds: b.rounds?.toString() ?? '',
@@ -418,6 +423,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
 
   // Per-exercise columns adapt to the selected format.
   const cols = itemColumns(format);
+  const warmupBlocks = blocks.filter((b) => b.section === 'warmup');
+  const mainBlocks = blocks.filter((b) => (b.section ?? 'main') === 'main');
+  const cooldownBlocks = blocks.filter((b) => b.section === 'cooldown');
   const itemGtc = [
     'minmax(0,1fr)',
     cols.showSets && '56px',
@@ -719,6 +727,30 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const addRestItem = (bk: string) =>
     setBlocks((bs) => bs.map((b) => (b.key === bk ? { ...b, items: [...b.items, restItem()] } : b)));
 
+  // Warmup / cooldown: a simple list of exercises (optional, skippable, untracked).
+  const looseSection = (secBlocks: BlockState[], section: 'warmup' | 'cooldown', title: string) => (
+    <div className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface-2/40 p-2.5">
+      <div className="flex items-center gap-2 px-1 pt-0.5">
+        <MonoLabel>{title}</MonoLabel>
+        <span className="font-mono text-[10px] text-muted">· opcional · no cuenta para resultados</span>
+      </div>
+      {secBlocks.map((b) =>
+        b.items[0] ? (
+          <div key={b.key} className="rounded-lg bg-surface">
+            {exerciseFields(b.key, b.items[0], null, () => removeBlock(b.key))}
+          </div>
+        ) : null,
+      )}
+      <button
+        type="button"
+        onClick={() => setPickerBlock(section === 'warmup' ? '__warmup__' : '__cooldown__')}
+        className="inline-flex h-[30px] items-center self-start rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
+      >
+        {es.workouts.addExercise}
+      </button>
+    </div>
+  );
+
   const save = useMutation({
     mutationFn: () => {
       const structured = type === 'structured';
@@ -742,6 +774,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       const blocksPayload = blocks.map((b) => ({
         // A loose exercise ('single') persists as a group with one item, no rounds.
         kind: b.kind === 'single' ? 'group' : b.kind,
+        section: b.section,
         type: b.type,
         label: b.kind === 'single' ? null : b.name.trim() || null,
         rounds: b.kind === 'single' ? null : num(b.rounds),
@@ -1041,7 +1074,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 </div>
               )}
 
-              {blocks.map((b, bi) => {
+              {warmupBlocks.length > 0 && looseSection(warmupBlocks, 'warmup', 'Calentamiento')}
+
+              {mainBlocks.map((b) => {
+                const bi = blocks.indexOf(b);
                 const isCollapsed = collapsed[b.key];
                 const r = num(b.rounds);
                 const isDropTarget = dragIndex !== null && dragIndex !== bi && overIndex === bi;
@@ -1279,8 +1315,33 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   + Bloque
                 </button>
               </div>
+
+              {cooldownBlocks.length > 0 && looseSection(cooldownBlocks, 'cooldown', 'Enfriamiento')}
+
+              <div className="flex gap-2">
+                {warmupBlocks.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerBlock('__warmup__')}
+                    className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-2.5 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                  >
+                    + Calentamiento
+                  </button>
+                )}
+                {cooldownBlocks.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPickerBlock('__cooldown__')}
+                    className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-2.5 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                  >
+                    + Enfriamiento
+                  </button>
+                )}
+              </div>
+
               <p className="font-mono text-[11px] leading-relaxed text-muted">
-                Un bloque son varias rondas de lo que tenga dentro. Un ejercicio suelto se hace una vez.
+                Un bloque son varias rondas de lo que tenga dentro. Calentamiento y enfriamiento son
+                opcionales y no cuentan para los resultados.
               </p>
             </>
           ) : (
@@ -1412,6 +1473,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           if (pickerBlock === '__new__') {
             // Top-level "+ Ejercicio" → a loose exercise done once.
             setBlocks((bs) => [...bs, singleBlock(e.id)]);
+          } else if (pickerBlock === '__warmup__') {
+            setBlocks((bs) => [...bs, singleBlock(e.id, 'warmup')]);
+          } else if (pickerBlock === '__cooldown__') {
+            setBlocks((bs) => [...bs, singleBlock(e.id, 'cooldown')]);
           } else if (pickerBlock) {
             setBlocks((bs) =>
               bs.map((b) =>

@@ -2,6 +2,7 @@ import { boolean, integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-cor
 import type { FormatConfig, Goal, LoadPrescription, Tempo } from '@dmtx/schemas';
 import {
   blockKindEnum,
+  blockSectionEnum,
   blockTypeEnum,
   contentStatusEnum,
   difficultyEnum,
@@ -50,6 +51,7 @@ export const workoutBlocks = pgTable('workout_blocks', {
     .references(() => workouts.id, { onDelete: 'cascade' }),
   position: integer().notNull().default(0),
   kind: blockKindEnum().notNull().default('group'),
+  section: blockSectionEnum().notNull().default('main'),
   type: blockTypeEnum().notNull().default('single'),
   rounds: integer(),
   label: text(),

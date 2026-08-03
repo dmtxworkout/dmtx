@@ -62,6 +62,12 @@ export const BLOCK_KIND = ['group', 'rest'] as const;
 export const blockKindSchema = enumOf(BLOCK_KIND);
 export type BlockKind = z.infer<typeof blockKindSchema>;
 
+// Which part of the workout a block belongs to. Warmup/cooldown are optional
+// and skippable in the app, and don't count toward results/progress.
+export const BLOCK_SECTION = ['warmup', 'main', 'cooldown'] as const;
+export const blockSectionSchema = enumOf(BLOCK_SECTION);
+export type BlockSection = z.infer<typeof blockSectionSchema>;
+
 // --- Programs ----------------------------------------------------------------
 export const PROGRAM_TYPE = ['structured', 'video_playlist'] as const;
 export const programTypeSchema = enumOf(PROGRAM_TYPE);

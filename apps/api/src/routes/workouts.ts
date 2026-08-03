@@ -87,6 +87,7 @@ async function loadFull(db: Database, w: WorkoutRow) {
     blocks: blocks.map((b: BlockRow) => ({
       id: b.id,
       kind: b.kind,
+      section: b.section,
       type: b.type,
       rounds: b.rounds,
       label: b.label,
@@ -105,6 +106,7 @@ async function insertBlocks(db: Database, workoutId: string, blocks: WorkoutBloc
         workoutId,
         position: i,
         kind: b.kind,
+        section: b.section,
         type: b.type,
         rounds: b.rounds ?? null,
         label: b.label ?? null,

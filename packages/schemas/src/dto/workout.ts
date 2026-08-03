@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   blockKindSchema,
+  blockSectionSchema,
   blockTypeSchema,
   contentStatusSchema,
   difficultySchema,
@@ -36,6 +37,7 @@ export type WorkoutItemInput = z.infer<typeof workoutItemInputSchema>;
 
 export const workoutBlockInputSchema = z.object({
   kind: blockKindSchema.default('group'),
+  section: blockSectionSchema.default('main'),
   type: blockTypeSchema.default('single'),
   rounds: z.number().int().positive().nullish(),
   label: z.string().max(200).nullish(),
@@ -70,6 +72,7 @@ export const workoutItemSchema = workoutItemInputSchema.extend({ id: uuidSchema 
 export const workoutBlockSchema = z.object({
   id: uuidSchema,
   kind: blockKindSchema,
+  section: blockSectionSchema,
   type: blockTypeSchema,
   rounds: z.number().nullable(),
   label: z.string().nullable(),
