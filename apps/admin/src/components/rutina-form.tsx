@@ -37,6 +37,17 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   circuit: 'Circuito',
 };
 
+// One-liners shown on the format cards in the create wizard.
+const FORMAT_DESC: Record<WorkoutFormat, string> = {
+  amrap: 'Rondas máximas en un tiempo límite.',
+  emom: 'Un ejercicio por intervalo (cada minuto).',
+  tabata: 'Intervalos fijos de trabajo y descanso.',
+  strength: 'Series × reps con carga y descanso.',
+  chipper: 'Una lista larga, una vez, lo más rápido.',
+  for_time: 'Completa el trabajo lo antes posible.',
+  circuit: 'Vueltas a un circuito de estaciones.',
+};
+
 const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
   amrap: [{ key: 'totalSeconds', label: 'Duración total (seg)' }],
   emom: [
@@ -297,6 +308,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   );
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   const [format, setFormat] = useState<WorkoutFormat>(workout?.format ?? 'amrap');
+  // New workouts start in a guided wizard (type → format → name); existing ones
+  // skip straight to the builder.
+  const [wizardStep, setWizardStep] = useState<'type' | 'format' | 'name' | 'done'>(
+    workout ? 'done' : 'type',
+  );
   const [formatCfg, setFormatCfg] = useState<Record<string, string>>(initCfg(workout));
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
@@ -317,9 +333,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   });
   const exercise = (id: string) => exList?.data.find((e) => e.id === id);
 
-  // Type and format define the data shape, so they're frozen once the workout
-  // exists — only editable while creating a new one.
-  const locked = Boolean(workout);
+  // Type and format define the data shape, so they're frozen once chosen (in
+  // the wizard for new workouts, or always for existing ones).
+  const locked = Boolean(workout) || wizardStep === 'done';
 
   const setCfg = (k: string, v: string) => setFormatCfg((c) => ({ ...c, [k]: v }));
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
@@ -689,6 +705,145 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     setNameError(false);
     save.mutate();
   };
+
+  // ---- Create wizard (new workouts only): type → format → name -------------
+  const selectType = (t: 'structured' | 'video') => {
+    setType(t);
+    setWizardStep(t === 'video' ? 'name' : 'format');
+  };
+  const selectFormat = (f: WorkoutFormat) => {
+    setFormat(f);
+    setWizardStep('name');
+  };
+  const finishWizard = () => {
+    if (!name.trim()) {
+      setNameError(true);
+      return;
+    }
+    setNameError(false);
+    setWizardStep('done');
+  };
+
+  if (wizardStep !== 'done') {
+    const stepNum = wizardStep === 'type' ? 1 : wizardStep === 'format' ? 2 : type === 'video' ? 2 : 3;
+    const stepTotal = type === 'video' ? 2 : 3;
+    return (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <header className="flex items-center justify-between gap-6 border-b border-line bg-surface px-7 py-4">
+          <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
+            <button type="button" onClick={() => router.push('/rutinas')} className="hover:text-ink-2">
+              {es.workouts.title}
+            </button>
+            <span>/</span>
+            <span className="text-ink-2">Nueva</span>
+          </div>
+          <Button type="button" variant="outline" onClick={() => router.push('/rutinas')}>
+            {es.app.cancel}
+          </Button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-2xl px-6 py-10">
+            <div className="mb-6 font-mono text-[11px] font-semibold uppercase tracking-widest text-muted">
+              Paso {stepNum} de {stepTotal}
+            </div>
+
+            {wizardStep === 'type' && (
+              <>
+                <h1 className="mb-1 text-2xl font-bold tracking-tight">¿Qué tipo de rutina?</h1>
+                <p className="mb-6 text-sm text-ink-3">Esto no se puede cambiar después.</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(
+                    [
+                      {
+                        v: 'structured',
+                        desc: 'Bloques de ejercicios con series, reps, tiempo o distancia.',
+                      },
+                      { v: 'video', desc: 'Una sola clase en video, sin pasos.' },
+                    ] as const
+                  ).map((o) => (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => selectType(o.v)}
+                      className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface p-4 text-left hover:border-ink hover:bg-surface-2"
+                    >
+                      <span className="text-base font-bold">{es.workouts.types[o.v]}</span>
+                      <span className="text-[13px] leading-snug text-ink-3">{o.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {wizardStep === 'format' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setWizardStep('type')}
+                  className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
+                >
+                  ← Atrás
+                </button>
+                <h1 className="mb-1 text-2xl font-bold tracking-tight">Elige el formato</h1>
+                <p className="mb-6 text-sm text-ink-3">Define cómo se estructura y cronometra la rutina.</p>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  {WORKOUT_FORMAT.map((f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => selectFormat(f)}
+                      className="flex flex-col gap-1 rounded-xl border border-line-2 bg-surface p-3.5 text-left hover:border-accent hover:bg-accent-tint/30"
+                    >
+                      <span className="text-sm font-bold text-accent-dark">{FORMAT_LABEL[f]}</span>
+                      <span className="text-[12.5px] leading-snug text-ink-3">{FORMAT_DESC[f]}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {wizardStep === 'name' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setWizardStep(type === 'video' ? 'type' : 'format')}
+                  className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
+                >
+                  ← Atrás
+                </button>
+                <h1 className="mb-1 text-2xl font-bold tracking-tight">Nombra tu rutina</h1>
+                <p className="mb-5 text-sm text-ink-3">
+                  {es.workouts.types[type]}
+                  {type === 'structured' ? ` · ${FORMAT_LABEL[format]}` : ''}
+                </p>
+                <Input
+                  autoFocus
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (nameError) setNameError(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') finishWizard();
+                  }}
+                  placeholder={es.workouts.new}
+                />
+                {nameError && (
+                  <span className="mt-1.5 block text-xs font-medium text-accent-dark">
+                    {es.app.nameRequired}
+                  </span>
+                )}
+                <div className="mt-6">
+                  <Button onClick={finishWizard}>Continuar</Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
