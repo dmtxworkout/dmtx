@@ -37,13 +37,16 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
   const insets = useSafeAreaInsets();
 
   // Blocks with their round count (a block is "these exercises, N rounds").
+  // Rest items/blocks stay in the reference circuit but are excluded from
+  // scoring by `isReps`/`repsItems` below.
   const blocksView = useMemo(
     () =>
       workout.blocks
         .map((b) => ({
           name: b.label,
+          kind: b.kind,
           rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
-          items: b.items.filter((it) => it.exercise),
+          items: b.items.filter((it) => it.kind === 'rest' || it.exercise),
         }))
         .filter((bv) => bv.items.length > 0),
     [workout],
@@ -113,7 +116,7 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
   const save = () => {
     setSaveError(null);
     const results: SetResultInput[] = repsItems.map(({ it, blockRounds }, i) => ({
-      exerciseId: it.exerciseId,
+      exerciseId: it.exerciseId!,
       exerciseName: it.exercise!.name,
       position: i,
       measure: 'reps',
@@ -192,17 +195,32 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
                   {label}
                 </Text>
               ) : null}
-              {bv.items.map((it) => (
-                <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
-                  <Text className="w-14 font-mono-semibold text-[15px] text-accent">{targetText(it)}</Text>
-                  <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
-                    {it.exercise?.name}
-                  </Text>
-                  {loadKgOf(it) != null ? (
-                    <Text className="font-mono text-[12px] text-ink-3">{loadKgOf(it)} kg</Text>
-                  ) : null}
-                </View>
-              ))}
+              {bv.items.map((it) =>
+                it.kind === 'rest' ? (
+                  <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
+                    <Text className="w-14 font-mono-semibold text-[15px] text-ink-4">
+                      {it.workSeconds != null
+                        ? it.workSeconds >= 60
+                          ? mmss(it.workSeconds)
+                          : `${it.workSeconds} s`
+                        : '—'}
+                    </Text>
+                    <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink-3">
+                      Descanso
+                    </Text>
+                  </View>
+                ) : (
+                  <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
+                    <Text className="w-14 font-mono-semibold text-[15px] text-accent">{targetText(it)}</Text>
+                    <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
+                      {it.exercise?.name}
+                    </Text>
+                    {loadKgOf(it) != null ? (
+                      <Text className="font-mono text-[12px] text-ink-3">{loadKgOf(it)} kg</Text>
+                    ) : null}
+                  </View>
+                ),
+              )}
             </View>
             );
           })}

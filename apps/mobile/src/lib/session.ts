@@ -92,7 +92,7 @@ function exerciseStep(
     blockLabel: block.label || `Bloque ${blockIndex + 1}`,
     blockIndex,
     itemId: item.id,
-    exerciseId: item.exerciseId,
+    exerciseId: item.exerciseId ?? '',
     name: item.exercise?.name ?? 'Ejercicio',
     cue: item.exercise?.cues?.[0] ?? item.exercise?.description ?? null,
     demoVideoUrl: item.exercise?.demoVideoUrl ?? null,
@@ -119,9 +119,12 @@ const restStep = (seconds: number, nextName: string | null): RestStep => ({
   nextName,
 });
 
-/** All items across all blocks, in order (one circuit pass). */
+/** Exercise items across all (group) blocks, in order (one circuit pass). */
 function circuit(workout: WorkoutDetail): WorkoutItem[] {
-  return workout.blocks.flatMap((b) => b.items);
+  return workout.blocks
+    .filter((b) => b.kind !== 'rest')
+    .flatMap((b) => b.items)
+    .filter((it) => it.kind === 'exercise');
 }
 
 function firstName(workout: WorkoutDetail, fromBlock: number, fromItem: number): string | null {
@@ -129,13 +132,23 @@ function firstName(workout: WorkoutDetail, fromBlock: number, fromItem: number):
   return b?.items[fromItem]?.exercise?.name ?? null;
 }
 
-/** Sequential formats: expand blocks → rounds → items → sets, inserting rests. */
+/** Sequential formats: expand blocks → rounds → items → sets, honouring rests. */
 function buildSequential(workout: WorkoutDetail, defaultRounds: number): Step[] {
   const steps: Step[] = [];
   workout.blocks.forEach((block, bi) => {
+    // A rest block: a single rest between groups.
+    if (block.kind === 'rest') {
+      const dur = block.items[0]?.workSeconds;
+      if (dur) steps.push(restStep(dur, firstName(workout, bi + 1, 0)));
+      return;
+    }
     const rounds = block.rounds && block.rounds > 0 ? block.rounds : defaultRounds;
     for (let r = 0; r < rounds; r += 1) {
-      block.items.forEach((item, ii) => {
+      block.items.forEach((item) => {
+        if (item.kind === 'rest') {
+          if (item.workSeconds) steps.push(restStep(item.workSeconds, null));
+          return;
+        }
         const totalSets = item.sets && item.sets > 1 ? item.sets : 1;
         for (let s = 0; s < totalSets; s += 1) {
           steps.push(exerciseStep(block, bi, item, totalSets > 1 ? s + 1 : null, totalSets > 1 ? totalSets : null));
@@ -143,15 +156,7 @@ function buildSequential(workout: WorkoutDetail, defaultRounds: number): Step[] 
             steps.push(restStep(item.restBetweenSeconds, item.exercise?.name ?? null));
           }
         }
-        // Rest between exercises within the block.
-        if (block.restBetweenExercisesSeconds && ii < block.items.length - 1) {
-          steps.push(restStep(block.restBetweenExercisesSeconds, block.items[ii + 1]?.exercise?.name ?? null));
-        }
       });
-      if (block.restAfterSeconds) {
-        const next = firstName(workout, bi, 0) ?? firstName(workout, bi + 1, 0);
-        steps.push(restStep(block.restAfterSeconds, next));
-      }
     }
   });
   return steps;

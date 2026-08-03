@@ -25,6 +25,7 @@ type ItemRow = typeof workoutItems.$inferSelect;
 function serializeItem(it: ItemRow) {
   return {
     id: it.id,
+    kind: it.kind,
     exerciseId: it.exerciseId,
     sets: it.sets,
     reps: it.reps,
@@ -84,10 +85,9 @@ async function loadFull(db: Database, w: WorkoutRow) {
     scoringGoal: w.scoringGoal ?? null,
     blocks: blocks.map((b: BlockRow) => ({
       id: b.id,
+      kind: b.kind,
       type: b.type,
       rounds: b.rounds,
-      restBetweenExercisesSeconds: b.restBetweenExercisesSeconds,
-      restAfterSeconds: b.restAfterSeconds,
       label: b.label,
       notes: b.notes,
       items: (byBlock.get(b.id) ?? []).map(serializeItem),
@@ -103,10 +103,9 @@ async function insertBlocks(db: Database, workoutId: string, blocks: WorkoutBloc
       .values({
         workoutId,
         position: i,
+        kind: b.kind,
         type: b.type,
         rounds: b.rounds ?? null,
-        restBetweenExercisesSeconds: b.restBetweenExercisesSeconds ?? null,
-        restAfterSeconds: b.restAfterSeconds ?? null,
         label: b.label ?? null,
         notes: b.notes ?? null,
       })
@@ -116,7 +115,8 @@ async function insertBlocks(db: Database, workoutId: string, blocks: WorkoutBloc
         b.items.map((it, j) => ({
           blockId: block.id,
           position: j,
-          exerciseId: it.exerciseId,
+          kind: it.kind,
+          exerciseId: it.exerciseId ?? null,
           sets: it.sets ?? null,
           reps: it.reps ?? null,
           workSeconds: it.workSeconds ?? null,

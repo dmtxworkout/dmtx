@@ -1,9 +1,11 @@
 import { boolean, integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import type { FormatConfig, Goal, LoadPrescription, Tempo } from '@dmtx/schemas';
 import {
+  blockKindEnum,
   blockTypeEnum,
   contentStatusEnum,
   difficultyEnum,
+  itemKindEnum,
   primaryId,
   publishable,
   softDelete,
@@ -46,10 +48,9 @@ export const workoutBlocks = pgTable('workout_blocks', {
     .notNull()
     .references(() => workouts.id, { onDelete: 'cascade' }),
   position: integer().notNull().default(0),
+  kind: blockKindEnum().notNull().default('group'),
   type: blockTypeEnum().notNull().default('single'),
   rounds: integer(),
-  restBetweenExercisesSeconds: integer(),
-  restAfterSeconds: integer(),
   label: text(),
   notes: text(),
   ...timestamps,
@@ -62,9 +63,8 @@ export const workoutItems = pgTable('workout_items', {
     .notNull()
     .references(() => workoutBlocks.id, { onDelete: 'cascade' }),
   position: integer().notNull().default(0),
-  exerciseId: uuid()
-    .notNull()
-    .references(() => exercises.id, { onDelete: 'restrict' }),
+  kind: itemKindEnum().notNull().default('exercise'),
+  exerciseId: uuid().references(() => exercises.id, { onDelete: 'restrict' }),
   // EMOM/Tabata: which minute/interval this item belongs to
   intervalIndex: integer(),
   sets: integer(),

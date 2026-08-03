@@ -87,7 +87,8 @@ export interface PlayerExercise {
 
 export interface WorkoutItem {
   id: string;
-  exerciseId: string;
+  kind: 'exercise' | 'rest';
+  exerciseId: string | null;
   sets: number | null;
   reps: number | null;
   workSeconds: number | null;
@@ -103,11 +104,10 @@ export interface WorkoutItem {
 
 export interface WorkoutBlock {
   id: string;
+  kind: 'group' | 'rest';
   type: 'single' | 'superset' | 'circuit' | 'emom' | 'tabata';
   label: string | null;
   rounds: number | null;
-  restBetweenExercisesSeconds: number | null;
-  restAfterSeconds: number | null;
   notes: string | null;
   items: WorkoutItem[];
 }

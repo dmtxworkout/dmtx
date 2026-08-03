@@ -272,7 +272,7 @@ appRoute.get('/workouts/:id', async (c) => {
         .orderBy(workoutItems.position)
     : [];
 
-  const exIds = [...new Set(items.map((it) => it.exerciseId))];
+  const exIds = [...new Set(items.map((it) => it.exerciseId).filter((id): id is string => Boolean(id)))];
   const exRows = exIds.length
     ? await db.select().from(exercises).where(inArray(exercises.id, exIds))
     : [];
@@ -357,16 +357,16 @@ appRoute.get('/workouts/:id', async (c) => {
       : null,
     blocks: blocks.map((b) => ({
       id: b.id,
+      kind: b.kind,
       type: b.type,
       label: b.label,
       rounds: b.rounds,
-      restBetweenExercisesSeconds: b.restBetweenExercisesSeconds,
-      restAfterSeconds: b.restAfterSeconds,
       notes: b.notes,
       items: (itemsByBlock.get(b.id) ?? []).map((it) => {
-        const ex = exBy.get(it.exerciseId);
+        const ex = it.exerciseId ? exBy.get(it.exerciseId) : undefined;
         return {
           id: it.id,
+          kind: it.kind,
           exerciseId: it.exerciseId,
           sets: it.sets,
           reps: it.reps,

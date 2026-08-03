@@ -86,12 +86,14 @@ function targetField(m?: MeasurementType): TargetField {
 }
 const TARGET_UNIT: Record<TargetField, string> = { reps: 'reps', workSeconds: 'seg', distanceMeters: 'm' };
 
+type ItemKind = 'exercise' | 'rest';
 type ItemState = {
   key: string;
+  kind: ItemKind;
   exerciseId: string;
   sets: string;
   reps: string;
-  workSeconds: string;
+  workSeconds: string; // rest items store their duration here
   distanceMeters: string;
   rest: string;
   carga: string;
@@ -99,6 +101,7 @@ type ItemState = {
 
 const emptyItem = (exerciseId: string): ItemState => ({
   key: uid(),
+  kind: 'exercise',
   exerciseId,
   sets: '',
   reps: '',
@@ -107,25 +110,29 @@ const emptyItem = (exerciseId: string): ItemState => ({
   rest: '',
   carga: '',
 });
+const restItem = (): ItemState => ({ ...emptyItem(''), kind: 'rest' });
+
+type BlockKind = 'group' | 'rest';
 type BlockState = {
   key: string;
+  kind: BlockKind;
   name: string;
   type: BlockType;
   rounds: string;
-  restBetween: string;
-  restAfterSeconds: string;
   items: ItemState[];
 };
 
 const emptyBlock = (): BlockState => ({
   key: uid(),
+  kind: 'group',
   name: '',
   type: 'single',
   rounds: '',
-  restBetween: '',
-  restAfterSeconds: '',
   items: [],
 });
+
+/** A rest between blocks: a rest-kind block holding a single rest item. */
+const restBlock = (): BlockState => ({ ...emptyBlock(), kind: 'rest', items: [restItem()] });
 
 const uid = () => crypto.randomUUID();
 const num = (s: string): number | null => {
@@ -203,14 +210,14 @@ function initBlocks(w?: Workout): BlockState[] {
   if (!w) return [emptyBlock()];
   return w.blocks.map((b) => ({
     key: uid(),
+    kind: b.kind,
     name: b.label ?? '',
     type: b.type,
     rounds: b.rounds?.toString() ?? '',
-    restBetween: b.restBetweenExercisesSeconds?.toString() ?? '',
-    restAfterSeconds: b.restAfterSeconds?.toString() ?? '',
     items: b.items.map((it) => ({
       key: uid(),
-      exerciseId: it.exerciseId,
+      kind: it.kind,
+      exerciseId: it.exerciseId ?? '',
       sets: it.sets?.toString() ?? '',
       reps: it.reps?.toString() ?? '',
       workSeconds: it.workSeconds?.toString() ?? '',
@@ -335,7 +342,38 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     </div>
   );
 
+  const removeItem = (bk: string, key: string) =>
+    setBlocks((bs) =>
+      bs.map((b) => (b.key === bk ? { ...b, items: b.items.filter((x) => x.key !== key) } : b)),
+    );
+
   const itemRow = (bk: string, it: ItemState) => {
+    if (it.kind === 'rest') {
+      return (
+        <div
+          key={it.key}
+          className="flex items-center gap-2.5 border-b border-[#f4f1eb] px-3.5 py-2"
+        >
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
+            Descanso
+          </span>
+          <input
+            value={it.workSeconds}
+            placeholder="seg"
+            onChange={(e) => updateItem(bk, it.key, { workSeconds: e.target.value })}
+            className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+          />
+          <span className="font-mono text-[11px] text-muted">seg</span>
+          <button
+            type="button"
+            onClick={() => removeItem(bk, it.key)}
+            className="ml-auto inline-flex items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
+          >
+            ✕
+          </button>
+        </div>
+      );
+    }
     const ex = exercise(it.exerciseId);
     const tf = targetField(ex?.measurementType);
     return (
@@ -390,11 +428,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         )}
         <button
           type="button"
-          onClick={() =>
-            setBlocks((bs) =>
-              bs.map((b) => (b.key === bk ? { ...b, items: b.items.filter((x) => x.key !== it.key) } : b)),
-            )
-          }
+          onClick={() => removeItem(bk, it.key)}
           className="text-center text-faint-2 hover:text-accent-dark"
         >
           ✕
@@ -403,38 +437,41 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     );
   };
 
-  const addExerciseButton = (onClick: () => void) => (
-    <div className="p-3">
-      <button
-        type="button"
-        onClick={onClick}
-        className="inline-flex h-[30px] items-center rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
-      >
-        {es.workouts.addExercise}
-      </button>
-    </div>
+  const addButton = (label: string, onClick: () => void) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-[30px] items-center rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
+    >
+      {label}
+    </button>
   );
+  const addRestItem = (bk: string) =>
+    setBlocks((bs) => bs.map((b) => (b.key === bk ? { ...b, items: [...b.items, restItem()] } : b)));
 
   const save = useMutation({
     mutationFn: () => {
       const structured = type === 'structured';
       const cols = itemColumns(format);
-      const toItem = (it: ItemState) => ({
-        exerciseId: it.exerciseId,
-        sets: cols.showSets ? num(it.sets) : null,
-        reps: num(it.reps),
-        workSeconds: num(it.workSeconds),
-        distanceMeters: num(it.distanceMeters),
-        restBetweenSeconds: cols.showRest ? num(it.rest) : null,
-        loadPrescription: strToLoad(it.carga),
-        perSide: false,
-      });
+      const toItem = (it: ItemState) => {
+        const rest = it.kind === 'rest';
+        return {
+          kind: it.kind,
+          exerciseId: rest ? null : it.exerciseId,
+          sets: rest ? null : cols.showSets ? num(it.sets) : null,
+          reps: rest ? null : num(it.reps),
+          workSeconds: num(it.workSeconds),
+          distanceMeters: rest ? null : num(it.distanceMeters),
+          restBetweenSeconds: rest ? null : cols.showRest ? num(it.rest) : null,
+          loadPrescription: rest ? null : strToLoad(it.carga),
+          perSide: false,
+        };
+      };
       const blocksPayload = blocks.map((b) => ({
+        kind: b.kind,
         type: b.type,
         label: b.name.trim() || null,
         rounds: num(b.rounds),
-        restBetweenExercisesSeconds: num(b.restBetween),
-        restAfterSeconds: num(b.restAfterSeconds),
         items: b.items.map(toItem),
       }));
       const payload: CreateWorkoutInput = {
@@ -558,6 +595,58 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                       isDropTarget ? 'border-accent ring-1 ring-accent/40' : 'border-[#e2ded5]',
                     )}
                   >
+                    {b.kind === 'rest' ? (
+                      <div className="flex items-center gap-2 bg-surface-2 px-3 py-2">
+                        <span
+                          draggable
+                          onDragStart={(e) => {
+                            setDragIndex(bi);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => {
+                            setDragIndex(null);
+                            setOverIndex(null);
+                          }}
+                          className="cursor-grab select-none px-0.5 font-mono text-[15px] text-faint hover:text-ink-3 active:cursor-grabbing"
+                          title="Arrastra para reordenar"
+                        >
+                          ⠿
+                        </span>
+                        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
+                          Descanso entre bloques
+                        </span>
+                        <input
+                          value={b.items[0]?.workSeconds ?? ''}
+                          placeholder="seg"
+                          onChange={(e) =>
+                            b.items[0] && updateItem(b.key, b.items[0].key, { workSeconds: e.target.value })
+                          }
+                          className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                        />
+                        <span className="font-mono text-[11px] text-muted">seg</span>
+                        <span className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={() => duplicateBlock(bi)}
+                          className="inline-flex shrink-0 items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
+                          title="Duplicar"
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
+                          className="inline-flex shrink-0 items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
+                          title="Eliminar"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <>
                     <div
                       onClick={() => toggleCollapse(b.key)}
                       className="flex cursor-pointer items-center gap-2 border-b border-[#eeeae2] bg-surface-2 px-3 py-2"
@@ -659,7 +748,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                     </div>
                     {isCollapsed ? (
                       <div className="px-4 py-2.5 font-mono text-[11px] text-muted">
-                        {b.items.length} ejercicio{b.items.length === 1 ? '' : 's'}
+                        {b.items.length} elemento{b.items.length === 1 ? '' : 's'}
                         {r && r > 1 ? ` · ${r} rondas` : ''}
                       </div>
                     ) : (
@@ -674,28 +763,15 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                               className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
                             />
                           </label>
-                          <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
-                            Descanso entre ejercicios
-                            <input
-                              placeholder="seg"
-                              value={b.restBetween}
-                              onChange={(e) => updateBlock(b.key, { restBetween: e.target.value })}
-                              className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                            />
-                          </label>
-                          <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
-                            Descanso al final
-                            <input
-                              placeholder="seg"
-                              value={b.restAfterSeconds}
-                              onChange={(e) => updateBlock(b.key, { restAfterSeconds: e.target.value })}
-                              className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                            />
-                          </label>
                         </div>
                         {b.items.length > 0 && itemHeader()}
                         {b.items.map((it) => itemRow(b.key, it))}
-                        {addExerciseButton(() => addExerciseTo(b.key))}
+                        <div className="flex gap-2 p-3">
+                          {addButton(es.workouts.addExercise, () => addExerciseTo(b.key))}
+                          {addButton('+ Descanso', () => addRestItem(b.key))}
+                        </div>
+                      </>
+                    )}
                       </>
                     )}
                   </div>
@@ -706,15 +782,24 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   {es.workouts.noBlocks}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() =>
-                  setBlocks((bs) => [...bs, { ...emptyBlock(), name: `Bloque ${bs.length + 1}` }])
-                }
-                className="w-full rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-              >
-                {es.workouts.addBlock}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBlocks((bs) => [...bs, { ...emptyBlock(), name: `Bloque ${bs.length + 1}` }])
+                  }
+                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                >
+                  {es.workouts.addBlock}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBlocks((bs) => [...bs, restBlock()])}
+                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                >
+                  + Descanso entre bloques
+                </button>
+              </div>
             </>
           ) : (
             <div>

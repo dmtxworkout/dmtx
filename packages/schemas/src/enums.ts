@@ -53,6 +53,15 @@ export const BLOCK_TYPE = ['single', 'superset', 'circuit', 'emom', 'tabata'] as
 export const blockTypeSchema = enumOf(BLOCK_TYPE);
 export type BlockType = z.infer<typeof blockTypeSchema>;
 
+// An item is an exercise or a rest; a block is a group of items or a rest.
+export const ITEM_KIND = ['exercise', 'rest'] as const;
+export const itemKindSchema = enumOf(ITEM_KIND);
+export type ItemKind = z.infer<typeof itemKindSchema>;
+
+export const BLOCK_KIND = ['group', 'rest'] as const;
+export const blockKindSchema = enumOf(BLOCK_KIND);
+export type BlockKind = z.infer<typeof blockKindSchema>;
+
 // --- Programs ----------------------------------------------------------------
 export const PROGRAM_TYPE = ['structured', 'video_playlist'] as const;
 export const programTypeSchema = enumOf(PROGRAM_TYPE);

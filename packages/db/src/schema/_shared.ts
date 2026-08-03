@@ -3,8 +3,10 @@ import { uuidv7 } from 'uuidv7';
 import {
   BILLING_INTERVAL_UNIT,
   BODY_REGION,
+  BLOCK_KIND,
   BLOCK_TYPE,
   COLLECTION_LAYOUT,
+  ITEM_KIND,
   CONTENT_STATUS,
   DIFFICULTY,
   DISCOUNT_DURATION,
@@ -29,6 +31,8 @@ export const bodyRegionEnum = pgEnum('body_region', BODY_REGION);
 export const workoutTypeEnum = pgEnum('workout_type', WORKOUT_TYPE);
 export const workoutFormatEnum = pgEnum('workout_format', WORKOUT_FORMAT);
 export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
+export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);
+export const itemKindEnum = pgEnum('item_kind', ITEM_KIND);
 export const programTypeEnum = pgEnum('program_type', PROGRAM_TYPE);
 export const collectionLayoutEnum = pgEnum('collection_layout', COLLECTION_LAYOUT);
 export const mediaKindEnum = pgEnum('media_kind', MEDIA_KIND);

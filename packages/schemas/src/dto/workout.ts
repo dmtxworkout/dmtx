@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import {
+  blockKindSchema,
   blockTypeSchema,
   contentStatusSchema,
   difficultySchema,
+  itemKindSchema,
   workoutFormatSchema,
   workoutTypeSchema,
 } from '../enums';
@@ -13,7 +15,9 @@ import { tempoSchema } from '../tempo';
 import { slugSchema, uuidSchema } from '../common';
 
 export const workoutItemInputSchema = z.object({
-  exerciseId: uuidSchema,
+  kind: itemKindSchema.default('exercise'),
+  // null for rest items; workSeconds holds the rest duration then
+  exerciseId: uuidSchema.nullish(),
   sets: z.number().int().positive().nullish(),
   reps: z.number().int().positive().nullish(),
   workSeconds: z.number().int().positive().nullish(),
@@ -28,10 +32,9 @@ export const workoutItemInputSchema = z.object({
 export type WorkoutItemInput = z.infer<typeof workoutItemInputSchema>;
 
 export const workoutBlockInputSchema = z.object({
+  kind: blockKindSchema.default('group'),
   type: blockTypeSchema.default('single'),
   rounds: z.number().int().positive().nullish(),
-  restBetweenExercisesSeconds: z.number().int().nonnegative().nullish(),
-  restAfterSeconds: z.number().int().nonnegative().nullish(),
   label: z.string().max(200).nullish(),
   notes: z.string().max(2000).nullish(),
   items: z.array(workoutItemInputSchema).default([]),
@@ -63,10 +66,9 @@ export type UpdateWorkoutInput = z.infer<typeof updateWorkoutSchema>;
 export const workoutItemSchema = workoutItemInputSchema.extend({ id: uuidSchema });
 export const workoutBlockSchema = z.object({
   id: uuidSchema,
+  kind: blockKindSchema,
   type: blockTypeSchema,
   rounds: z.number().nullable(),
-  restBetweenExercisesSeconds: z.number().nullable(),
-  restAfterSeconds: z.number().nullable(),
   label: z.string().nullable(),
   notes: z.string().nullable(),
   items: z.array(workoutItemSchema),
