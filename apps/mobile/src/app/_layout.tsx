@@ -20,6 +20,7 @@ import {
   IBMPlexMono_600SemiBold,
 } from '@expo-google-fonts/ibm-plex-mono';
 import { useSession } from '../lib/auth';
+import { UnitsProvider } from '../lib/units-context';
 import { colors } from '../theme';
 
 void SplashScreen.preventAutoHideAsync();
@@ -84,7 +85,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
-          <AuthGate />
+          <UnitsProvider>
+            <AuthGate />
+          </UnitsProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
       <StatusBar style="light" />

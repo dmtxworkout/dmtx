@@ -3,8 +3,20 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors } from '../theme';
 import { es, formatLabel } from '../i18n';
-import { fmtKg, mmss, tempoCompact } from '../lib/format';
+import { mmss, tempoCompact } from '../lib/format';
 import type { ExerciseStep, RestStep, Session } from '../lib/session';
+import { useUnits } from '../lib/units-context';
+import {
+  distancePrefill,
+  distanceStep,
+  distanceToM,
+  fmtNum,
+  formatDistance,
+  formatWeight,
+  weightPrefill,
+  weightStep,
+  weightToKg,
+} from '../lib/units';
 
 /** Countdown that ticks while `running`, fires `onDone` once at zero. */
 function useCountdown(total: number, running: boolean, onDone: () => void) {
@@ -123,6 +135,7 @@ export function RepsScreen({
   onDone: (mark: number) => void;
   onSkip: () => void;
 }) {
+  const { units } = useUnits();
   const [mark, setMark] = useState(step.last?.reps ?? step.targetReps ?? 0);
 
   return (
@@ -179,7 +192,7 @@ export function RepsScreen({
                 Carga
               </Text>
               <Text className="font-extrabold text-[26px] leading-none text-ink">
-                {step.loadLabel}
+                {step.loadKg != null ? formatWeight(step.loadKg, units.weight) : step.loadLabel}
               </Text>
             </View>
           ) : null}
@@ -224,6 +237,106 @@ export function RepsScreen({
         </Pressable>
         <Pressable
           onPress={() => onDone(mark)}
+          className="h-[54px] flex-1 items-center justify-center rounded-xl bg-accent active:opacity-80"
+        >
+          <Text className="font-bold text-[17px] text-white">Hecho · siguiente</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/** Distance-based exercise: enter the distance covered (in the user's unit). */
+export function DistanceScreen({
+  step,
+  session,
+  round,
+  nav,
+  onExit,
+  onDone,
+  onSkip,
+}: {
+  step: ExerciseStep;
+  session: Session;
+  round: number;
+  nav: Nav;
+  onExit: () => void;
+  onDone: (meters: number) => void;
+  onSkip: () => void;
+}) {
+  const { units } = useUnits();
+  const du = units.distance;
+  const dStep = distanceStep(du);
+  // Distance is held in display units (km/mi); converted to meters on save.
+  const [dist, setDist] = useState(distancePrefill(step.last?.distanceMeters ?? step.targetDistance ?? 0, du));
+  const bump = (delta: number) => setDist((d) => Math.max(0, Math.round((d + delta) * 100) / 100));
+
+  const target = step.targetDistance != null ? formatDistance(step.targetDistance, du) : '—';
+  const before =
+    step.last?.distanceMeters != null ? formatDistance(step.last.distanceMeters, du) : null;
+
+  return (
+    <View className="flex-1 bg-bg pt-14">
+      <Header
+        session={session}
+        nav={nav}
+        subtitle={`Ronda ${round} · ejercicio ${nav.exercisePos} de ${nav.exerciseTotal}`}
+        onExit={onExit}
+      />
+      <ScrollView contentContainerClassName="gap-4 px-5 pt-4 pb-4">
+        <Demo uri={step.demoVideoUrl} aspect="aspect-[16/10]" />
+
+        <View>
+          <Text className="font-extrabold text-[25px] leading-tight tracking-tight text-ink">
+            {step.name}
+          </Text>
+          {step.cue ? (
+            <Text className="mt-1.5 font-mono text-[12px] leading-5 text-ink-3">{step.cue}</Text>
+          ) : null}
+        </View>
+
+        <View className="flex-row items-center gap-2 rounded-xl bg-surface px-3.5 py-3">
+          <Text className="font-mono-medium text-[9px] uppercase tracking-widest text-ink-3">
+            Objetivo
+          </Text>
+          <Text className="ml-auto font-extrabold text-[18px] text-ink">{target}</Text>
+        </View>
+
+        <View className="flex-row items-center justify-between">
+          <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
+            Tu marca
+          </Text>
+          {before ? <Text className="font-mono text-[11px] text-ink-4">Antes: {before}</Text> : null}
+        </View>
+        <View className="flex-row items-center gap-3">
+          <Pressable
+            onPress={() => bump(-dStep)}
+            className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
+          >
+            <Text className="text-[22px] text-ink">−</Text>
+          </Pressable>
+          <View className="h-[52px] flex-1 flex-row items-baseline justify-center gap-1.5 rounded-xl border border-accent bg-surface">
+            <Text className="font-extrabold text-[28px] text-ink">{fmtNum(dist)}</Text>
+            <Text className="font-semibold text-[14px] text-ink-2">{du}</Text>
+          </View>
+          <Pressable
+            onPress={() => bump(dStep)}
+            className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
+          >
+            <Text className="text-[22px] text-ink">+</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+
+      <View className="flex-row gap-2.5 px-5 pb-9 pt-2">
+        <Pressable
+          onPress={onSkip}
+          className="h-[54px] w-[76px] items-center justify-center rounded-xl bg-surface-2"
+        >
+          <Text className="font-semibold text-[14px] text-ink-2">{es.common.skip}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => onDone(distanceToM(dist, du))}
           className="h-[54px] flex-1 items-center justify-center rounded-xl bg-accent active:opacity-80"
         >
           <Text className="font-bold text-[17px] text-white">Hecho · siguiente</Text>
@@ -291,21 +404,25 @@ export function StrengthSetScreen({
   onDone: (reps: number, loadKg: number) => void;
   onSkip: () => void;
 }) {
+  const { units } = useUnits();
+  const wu = units.weight;
   const [reps, setReps] = useState(step.last?.reps ?? step.targetReps ?? 0);
-  const [weight, setWeight] = useState(step.last?.loadKg ?? step.loadKg ?? 0);
+  // Weight is held in display units (lb/kg); converted to kg only on save.
+  const [weight, setWeight] = useState(weightPrefill(step.last?.loadKg ?? step.loadKg ?? 0, wu));
   const setNo = step.set ?? 1;
   const setTotal = step.totalSets ?? 1;
   const setNav: Nav = { ...nav, segIndex: setNo - 1, segCount: setTotal };
+  const wStep = weightStep(wu);
 
   const target =
     step.targetReps != null
       ? `${step.targetReps} reps` +
-        (step.loadKg ? ` × ${fmtKg(step.loadKg)} kg` : step.loadLabel ? ` · ${step.loadLabel}` : '')
+        (step.loadKg ? ` × ${formatWeight(step.loadKg, wu)}` : step.loadLabel ? ` · ${step.loadLabel}` : '')
       : step.loadLabel || '—';
   const before =
     step.last?.reps != null
       ? step.last.loadKg != null
-        ? `${step.last.reps} × ${fmtKg(step.last.loadKg)} kg`
+        ? `${step.last.reps} × ${formatWeight(step.last.loadKg, wu)}`
         : `${step.last.reps} reps`
       : null;
   const bump = (delta: number) =>
@@ -357,10 +474,10 @@ export function StrengthSetScreen({
           />
           <Stepper
             label="Peso"
-            value={fmtKg(weight)}
-            unit="kg"
-            onDec={() => bump(-2.5)}
-            onInc={() => bump(2.5)}
+            value={fmtNum(weight)}
+            unit={wu}
+            onDec={() => bump(-wStep)}
+            onInc={() => bump(wStep)}
           />
         </View>
       </ScrollView>
@@ -373,7 +490,7 @@ export function StrengthSetScreen({
           <Text className="font-semibold text-[14px] text-ink-2">{es.common.skip}</Text>
         </Pressable>
         <Pressable
-          onPress={() => onDone(reps, weight)}
+          onPress={() => onDone(reps, weightToKg(weight, wu))}
           className="h-[54px] flex-1 items-center justify-center rounded-xl bg-accent active:opacity-80"
         >
           <Text className="font-bold text-[17px] text-white">Hecho · siguiente</Text>

@@ -1,9 +1,40 @@
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Loading } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { signOut } from '../../../lib/auth';
+import { useUnits } from '../../../lib/units-context';
+
+/** Segmented two-option toggle (e.g. kg | lb). */
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <View className="flex-row rounded-xl bg-surface-2 p-1">
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={o.value}
+            onPress={() => onChange(o.value)}
+            className={`flex-1 items-center justify-center rounded-lg py-2 ${active ? 'bg-accent' : ''}`}
+          >
+            <Text className={`font-semibold text-[14px] ${active ? 'text-white' : 'text-ink-3'}`}>
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 function accessLine(entitlement: NonNullable<Awaited<ReturnType<typeof api.me>>>['entitlement']): string {
   if (!entitlement.active) return 'Sin suscripción activa';
@@ -21,6 +52,7 @@ function accessLine(entitlement: NonNullable<Awaited<ReturnType<typeof api.me>>>
 export default function Perfil() {
   const insets = useSafeAreaInsets();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
+  const { units, setWeight, setDistance } = useUnits();
 
   if (me.isLoading) return <Loading />;
 
@@ -60,6 +92,34 @@ export default function Perfil() {
           ) : null}
         </View>
       ) : null}
+
+      <View className="mt-6 rounded-2xl border border-line bg-surface p-4">
+        <Text className="font-mono-medium text-[10px] uppercase tracking-wider text-ink-3">
+          Unidades
+        </Text>
+        <View className="mt-3 gap-1.5">
+          <Text className="font-semibold text-[14px] text-ink">Peso</Text>
+          <Segmented
+            value={units.weight}
+            onChange={setWeight}
+            options={[
+              { value: 'lb', label: 'Libras (lb)' },
+              { value: 'kg', label: 'Kilos (kg)' },
+            ]}
+          />
+        </View>
+        <View className="mt-4 gap-1.5">
+          <Text className="font-semibold text-[14px] text-ink">Distancia</Text>
+          <Segmented
+            value={units.distance}
+            onChange={setDistance}
+            options={[
+              { value: 'km', label: 'Kilómetros (km)' },
+              { value: 'mi', label: 'Millas (mi)' },
+            ]}
+          />
+        </View>
+      </View>
 
       <View className="mt-8">
         <Button label="Cerrar sesión" variant="secondary" onPress={() => signOut()} />

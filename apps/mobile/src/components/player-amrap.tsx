@@ -6,6 +6,9 @@ import { useMutation } from '@tanstack/react-query';
 import type { CreateWorkoutLogInput, SetResultInput } from '@dmtx/schemas';
 import { api } from '../lib/api';
 import { mmss } from '../lib/format';
+import { useUnits } from '../lib/units-context';
+import { formatDistance, formatWeight } from '../lib/units';
+import type { DistanceUnit } from '../lib/units';
 import type { WorkoutDetail, WorkoutItem } from '../lib/types';
 
 const loadKgOf = (it: WorkoutItem): number | null => {
@@ -18,11 +21,11 @@ const isReps = (it: WorkoutItem) => {
   return mt === 'reps' && it.reps != null;
 };
 
-function targetText(it: WorkoutItem): string {
+function targetText(it: WorkoutItem, du: DistanceUnit): string {
   const mt = it.exercise?.measurementType;
   if (mt === 'time' && it.workSeconds != null)
     return it.workSeconds >= 60 ? mmss(it.workSeconds) : `${it.workSeconds} s`;
-  if (mt === 'distance' && it.distanceMeters != null) return `${it.distanceMeters} m`;
+  if (mt === 'distance' && it.distanceMeters != null) return formatDistance(it.distanceMeters, du);
   if (it.reps != null) return `${it.reps}`;
   return '—';
 }
@@ -35,6 +38,7 @@ function targetText(it: WorkoutItem): string {
 export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { units } = useUnits();
 
   // Blocks with their round count (a block is "these exercises, N rounds").
   // Rest items/blocks stay in the reference circuit but are excluded from
@@ -211,12 +215,16 @@ export function AmrapPlayer({ workout }: { workout: WorkoutDetail }) {
                   </View>
                 ) : (
                   <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
-                    <Text className="w-14 font-mono-semibold text-[15px] text-accent">{targetText(it)}</Text>
+                    <Text className="w-14 font-mono-semibold text-[15px] text-accent">
+                      {targetText(it, units.distance)}
+                    </Text>
                     <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
                       {it.exercise?.name}
                     </Text>
                     {loadKgOf(it) != null ? (
-                      <Text className="font-mono text-[12px] text-ink-3">{loadKgOf(it)} kg</Text>
+                      <Text className="font-mono text-[12px] text-ink-3">
+                        {formatWeight(loadKgOf(it), units.weight)}
+                      </Text>
                     ) : null}
                   </View>
                 ),

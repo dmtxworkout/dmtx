@@ -5,6 +5,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import type { CreateWorkoutLogInput, SetResultInput } from '@dmtx/schemas';
 import { Loading } from '../../../components/ui';
 import {
+  DistanceScreen,
   RepsScreen,
   RestScreen,
   StrengthSetScreen,
@@ -16,7 +17,9 @@ import {
 import { AmrapPlayer } from '../../../components/player-amrap';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
-import { fmtKg, mmss } from '../../../lib/format';
+import { mmss } from '../../../lib/format';
+import { useUnits } from '../../../lib/units-context';
+import { formatDistance, formatWeight } from '../../../lib/units';
 import { es } from '../../../i18n';
 
 interface Mark {
@@ -52,6 +55,7 @@ export default function Entrenar() {
 
 function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof api.workout>>> }) {
   const router = useRouter();
+  const { units } = useUnits();
   const session = useMemo(() => buildSession(workout), [workout]);
 
   const exerciseSteps = useMemo(
@@ -126,21 +130,25 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
 
   const logExercise = (
     s: ExerciseStep,
-    opts: { reps?: number; seconds?: number; loadKg?: number; display: string },
+    opts: { reps?: number; seconds?: number; distanceMeters?: number; loadKg?: number; display: string },
   ) => {
     const loadKg = opts.loadKg ?? s.loadKg;
-    // "Beat your last": for weighted reps compare volume (reps × kg), else the raw measure.
+    // "Beat your last": weighted reps compare volume (reps × kg); else raw measure.
     let prevDisplay: string | null = null;
     let improved = false;
     if (s.measure === 'time') {
       const last = s.last?.seconds ?? null;
       prevDisplay = last != null ? (last >= 60 ? mmss(last) : `${last} s`) : null;
       improved = last != null && opts.seconds != null && opts.seconds > last;
+    } else if (s.measure === 'distance') {
+      const last = s.last?.distanceMeters ?? null;
+      prevDisplay = last != null ? formatDistance(last, units.distance) : null;
+      improved = last != null && opts.distanceMeters != null && opts.distanceMeters > last;
     } else {
       const lastReps = s.last?.reps ?? null;
       const lastLoad = s.last?.loadKg ?? null;
       if (lastReps != null && lastLoad != null && loadKg != null) {
-        prevDisplay = `${lastReps} × ${fmtKg(lastLoad)} kg`;
+        prevDisplay = `${lastReps} × ${formatWeight(lastLoad, units.weight)}`;
         improved = opts.reps != null && opts.reps * loadKg > lastReps * lastLoad;
       } else if (lastReps != null) {
         prevDisplay = `${lastReps} reps`;
@@ -157,7 +165,7 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
         setNumber: s.set,
         reps: opts.reps ?? null,
         seconds: opts.seconds ?? null,
-        distanceMeters: null,
+        distanceMeters: opts.distanceMeters ?? null,
         loadKg,
         display: opts.display,
         prevDisplay,
@@ -195,7 +203,8 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
     if (session.mode === 'amrap') stats.push({ k: 'Rondas', v: String(roundsCompleted) });
     stats.push({ k: 'Tiempo', v: mmss(elapsed) });
     stats.push({ k: 'Ejercicios', v: String(list.length) });
-    if (volume > 0) stats.push({ k: 'Volumen', v: isStrength ? `${volume} kg` : `${volume}` });
+    if (volume > 0)
+      stats.push({ k: 'Volumen', v: isStrength ? formatWeight(volume, units.weight) : `${volume}` });
     const markRows: MarkRow[] = list.map((m) => ({
       name: m.name,
       value: m.display,
@@ -286,6 +295,24 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
     );
   }
 
+  if (step.measure === 'distance') {
+    return (
+      <DistanceScreen
+        key={step.key}
+        step={step}
+        session={session}
+        round={round}
+        nav={navFor(step)}
+        onExit={() => router.back()}
+        onDone={(meters) => {
+          logExercise(step, { distanceMeters: meters, display: formatDistance(meters, units.distance) });
+          advance();
+        }}
+        onSkip={advance}
+      />
+    );
+  }
+
   if (session.format === 'strength' && step.measure === 'reps') {
     const strengthNav: Nav = {
       exercisePos: distinctItems.indexOf(step.itemId) + 1,
@@ -301,7 +328,7 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
         nav={strengthNav}
         onExit={() => router.back()}
         onDone={(reps, loadKg) => {
-          const display = loadKg > 0 ? `${reps} × ${fmtKg(loadKg)} kg` : `${reps} reps`;
+          const display = loadKg > 0 ? `${reps} × ${formatWeight(loadKg, units.weight)}` : `${reps} reps`;
           logExercise(step, { reps, loadKg, display });
           advance();
         }}

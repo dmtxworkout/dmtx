@@ -6,14 +6,16 @@ import { Button, Loading, Thumb } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { difficultyLabel, es, formatLabel } from '../../../i18n';
 import { durationLabel, loadLabel, mmss, targetLabel, tempoDash } from '../../../lib/format';
+import { useUnits } from '../../../lib/units-context';
+import type { Units } from '../../../lib/units';
 import type { WorkoutBlock, WorkoutItem } from '../../../lib/types';
 
-function itemSub(item: WorkoutItem): string {
+function itemSub(item: WorkoutItem, units: Units): string {
   const tempo = item.tempoOverride ?? item.exercise?.defaultTempo ?? null;
   const parts: string[] = [];
   if (tempo) parts.push(`Tempo ${tempoDash(tempo)}`);
   else if (item.exercise) parts.push(es.measurement[item.exercise.measurementType]);
-  const load = loadLabel(item.loadPrescription);
+  const load = loadLabel(item.loadPrescription, units.weight);
   if (load) parts.push(load);
   if (item.perSide) parts.push('bilateral');
   return parts.join(' · ');
@@ -28,6 +30,7 @@ export default function RutinaDetalle() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { units } = useUnits();
   const q = useQuery({ queryKey: ['workout', id], queryFn: () => api.workout(id) });
 
   if (q.isLoading) return <Loading />;
@@ -125,13 +128,15 @@ export default function RutinaDetalle() {
                       <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
                         {it.exercise?.name ?? 'Ejercicio'}
                       </Text>
-                      {itemSub(it) ? (
+                      {itemSub(it, units) ? (
                         <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
-                          {itemSub(it)}
+                          {itemSub(it, units)}
                         </Text>
                       ) : null}
                     </View>
-                    <Text className="font-mono-semibold text-[13px] text-ink-2">{targetLabel(it)}</Text>
+                    <Text className="font-mono-semibold text-[13px] text-ink-2">
+                      {targetLabel(it, units.distance)}
+                    </Text>
                   </View>
                 ))}
               </View>

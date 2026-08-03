@@ -1,5 +1,12 @@
 import type { LoadPrescription, Tempo } from '@dmtx/schemas';
 import type { WorkoutItem } from './types';
+import {
+  formatDistance,
+  formatWeight,
+  weightToKg,
+  type DistanceUnit,
+  type WeightUnit,
+} from './units';
 
 /** Seconds → "M:SS". */
 export function mmss(total: number): string {
@@ -13,11 +20,6 @@ export function mmss(total: number): string {
 export function durationLabel(seconds: number | null | undefined): string {
   if (!seconds) return '';
   return `${Math.max(1, Math.round(seconds / 60))} min`;
-}
-
-/** Weight → "100" or "102.5" (drops the trailing .0). */
-export function fmtKg(w: number): string {
-  return Number.isInteger(w) ? String(w) : w.toFixed(1);
 }
 
 const phase = (v: number | 'X'): string => (v === 'X' ? 'X' : String(v));
@@ -35,14 +37,22 @@ export function tempoCompact(t: Tempo | null | undefined): string {
   return joined.length === 4 && joined.startsWith('0') ? joined.slice(1) : joined;
 }
 
-/** Load prescription → short label, e.g. "+10 kg", "corp", "RPE 8", "70%". */
-export function loadLabel(load: LoadPrescription | null | undefined): string {
+/**
+ * Load prescription → short label, e.g. "+10 kg", "corp", "RPE 8", "70%".
+ * Pass `weightUnit` to render absolute/added weight in the user's unit.
+ */
+export function loadLabel(load: LoadPrescription | null | undefined, weightUnit?: WeightUnit): string {
   if (!load) return '';
   switch (load.type) {
-    case 'bodyweight':
-      return load.addedValue ? `+${load.addedValue} ${load.unit ?? 'kg'}` : 'corp';
-    case 'absolute':
-      return `${load.value} ${load.unit}`;
+    case 'bodyweight': {
+      if (!load.addedValue) return 'corp';
+      const kg = weightToKg(load.addedValue, load.unit ?? 'kg');
+      return weightUnit ? `+${formatWeight(kg, weightUnit)}` : `+${load.addedValue} ${load.unit ?? 'kg'}`;
+    }
+    case 'absolute': {
+      const kg = weightToKg(load.value, load.unit);
+      return weightUnit ? formatWeight(kg, weightUnit) : `${load.value} ${load.unit}`;
+    }
     case 'percent_1rm':
       return `${load.value}%`;
     case 'rpe':
@@ -53,7 +63,7 @@ export function loadLabel(load: LoadPrescription | null | undefined): string {
 }
 
 /** The prescription target shown next to an exercise, e.g. "3 reps", "2 × 45 s". */
-export function targetLabel(item: WorkoutItem): string {
+export function targetLabel(item: WorkoutItem, distanceUnit?: DistanceUnit): string {
   const mt = item.exercise?.measurementType;
   const sets = item.sets && item.sets > 1 ? item.sets : null;
   if (mt === 'time' && item.workSeconds != null) {
@@ -61,7 +71,8 @@ export function targetLabel(item: WorkoutItem): string {
     return sets ? `${sets} × ${unit}` : unit;
   }
   if (mt === 'distance' && item.distanceMeters != null) {
-    return sets ? `${sets} × ${item.distanceMeters} m` : `${item.distanceMeters} m`;
+    const d = distanceUnit ? formatDistance(item.distanceMeters, distanceUnit) : `${item.distanceMeters} m`;
+    return sets ? `${sets} × ${d}` : d;
   }
   if (item.reps != null) {
     return sets ? `${sets} × ${item.reps}` : `${item.reps} reps`;
