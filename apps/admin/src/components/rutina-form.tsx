@@ -113,6 +113,13 @@ const MEASURES: { v: MeasurementType; label: string }[] = [
 // Tempo is set per rutina item (not on the exercise): a push-up is a push-up;
 // whether it's tempo depends on the workout. Stored as the item's tempoOverride.
 const TEMPO_PHASES = ['holdTop', 'eccentric', 'holdBottom', 'concentric'] as const;
+// Short phase labels for the compact tempo popover (arriba·baja·abajo·sube).
+const TEMPO_SHORT: Record<(typeof TEMPO_PHASES)[number], string> = {
+  holdTop: 'arriba',
+  eccentric: 'baja',
+  holdBottom: 'abajo',
+  concentric: 'sube',
+};
 type TempoStr = Record<(typeof TEMPO_PHASES)[number], string>;
 const emptyTempo = (): TempoStr => ({ holdTop: '', eccentric: '', holdBottom: '', concentric: '' });
 
@@ -427,12 +434,14 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const mainBlocks = blocks.filter((b) => (b.section ?? 'main') === 'main');
   const cooldownBlocks = blocks.filter((b) => b.section === 'cooldown');
   const itemGtc = [
-    'minmax(0,1fr)',
-    cols.showSets && '56px',
-    cols.showTarget && '72px',
-    '74px',
-    cols.showRest && '60px',
-    '26px',
+    'minmax(0,1fr)', // name
+    cols.showSets && '56px', // series
+    cols.showTarget && '66px', // medida
+    cols.showTarget && '72px', // objetivo
+    '74px', // carga
+    cols.showRest && '60px', // descanso
+    '72px', // tempo
+    '26px', // delete
   ]
     .filter(Boolean)
     .join(' ');
@@ -468,9 +477,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     >
       <span>{es.pick.exercise.replace('Elegir ', '')}</span>
       {cols.showSets && <span className="text-center">{es.workouts.sets}</span>}
+      {cols.showTarget && <span className="text-center">Medida</span>}
       {cols.showTarget && <span className="text-center">Objetivo</span>}
       <span className="text-center">Carga</span>
       {cols.showRest && <span className="text-center">Descanso</span>}
+      <span className="text-center">Tempo</span>
       <span />
     </div>
   );
@@ -523,51 +534,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             )}
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
-              <div className="flex items-center gap-1.5">
-                {cols.showTarget ? (
-                  <div className="relative inline-flex shrink-0">
-                    <select
-                      value={measure}
-                      onChange={(e) => updateItem(bk, it.key, { measure: e.target.value as MeasurementType })}
-                      className="cursor-pointer appearance-none rounded-md border border-line-2 bg-surface py-0.5 pl-2 pr-5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-ink-2 hover:bg-surface-3 focus:border-accent/40 focus:outline-none"
-                    >
-                      {MEASURES.map((m) => (
-                        <option key={m.v} value={m.v}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] text-muted">
-                      ▾
-                    </span>
-                  </div>
-                ) : ex ? (
-                  <span className="truncate font-mono text-[11px] text-muted">
-                    {es.measurement[measure]}
-                  </span>
-                ) : null}
-                {showTempo && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      const r = e.currentTarget.getBoundingClientRect();
-                      setTempoMenu(
-                        tempoMenu?.key === it.key ? null : { key: it.key, top: r.bottom + 4, left: r.left },
-                      );
-                    }}
-                    title="Tempo"
-                    className={cn(
-                      'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]',
-                      tLabel
-                        ? 'border-accent/30 bg-accent/10 text-accent-dark'
-                        : 'border-line-2 text-muted hover:bg-surface-3',
-                    )}
-                  >
-                    {tLabel ?? 'Tempo'}
-                    <span className="text-[8px] opacity-60">▾</span>
-                  </button>
-                )}
-              </div>
+              {/* When there's no Medida column (e.g. tabata), keep a read-only hint. */}
+              {!cols.showTarget && ex && (
+                <div className="truncate font-mono text-[11px] text-muted">{es.measurement[measure]}</div>
+              )}
             </div>
           </div>
           {cols.showSets && (
@@ -576,6 +546,24 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               onChange={(e) => updateItem(bk, it.key, { sets: e.target.value })}
               className={boxCls}
             />
+          )}
+          {cols.showTarget && (
+            <div className="relative">
+              <select
+                value={measure}
+                onChange={(e) => updateItem(bk, it.key, { measure: e.target.value as MeasurementType })}
+                className="h-[30px] w-full cursor-pointer appearance-none rounded-[7px] border border-[#e6e2d9] bg-surface-3 pl-2 pr-4 text-center font-mono text-[12px] font-medium uppercase text-ink-2 focus:border-accent/40 focus:outline-none"
+              >
+                {MEASURES.map((m) => (
+                  <option key={m.v} value={m.v}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[7px] text-muted">
+                ▾
+              </span>
+            </div>
           )}
           {cols.showTarget && (
             <input
@@ -598,6 +586,29 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               className={boxCls}
             />
           )}
+          {showTempo ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                setTempoMenu(
+                  tempoMenu?.key === it.key ? null : { key: it.key, top: r.bottom + 4, left: r.left },
+                );
+              }}
+              title="Tempo"
+              className={cn(
+                'flex h-[30px] w-full items-center justify-center gap-1 rounded-[7px] border font-mono text-[12px] font-medium focus:outline-none',
+                tLabel
+                  ? 'border-accent/40 bg-accent/10 text-accent-dark'
+                  : 'border-[#e6e2d9] bg-surface-3 text-muted hover:border-accent/40',
+              )}
+            >
+              <span className="truncate">{tLabel ?? '—'}</span>
+              <span className="text-[7px] opacity-60">▾</span>
+            </button>
+          ) : (
+            <span />
+          )}
           <button
             type="button"
             onClick={onDelete}
@@ -613,14 +624,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               className="fixed z-40 rounded-xl border border-line-2 bg-surface p-3 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
               style={{ top: tempoMenu.top, left: tempoMenu.left }}
             >
-              <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
-                Tempo
-              </div>
               <div className="flex items-end gap-2">
                 {TEMPO_PHASES.map((phase) => (
-                  <label key={phase} className="flex flex-col gap-1">
-                    <span className="font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-2">
-                      {es.exercises.tempo[phase]}
+                  <label key={phase} className="flex flex-col items-center gap-1">
+                    <span className="font-mono text-[9px] font-medium uppercase tracking-[0.06em] text-muted-2">
+                      {TEMPO_SHORT[phase]}
                     </span>
                     <input
                       value={it.tempo[phase]}
@@ -633,8 +641,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   </label>
                 ))}
               </div>
-              <div className="mt-2.5 flex items-center justify-between gap-4">
-                <span className="font-mono text-[10px] text-muted">seg · &quot;X&quot; = explosivo</span>
+              <div className="mt-2.5 flex justify-end">
                 <button
                   type="button"
                   onClick={() => updateItem(bk, it.key, { tempo: emptyTempo() })}
