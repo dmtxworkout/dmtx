@@ -121,24 +121,40 @@ export default function RutinaDetalle() {
                     </Text>
                   ) : null}
                 </View>
-                {b.items.map((it) => (
-                  <View key={it.id} className="flex-row items-center gap-3">
-                    <Thumb uri={it.exercise?.thumbnailUrl} className="h-9 w-[58px]" radius={7} />
-                    <View className="min-w-0 flex-1">
-                      <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
-                        {it.exercise?.name ?? 'Ejercicio'}
+                {b.items.map((it) =>
+                  it.kind === 'rest' ? (
+                    <View key={it.id} className="flex-row items-center gap-3">
+                      <View className="h-9 w-[58px]" />
+                      <Text className="flex-1 font-mono-semibold text-[11px] uppercase tracking-wider text-ink-3">
+                        Descanso
                       </Text>
-                      {itemSub(it, units) ? (
-                        <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
-                          {itemSub(it, units)}
-                        </Text>
-                      ) : null}
+                      <Text className="font-mono-semibold text-[13px] text-ink-3">
+                        {it.workSeconds != null
+                          ? it.workSeconds >= 60
+                            ? mmss(it.workSeconds)
+                            : `${it.workSeconds} s`
+                          : ''}
+                      </Text>
                     </View>
-                    <Text className="font-mono-semibold text-[13px] text-ink-2">
-                      {targetLabel(it, units.distance)}
-                    </Text>
-                  </View>
-                ))}
+                  ) : (
+                    <View key={it.id} className="flex-row items-center gap-3">
+                      <Thumb uri={it.exercise?.thumbnailUrl} className="h-9 w-[58px]" radius={7} />
+                      <View className="min-w-0 flex-1">
+                        <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
+                          {it.exercise?.name ?? 'Ejercicio'}
+                        </Text>
+                        {itemSub(it, units) ? (
+                          <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
+                            {itemSub(it, units)}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Text className="font-mono-semibold text-[13px] text-ink-2">
+                        {targetLabel(it, units.distance)}
+                      </Text>
+                    </View>
+                  ),
+                )}
               </View>
             ))}
             {w.type === 'video' ? (

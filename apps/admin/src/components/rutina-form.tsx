@@ -475,6 +475,8 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     const ex = exercise(it.exerciseId);
     const tf = targetField(ex?.measurementType);
     const tLabel = tempoLabel(it.tempo);
+    // Tempo describes the phases of a rep — meaningless for distance work.
+    const showTempo = ex?.measurementType !== 'distance';
     return (
       <div
         key={it.key}
@@ -505,19 +507,21 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 <span className="truncate font-mono text-[11px] text-muted">
                   {ex ? es.measurement[ex.measurementType] : ''}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => toggleTempo(it.key)}
-                  title="Tempo"
-                  className={cn(
-                    'shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]',
-                    tLabel
-                      ? 'border-accent/30 bg-accent/10 text-accent-dark'
-                      : 'border-line-2 text-muted hover:bg-surface-3',
-                  )}
-                >
-                  {tLabel ?? 'Tempo'}
-                </button>
+                {showTempo && (
+                  <button
+                    type="button"
+                    onClick={() => toggleTempo(it.key)}
+                    title="Tempo"
+                    className={cn(
+                      'shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]',
+                      tLabel
+                        ? 'border-accent/30 bg-accent/10 text-accent-dark'
+                        : 'border-line-2 text-muted hover:bg-surface-3',
+                    )}
+                  >
+                    {tLabel ?? 'Tempo'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -557,7 +561,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             ✕
           </button>
         </div>
-        {tempoOpen[it.key] && (
+        {showTempo && tempoOpen[it.key] && (
           <div className="flex flex-wrap items-end gap-3 px-3.5 pb-2.5 pl-[84px]">
             {TEMPO_PHASES.map((phase) => (
               <label key={phase} className="flex flex-col gap-1">
