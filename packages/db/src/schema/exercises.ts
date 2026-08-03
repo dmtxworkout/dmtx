@@ -3,7 +3,6 @@ import type { Tempo } from '@dmtx/schemas';
 import {
   contentStatusEnum,
   difficultyEnum,
-  measurementTypeEnum,
   muscleRoleEnum,
   primaryId,
   publishable,
@@ -20,7 +19,6 @@ export const exercises = pgTable('exercises', {
   description: text(),
   cues: jsonb().$type<string[]>().notNull().default([]),
   difficulty: difficultyEnum().notNull(),
-  measurementType: measurementTypeEnum().notNull(),
   isUnilateral: boolean().notNull().default(false),
   defaultTempo: jsonb().$type<Tempo>(),
   demoVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),

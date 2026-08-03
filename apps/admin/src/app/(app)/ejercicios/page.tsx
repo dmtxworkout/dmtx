@@ -15,7 +15,7 @@ import { Thumb } from '@/components/ui/thumb';
 import { MediaThumb } from '@/components/media-thumb';
 
 const COLS =
-  'grid-cols-[74px_minmax(0,1.6fr)_minmax(0,1.4fr)_120px_120px_104px_150px] gap-3.5 px-[18px]';
+  'grid-cols-[74px_minmax(0,1.6fr)_minmax(0,1.4fr)_120px_104px_150px] gap-3.5 px-[18px]';
 const FILTERS = ['Todo', 'Principiante', 'Intermedio', 'Avanzado', 'Sin video'];
 
 export default function ExercisesPage() {
@@ -65,7 +65,7 @@ export default function ExercisesPage() {
       <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <div className={`grid min-w-[1060px] ${COLS} border-b border-line-3 bg-surface-2 py-2.5`}>
-            {['', 'Nombre', 'Músculos', 'Dificultad', 'Medición', 'Estado', 'Actualizado'].map((h, i) => (
+            {['', 'Nombre', 'Músculos', 'Dificultad', 'Estado', 'Actualizado'].map((h, i) => (
               <span
                 key={i}
                 className={`font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2 ${i === 6 ? 'text-right' : ''}`}
@@ -101,7 +101,6 @@ export default function ExercisesPage() {
                 </div>
                 <div className="min-w-0" />
                 <span className="text-[13px] text-ink-2">{es.difficulty[e.difficulty]}</span>
-                <span className="text-[13px] text-ink-2">{es.measurement[e.measurementType]}</span>
                 <span>
                   <Badge tone={e.status}>{es.status[e.status]}</Badge>
                 </span>

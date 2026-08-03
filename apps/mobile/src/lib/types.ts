@@ -77,7 +77,6 @@ export interface PlayerExercise {
   name: string;
   description: string | null;
   cues: string[];
-  measurementType: 'reps' | 'time' | 'distance';
   isUnilateral: boolean;
   defaultTempo: Tempo | null;
   demoVideoUrl: string | null;

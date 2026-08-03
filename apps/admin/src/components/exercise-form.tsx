@@ -6,14 +6,7 @@ import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import {
-  CONTENT_STATUS,
-  contentStatusSchema,
-  DIFFICULTY,
-  difficultySchema,
-  MEASUREMENT_TYPE,
-  measurementTypeSchema,
-} from '@dmtx/schemas';
+import { CONTENT_STATUS, contentStatusSchema, DIFFICULTY, difficultySchema } from '@dmtx/schemas';
 import type { CreateExerciseInput, Exercise } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
@@ -30,7 +23,6 @@ const formSchema = z.object({
   description: z.string(),
   cues: z.array(z.object({ value: z.string() })),
   difficulty: difficultySchema,
-  measurementType: measurementTypeSchema,
   isUnilateral: z.boolean(),
   status: contentStatusSchema,
 });
@@ -41,7 +33,6 @@ const emptyValues: FormValues = {
   description: '',
   cues: [],
   difficulty: 'beginner',
-  measurementType: 'reps',
   isUnilateral: false,
   status: 'draft',
 };
@@ -52,7 +43,6 @@ function toDefaults(exercise: Exercise): FormValues {
     description: exercise.description ?? '',
     cues: exercise.cues.map((value) => ({ value })),
     difficulty: exercise.difficulty,
-    measurementType: exercise.measurementType,
     isUnilateral: exercise.isUnilateral,
     status: exercise.status,
   };
@@ -82,7 +72,6 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
         description: values.description || null,
         cues: values.cues.map((c) => c.value).filter((v) => v.trim().length > 0),
         difficulty: values.difficulty,
-        measurementType: values.measurementType,
         isUnilateral: values.isUnilateral,
         status: values.status,
         thumbnailAssetId,
@@ -173,18 +162,6 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
                       ))}
                     </Select>
                   </div>
-                  <div>
-                    <Label htmlFor="measurementType">{es.exercises.fields.measurementType}</Label>
-                    <Select id="measurementType" {...form.register('measurementType')}>
-                      {MEASUREMENT_TYPE.map((m) => (
-                        <option key={m} value={m}>
-                          {es.measurement[m]}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="status">{es.exercises.fields.status}</Label>
                     <Select id="status" {...form.register('status')}>

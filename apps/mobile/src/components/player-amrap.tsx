@@ -18,12 +18,12 @@ const loadKgOf = (it: WorkoutItem): number | null => {
 };
 
 const isReps = (it: WorkoutItem) => {
-  const mt = it.measure ?? it.exercise?.measurementType ?? 'reps';
+  const mt = it.measure ?? 'reps';
   return mt === 'reps' && it.reps != null;
 };
 
 function targetText(it: WorkoutItem, du: DistanceUnit): string {
-  const mt = it.measure ?? it.exercise?.measurementType;
+  const mt = it.measure;
   if (mt === 'time' && it.workSeconds != null)
     return it.workSeconds >= 60 ? mmss(it.workSeconds) : `${it.workSeconds} s`;
   if (mt === 'distance' && it.distanceMeters != null) return formatDistance(it.distanceMeters, du);

@@ -1,10 +1,5 @@
 import { z } from 'zod';
-import {
-  contentStatusSchema,
-  difficultySchema,
-  measurementTypeSchema,
-  muscleRoleSchema,
-} from '../enums';
+import { contentStatusSchema, difficultySchema, muscleRoleSchema } from '../enums';
 import { tempoSchema } from '../tempo';
 import { slugSchema, uuidSchema } from '../common';
 
@@ -21,7 +16,6 @@ export const createExerciseSchema = z.object({
   description: z.string().max(5000).nullish(),
   cues: z.array(z.string().min(1).max(500)).default([]),
   difficulty: difficultySchema,
-  measurementType: measurementTypeSchema,
   isUnilateral: z.boolean().default(false),
   defaultTempo: tempoSchema.nullish(),
   demoVideoAssetId: uuidSchema.nullish(),
@@ -43,7 +37,6 @@ export const exerciseSchema = z.object({
   description: z.string().nullable(),
   cues: z.array(z.string()),
   difficulty: difficultySchema,
-  measurementType: measurementTypeSchema,
   isUnilateral: z.boolean(),
   defaultTempo: tempoSchema.nullable(),
   demoVideoAssetId: uuidSchema.nullable(),

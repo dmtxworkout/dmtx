@@ -66,8 +66,8 @@ export interface Session {
 }
 
 function measureOf(item: WorkoutItem): StepMeasure {
-  // Item override wins; otherwise fall back to the exercise's default type.
-  const mt = item.measure ?? item.exercise?.measurementType;
+  // Item's measure; if unset, infer from whichever target field is filled.
+  const mt = item.measure;
   if (mt === 'time' || (mt == null && item.workSeconds != null)) return 'time';
   if (mt === 'distance' || (mt == null && item.distanceMeters != null)) return 'distance';
   return 'reps';

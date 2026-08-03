@@ -496,7 +496,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   // is the drag grip to show; `onDelete` removes the item or the whole entry.
   const exerciseFields = (bk: string, it: ItemState, handle: ReactNode, onDelete: () => void) => {
     const ex = exercise(it.exerciseId);
-    const measure: MeasurementType = it.measure || ex?.measurementType || 'reps';
+    const measure: MeasurementType = it.measure || 'reps';
     const tf = targetField(measure);
     const tLabel = tempoLabel(it.tempo);
     const showTempo = measure !== 'distance';
@@ -703,7 +703,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         return {
           kind: it.kind,
           exerciseId: rest ? null : it.exerciseId,
-          measure: rest ? null : it.measure || null,
+          measure: rest ? null : it.measure || 'reps',
           sets: rest ? null : cols.showSets ? num(it.sets) : null,
           reps: rest ? null : num(it.reps),
           workSeconds: num(it.workSeconds),
@@ -1382,7 +1382,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         queryKey="exercise-picker"
         load={(s) => api.exercises.list({ search: s || undefined, pageSize: 50 }).then((r) => r.data)}
         renderTitle={(e) => e.name}
-        renderSubtitle={(e) => `${es.difficulty[e.difficulty]} · ${es.measurement[e.measurementType]}`}
+        renderSubtitle={(e) => es.difficulty[e.difficulty]}
         onPick={(e) => {
           if (pickerBlock === '__new__') {
             // Top-level "+ Ejercicio" → a loose exercise done once.

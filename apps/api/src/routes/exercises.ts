@@ -27,7 +27,6 @@ function serializeBase(row: ExerciseRow) {
     description: row.description,
     cues: row.cues,
     difficulty: row.difficulty,
-    measurementType: row.measurementType,
     isUnilateral: row.isUnilateral,
     defaultTempo: row.defaultTempo ?? null,
     demoVideoAssetId: row.demoVideoAssetId,
@@ -152,7 +151,6 @@ exercisesRoute.openapi(
         description: input.description ?? null,
         cues: input.cues,
         difficulty: input.difficulty,
-        measurementType: input.measurementType,
         isUnilateral: input.isUnilateral,
         defaultTempo: input.defaultTempo ?? null,
         demoVideoAssetId: input.demoVideoAssetId ?? null,
@@ -209,7 +207,6 @@ exercisesRoute.openapi(
         ...(input.description !== undefined ? { description: input.description ?? null } : {}),
         ...(input.cues !== undefined ? { cues: input.cues } : {}),
         ...(input.difficulty !== undefined ? { difficulty: input.difficulty } : {}),
-        ...(input.measurementType !== undefined ? { measurementType: input.measurementType } : {}),
         ...(input.isUnilateral !== undefined ? { isUnilateral: input.isUnilateral } : {}),
         ...(input.defaultTempo !== undefined ? { defaultTempo: input.defaultTempo ?? null } : {}),
         ...(input.demoVideoAssetId !== undefined

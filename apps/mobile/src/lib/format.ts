@@ -64,7 +64,7 @@ export function loadLabel(load: LoadPrescription | null | undefined, weightUnit?
 
 /** The prescription target shown next to an exercise, e.g. "3 reps", "2 × 45 s". */
 export function targetLabel(item: WorkoutItem, distanceUnit?: DistanceUnit): string {
-  const mt = item.measure ?? item.exercise?.measurementType;
+  const mt = item.measure;
   const sets = item.sets && item.sets > 1 ? item.sets : null;
   if (mt === 'time' && item.workSeconds != null) {
     const unit = item.workSeconds >= 60 ? mmss(item.workSeconds) : `${item.workSeconds} s`;
