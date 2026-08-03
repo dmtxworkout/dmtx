@@ -354,22 +354,24 @@ function Stepper({
   onInc: () => void;
 }) {
   return (
-    <View className="flex-1 gap-2">
+    <View className="gap-2">
       <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">{label}</Text>
-      <View className="flex-row items-center gap-2">
+      <View className="flex-row items-center gap-2.5">
         <Pressable
           onPress={onDec}
-          className="h-[52px] w-[44px] items-center justify-center rounded-xl bg-surface-2"
+          className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
         >
           <Text className="text-[22px] text-ink">−</Text>
         </Pressable>
-        <View className="h-[52px] flex-1 flex-row items-baseline justify-center gap-1 rounded-xl border border-accent bg-surface">
-          <Text className="font-extrabold text-[24px] text-ink">{value}</Text>
-          <Text className="font-semibold text-[12px] text-ink-2">{unit}</Text>
+        <View className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface">
+          <Text className="font-extrabold text-[26px] text-ink">{value}</Text>
+          <View className="absolute inset-y-0 right-3.5 justify-center">
+            <Text className="font-semibold text-[13px] text-ink-2">{unit}</Text>
+          </View>
         </View>
         <Pressable
           onPress={onInc}
-          className="h-[52px] w-[44px] items-center justify-center rounded-xl bg-surface-2"
+          className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
         >
           <Text className="text-[22px] text-ink">+</Text>
         </Pressable>
@@ -457,7 +459,7 @@ export function StrengthSetScreen({
           </Text>
           {before ? <Text className="font-mono text-[11px] text-ink-4">Antes: {before}</Text> : null}
         </View>
-        <View className="flex-row gap-3">
+        <View className="gap-4">
           <Stepper
             label="Reps"
             value={String(reps)}
