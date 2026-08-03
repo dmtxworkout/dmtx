@@ -1,6 +1,7 @@
 import type { FormatConfig, Tempo, WorkoutFormat } from '@dmtx/schemas';
 import type { LastResult, WorkoutBlock, WorkoutDetail, WorkoutItem } from './types';
 import { loadLabel } from './format';
+import { weightToKg } from './units';
 
 /**
  * The workout "engine": turns a rutina (format + blocks + items) into a flat,
@@ -84,8 +85,7 @@ function exerciseStep(
 ): ExerciseStep {
   const measure = opts?.measure ?? measureOf(item);
   const load = item.loadPrescription;
-  const loadKg =
-    load?.type === 'absolute' ? Math.round(load.unit === 'lb' ? load.value * 0.4536 : load.value) : null;
+  const loadKg = load?.type === 'absolute' ? weightToKg(load.value, load.unit) : null;
   return {
     type: 'exercise',
     key: nextKey(),

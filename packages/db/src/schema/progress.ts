@@ -1,4 +1,4 @@
-import { index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { doublePrecision, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { measurementTypeEnum, primaryId, timestamps, workoutFormatEnum } from './_shared';
 import { user } from './auth';
 import { workouts } from './workouts';
@@ -22,7 +22,8 @@ export const workoutLogs = pgTable(
     completedAt: timestamp({ withTimezone: true }),
     durationSeconds: integer(),
     roundsCompleted: integer(),
-    totalVolume: integer(),
+    // kg (decimal) so weights entered in lb/kg round-trip without loss.
+    totalVolume: doublePrecision(),
     notes: text(),
     ...timestamps,
   },
@@ -46,7 +47,7 @@ export const setResults = pgTable(
     reps: integer(),
     seconds: integer(),
     distanceMeters: integer(),
-    loadKg: integer(),
+    loadKg: doublePrecision(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index('set_results_log_idx').on(t.workoutLogId)],

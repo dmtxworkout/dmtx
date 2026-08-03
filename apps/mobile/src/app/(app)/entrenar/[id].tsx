@@ -132,9 +132,8 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
     s: ExerciseStep,
     opts: { reps?: number; seconds?: number; distanceMeters?: number; loadKg?: number; display: string },
   ) => {
-    // loadKg is stored as an integer (kg); round the display-unit conversion.
-    const rawLoad = opts.loadKg ?? s.loadKg;
-    const loadKg = rawLoad != null ? Math.round(rawLoad) : null;
+    // loadKg is stored as decimal kg, so the lb/kg conversion is kept exact.
+    const loadKg = opts.loadKg ?? s.loadKg ?? null;
     // "Beat your last": weighted reps compare volume (reps × kg); else raw measure.
     let prevDisplay: string | null = null;
     let improved = false;
@@ -236,7 +235,7 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
         completedAt: new Date().toISOString(),
         durationSeconds: elapsed,
         roundsCompleted,
-        totalVolume: volume ? Math.round(volume) : null,
+        totalVolume: volume || null,
         results,
       });
     };

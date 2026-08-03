@@ -7,13 +7,13 @@ import type { CreateWorkoutLogInput, SetResultInput } from '@dmtx/schemas';
 import { api } from '../lib/api';
 import { mmss } from '../lib/format';
 import { useUnits } from '../lib/units-context';
-import { formatDistance, formatWeight } from '../lib/units';
+import { formatDistance, formatWeight, weightToKg } from '../lib/units';
 import type { DistanceUnit } from '../lib/units';
 import type { WorkoutDetail, WorkoutItem } from '../lib/types';
 
 const loadKgOf = (it: WorkoutItem): number | null => {
   const l = it.loadPrescription;
-  return l?.type === 'absolute' ? Math.round(l.unit === 'lb' ? l.value * 0.4536 : l.value) : null;
+  return l?.type === 'absolute' ? weightToKg(l.value, l.unit) : null;
 };
 
 const isReps = (it: WorkoutItem) => {

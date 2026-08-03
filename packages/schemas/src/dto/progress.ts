@@ -25,7 +25,7 @@ export const createWorkoutLogSchema = z.object({
   completedAt: z.iso.datetime().nullish(),
   durationSeconds: z.number().int().nonnegative().nullish(),
   roundsCompleted: z.number().int().nonnegative().nullish(),
-  totalVolume: z.number().int().nonnegative().nullish(),
+  totalVolume: z.number().nonnegative().nullish(),
   notes: z.string().nullish(),
   results: z.array(setResultInputSchema),
 });
