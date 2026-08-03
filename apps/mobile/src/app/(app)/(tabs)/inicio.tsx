@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import { Button, Center, Loading, Logo, Thumb } from '../../../components/ui';
 import { Row, hrefForCard } from '../../../components/content';
 import { api } from '../../../lib/api';
 import { difficultyLabel, es } from '../../../i18n';
+import { colors } from '../../../theme';
 
 function initials(name: string): string {
   return name
@@ -40,7 +41,20 @@ export default function Inicio() {
 
   return (
     <View className="flex-1 bg-bg">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="pb-6">
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerClassName="pb-6"
+        refreshControl={
+          <RefreshControl
+            refreshing={home.isRefetching}
+            onRefresh={() => {
+              home.refetch();
+              me.refetch();
+            }}
+            tintColor={colors.ink3}
+          />
+        }
+      >
         {/* Hero */}
         <View className="relative" style={{ height: 380 }}>
           <Thumb uri={hero?.thumbnailUrl} className="absolute inset-0 h-full w-full" radius={0} />
