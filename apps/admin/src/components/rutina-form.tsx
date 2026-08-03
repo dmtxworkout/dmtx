@@ -86,13 +86,11 @@ function targetField(m?: MeasurementType): TargetField {
   if (m === 'distance') return 'distanceMeters';
   return 'reps';
 }
-const TARGET_UNIT: Record<TargetField, string> = { reps: 'reps', workSeconds: 'seg', distanceMeters: 'm' };
-
 // Per-item measurement toggle (overrides the exercise's default type).
 const MEASURES: { v: MeasurementType; label: string }[] = [
   { v: 'reps', label: 'reps' },
   { v: 'time', label: 'seg' },
-  { v: 'distance', label: 'm' },
+  { v: 'distance', label: 'dist' },
 ];
 
 // Tempo is set per rutina item (not on the exercise): a push-up is a push-up;
@@ -565,7 +563,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           {cols.showTarget && (
             <input
               value={it[tf]}
-              placeholder={TARGET_UNIT[tf]}
+              placeholder="0"
               onChange={(e) => updateItem(bk, it.key, { [tf]: e.target.value })}
               className={boxCls}
             />
