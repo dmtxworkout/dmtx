@@ -227,19 +227,20 @@ export function buildSession(workout: WorkoutDetail): Session {
       const cfg = config(workout, 'emom');
       const items = circuit(workout);
       const steps: Step[] = [];
-      const rounds = cfg?.rounds ?? 1;
+      const rounds = cfg?.rounds ?? 1; // total intervals
       const interval = cfg?.intervalSeconds ?? 60;
-      for (let r = 0; r < rounds; r += 1) {
-        items.forEach((item) => {
-          const b = workout.blocks.find((bl) => bl.items.includes(item))!;
-          steps.push(
-            exerciseStep(b, workout.blocks.indexOf(b), item, r + 1, rounds, {
-              measure: 'time',
-              targetSeconds: interval,
-              withinReps: item.reps,
-            }),
-          );
-        });
+      // One interval per round; the exercises rotate across the intervals.
+      for (let i = 0; i < rounds; i += 1) {
+        const item = items[i % Math.max(1, items.length)];
+        if (!item) break;
+        const b = workout.blocks.find((bl) => bl.items.includes(item))!;
+        steps.push(
+          exerciseStep(b, workout.blocks.indexOf(b), item, null, null, {
+            measure: 'time',
+            targetSeconds: interval,
+            withinReps: item.reps,
+          }),
+        );
       }
       return { ...base, mode: 'sequential', capSeconds: null, circuitLength: 0, steps };
     }

@@ -48,34 +48,39 @@ const FORMAT_DESC: Record<WorkoutFormat, string> = {
   circuit: 'Vueltas a un circuito de estaciones.',
 };
 
-const FORMAT_FIELDS: Record<WorkoutFormat, { key: string; label: string }[]> = {
-  amrap: [{ key: 'totalSeconds', label: 'Duración total (seg)' }],
+// Timing config per format. `duration` renders as min:sec, `seconds` as a
+// plain seconds box, `count` as an integer. All persist as their raw number in
+// formatCfg (seconds for duration/seconds, the integer for count).
+type CfgKind = 'duration' | 'seconds' | 'count';
+type CfgField = { key: string; label: string; kind: CfgKind };
+const FORMAT_FIELDS: Record<WorkoutFormat, CfgField[]> = {
+  amrap: [{ key: 'totalSeconds', label: 'Duración total', kind: 'duration' }],
   emom: [
-    { key: 'intervalSeconds', label: 'Intervalo (seg)' },
-    { key: 'rounds', label: 'Rondas' },
+    { key: 'intervalSeconds', label: 'Cada', kind: 'duration' },
+    { key: 'rounds', label: 'Rondas', kind: 'count' },
   ],
   tabata: [
-    { key: 'workSeconds', label: 'Trabajo (seg)' },
-    { key: 'restSeconds', label: 'Descanso (seg)' },
-    { key: 'rounds', label: 'Rondas' },
+    { key: 'rounds', label: 'Rondas', kind: 'count' },
+    { key: 'workSeconds', label: 'Trabajo', kind: 'seconds' },
+    { key: 'restSeconds', label: 'Descanso', kind: 'seconds' },
   ],
   strength: [],
-  chipper: [{ key: 'timeCapSeconds', label: 'Tiempo límite (seg)' }],
+  chipper: [{ key: 'timeCapSeconds', label: 'Tiempo límite', kind: 'duration' }],
   for_time: [
-    { key: 'timeCapSeconds', label: 'Tiempo límite (seg)' },
-    { key: 'rounds', label: 'Rondas' },
+    { key: 'rounds', label: 'Rondas', kind: 'count' },
+    { key: 'timeCapSeconds', label: 'Tiempo límite', kind: 'duration' },
   ],
   circuit: [
-    { key: 'rounds', label: 'Rondas' },
-    { key: 'restBetweenRoundsSeconds', label: 'Descanso/ronda (seg)' },
-    { key: 'timeCapSeconds', label: 'Tiempo límite (seg)' },
+    { key: 'rounds', label: 'Rondas', kind: 'count' },
+    { key: 'restBetweenRoundsSeconds', label: 'Descanso/ronda', kind: 'seconds' },
+    { key: 'timeCapSeconds', label: 'Tiempo límite', kind: 'duration' },
   ],
 };
 
 // Plain-language explainer so the per-exercise fields make sense for the format.
 const FORMAT_HELP: Record<WorkoutFormat, string> = {
   amrap: 'Repite todos los bloques, en orden, hasta que se acabe el tiempo. Usa "Rondas" del bloque para sub-secciones (p. ej. un bloque de "3 rondas de…").',
-  emom: 'En cada intervalo haces el trabajo de un ejercicio y descansas el resto del minuto.',
+  emom: 'Cada intervalo haces un ejercicio y descansas lo que sobre. Los ejercicios rotan por los intervalos; "Rondas" es cuántos intervalos en total.',
   tabata: 'Trabajo/descanso fijos por N rondas (global). Los ejercicios rotan; sólo indica cuáles y su carga.',
   strength: 'Series × reps con carga y descanso entre series.',
   chipper: 'Haz cada ejercicio una vez, en orden, lo más rápido posible.',
@@ -696,6 +701,56 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
 
+  // Renders one timing-config field (duration min:sec, plain seconds, or count).
+  const configField = (f: CfgField) => {
+    const box = 'h-9 w-14 rounded-lg border border-line-2 bg-surface px-2 text-center font-mono text-sm';
+    if (f.kind === 'duration') {
+      const total = Math.max(0, Math.round(Number(formatCfg[f.key]) || 0));
+      const min = Math.floor(total / 60);
+      const sec = total % 60;
+      const setDur = (m: number, s: number) =>
+        setCfg(f.key, String(Math.max(0, m) * 60 + Math.max(0, s)));
+      return (
+        <div key={f.key} className="flex flex-col gap-1.5">
+          <span className="text-[12px] font-semibold text-ink-2">{f.label}</span>
+          <div className="flex items-center gap-1">
+            <input
+              inputMode="numeric"
+              value={min ? String(min) : ''}
+              placeholder="0"
+              onChange={(e) => setDur(Math.round(Number(e.target.value) || 0), sec)}
+              className={box}
+            />
+            <span className="font-mono text-xs text-muted">min</span>
+            <input
+              inputMode="numeric"
+              value={sec ? String(sec) : ''}
+              placeholder="0"
+              onChange={(e) => setDur(min, Math.round(Number(e.target.value) || 0))}
+              className={box}
+            />
+            <span className="font-mono text-xs text-muted">seg</span>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div key={f.key} className="flex flex-col gap-1.5">
+        <span className="text-[12px] font-semibold text-ink-2">{f.label}</span>
+        <div className="flex items-center gap-1.5">
+          <input
+            inputMode="numeric"
+            value={formatCfg[f.key] ?? ''}
+            placeholder="0"
+            onChange={(e) => setCfg(f.key, e.target.value)}
+            className={box}
+          />
+          {f.kind === 'seconds' && <span className="font-mono text-xs text-muted">seg</span>}
+        </div>
+      </div>
+    );
+  };
+
   const doSave = () => {
     setServerError(null);
     if (!name.trim()) {
@@ -911,6 +966,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 </span>
                 <p className="text-[12.5px] leading-snug text-ink-2">{FORMAT_HELP[format]}</p>
               </div>
+
+              {FORMAT_FIELDS[format].length > 0 && (
+                <div className="flex flex-wrap items-end gap-x-5 gap-y-3 rounded-xl border border-line-2 bg-surface px-4 py-3">
+                  {FORMAT_FIELDS[format].map(configField)}
+                </div>
+              )}
 
               {blocks.map((b, bi) => {
                 const isCollapsed = collapsed[b.key];
@@ -1226,24 +1287,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   </div>
                 )}
               </div>
-
-              {FORMAT_FIELDS[format].length > 0 && (
-                <div className="flex flex-col gap-2.5">
-                  <MonoLabel>{es.workouts.config}</MonoLabel>
-                  <div className="grid grid-cols-2 gap-3">
-                    {FORMAT_FIELDS[format].map((f) => (
-                      <div key={f.key}>
-                        <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{f.label}</div>
-                        <Input
-                          inputMode="numeric"
-                          value={formatCfg[f.key] ?? ''}
-                          onChange={(e) => setCfg(f.key, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </>
           )}
 
