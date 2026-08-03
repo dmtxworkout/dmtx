@@ -37,12 +37,8 @@ export function formatWeight(kg: number | null | undefined, u: WeightUnit): stri
 }
 
 // ---- Distance -------------------------------------------------------------
-export const mToDistance = (m: number, u: DistanceUnit) =>
-  u === 'mi' ? m / M_PER_MI : m / M_PER_KM;
-export const distanceToM = (v: number, u: DistanceUnit) =>
-  u === 'mi' ? v * M_PER_MI : v * M_PER_KM;
-export const distanceStep = (_u: DistanceUnit) => 0.1;
-export const distancePrefill = (m: number, u: DistanceUnit) => trim(mToDistance(m, u));
+// Distance is entered in meters; only the *display* of results is converted.
+const mToDistance = (m: number, u: DistanceUnit) => (u === 'mi' ? m / M_PER_MI : m / M_PER_KM);
 /** Canonical meters → display string, e.g. "0.8 km" / "3.1 mi". */
 export function formatDistance(m: number | null | undefined, u: DistanceUnit): string {
   if (m == null) return '';

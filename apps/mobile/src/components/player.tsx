@@ -6,17 +6,7 @@ import { es, formatLabel } from '../i18n';
 import { mmss, tempoCompact } from '../lib/format';
 import type { ExerciseStep, RestStep, Session } from '../lib/session';
 import { useUnits } from '../lib/units-context';
-import {
-  distancePrefill,
-  distanceStep,
-  distanceToM,
-  fmtNum,
-  formatDistance,
-  formatWeight,
-  weightPrefill,
-  weightStep,
-  weightToKg,
-} from '../lib/units';
+import { fmtNum, formatWeight, weightPrefill, weightStep, weightToKg } from '../lib/units';
 
 /** Countdown that ticks while `running`, fires `onDone` once at zero. */
 function useCountdown(total: number, running: boolean, onDone: () => void) {
@@ -214,9 +204,11 @@ export function RepsScreen({
             >
               <Text className="text-[22px] text-ink">−</Text>
             </Pressable>
-            <View className="h-[52px] flex-1 flex-row items-baseline justify-center gap-1.5 rounded-xl border border-accent bg-surface">
+            <View className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface">
               <Text className="font-extrabold text-[28px] text-ink">{mark}</Text>
-              <Text className="font-semibold text-[14px] text-ink-2">reps</Text>
+              <View className="absolute inset-y-0 right-3.5 justify-center">
+                <Text className="font-semibold text-[14px] text-ink-2">reps</Text>
+              </View>
             </View>
             <Pressable
               onPress={() => setMark((m) => m + 1)}
@@ -264,16 +256,15 @@ export function DistanceScreen({
   onDone: (meters: number) => void;
   onSkip: () => void;
 }) {
-  const { units } = useUnits();
-  const du = units.distance;
-  const dStep = distanceStep(du);
-  // Distance is held in display units (km/mi); converted to meters on save.
-  const [dist, setDist] = useState(distancePrefill(step.last?.distanceMeters ?? step.targetDistance ?? 0, du));
-  const bump = (delta: number) => setDist((d) => Math.max(0, Math.round((d + delta) * 100) / 100));
+  // Distance is entered in meters (whole numbers); results are shown in km/mi
+  // per the user's preference elsewhere.
+  const STEP_M = 50;
+  const [meters, setMeters] = useState(Math.round(step.last?.distanceMeters ?? step.targetDistance ?? 0));
+  const bump = (delta: number) => setMeters((m) => Math.max(0, m + delta));
 
-  const target = step.targetDistance != null ? formatDistance(step.targetDistance, du) : '—';
+  const target = step.targetDistance != null ? `${Math.round(step.targetDistance)} m` : '—';
   const before =
-    step.last?.distanceMeters != null ? formatDistance(step.last.distanceMeters, du) : null;
+    step.last?.distanceMeters != null ? `${Math.round(step.last.distanceMeters)} m` : null;
 
   return (
     <View className="flex-1 bg-bg pt-14">
@@ -310,17 +301,19 @@ export function DistanceScreen({
         </View>
         <View className="flex-row items-center gap-3">
           <Pressable
-            onPress={() => bump(-dStep)}
+            onPress={() => bump(-STEP_M)}
             className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
           >
             <Text className="text-[22px] text-ink">−</Text>
           </Pressable>
-          <View className="h-[52px] flex-1 flex-row items-baseline justify-center gap-1.5 rounded-xl border border-accent bg-surface">
-            <Text className="font-extrabold text-[28px] text-ink">{fmtNum(dist)}</Text>
-            <Text className="font-semibold text-[14px] text-ink-2">{du}</Text>
+          <View className="relative h-[52px] flex-1 items-center justify-center rounded-xl border border-accent bg-surface">
+            <Text className="font-extrabold text-[28px] text-ink">{meters}</Text>
+            <View className="absolute inset-y-0 right-3.5 justify-center">
+              <Text className="font-semibold text-[14px] text-ink-2">m</Text>
+            </View>
           </View>
           <Pressable
-            onPress={() => bump(dStep)}
+            onPress={() => bump(STEP_M)}
             className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2"
           >
             <Text className="text-[22px] text-ink">+</Text>
@@ -336,7 +329,7 @@ export function DistanceScreen({
           <Text className="font-semibold text-[14px] text-ink-2">{es.common.skip}</Text>
         </Pressable>
         <Pressable
-          onPress={() => onDone(distanceToM(dist, du))}
+          onPress={() => onDone(meters)}
           className="h-[54px] flex-1 items-center justify-center rounded-xl bg-accent active:opacity-80"
         >
           <Text className="font-bold text-[17px] text-white">Hecho · siguiente</Text>
