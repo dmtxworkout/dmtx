@@ -15,6 +15,11 @@ export function durationLabel(seconds: number | null | undefined): string {
   return `${Math.max(1, Math.round(seconds / 60))} min`;
 }
 
+/** Weight → "100" or "102.5" (drops the trailing .0). */
+export function fmtKg(w: number): string {
+  return Number.isInteger(w) ? String(w) : w.toFixed(1);
+}
+
 const phase = (v: number | 'X'): string => (v === 'X' ? 'X' : String(v));
 
 /** Tempo → "0-3-1-X" (holdTop-eccentric-holdBottom-concentric). */

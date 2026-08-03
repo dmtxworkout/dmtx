@@ -153,7 +153,9 @@ function buildSequential(workout: WorkoutDetail, defaultRounds: number): Step[] 
         for (let s = 0; s < totalSets; s += 1) {
           steps.push(exerciseStep(block, bi, item, totalSets > 1 ? s + 1 : null, totalSets > 1 ? totalSets : null));
           if (item.restBetweenSeconds && s < totalSets - 1) {
-            steps.push(restStep(item.restBetweenSeconds, item.exercise?.name ?? null));
+            // Between-set rest names the upcoming set, e.g. "Sentadilla · Serie 3".
+            const nm = item.exercise?.name ?? null;
+            steps.push(restStep(item.restBetweenSeconds, nm ? `${nm} · Serie ${s + 2}` : null));
           }
         }
       });

@@ -7,6 +7,7 @@ import { Loading } from '../../../components/ui';
 import {
   RepsScreen,
   RestScreen,
+  StrengthSetScreen,
   SummaryScreen,
   TimeScreen,
   type MarkRow,
@@ -15,7 +16,7 @@ import {
 import { AmrapPlayer } from '../../../components/player-amrap';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
-import { mmss } from '../../../lib/format';
+import { fmtKg, mmss } from '../../../lib/format';
 import { es } from '../../../i18n';
 
 interface Mark {
@@ -57,6 +58,13 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
     () => session.steps.filter((s): s is ExerciseStep => s.type === 'exercise'),
     [session],
   );
+  // Distinct exercises (strength counts sets as steps, so dedupe by item for
+  // "ejercicio X de Y").
+  const distinctItems = useMemo(() => {
+    const seen: string[] = [];
+    for (const e of exerciseSteps) if (!seen.includes(e.itemId)) seen.push(e.itemId);
+    return seen;
+  }, [exerciseSteps]);
 
   const [stepIndex, setStepIndex] = useState(0);
   const [round, setRound] = useState(1);
@@ -118,18 +126,27 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
 
   const logExercise = (
     s: ExerciseStep,
-    opts: { reps?: number; seconds?: number; display: string },
+    opts: { reps?: number; seconds?: number; loadKg?: number; display: string },
   ) => {
-    const lastVal = s.measure === 'time' ? (s.last?.seconds ?? null) : (s.last?.reps ?? null);
-    const cur = opts.reps ?? opts.seconds ?? null;
-    const prevDisplay =
-      lastVal != null
-        ? s.measure === 'time'
-          ? lastVal >= 60
-            ? mmss(lastVal)
-            : `${lastVal} s`
-          : `${lastVal} reps`
-        : null;
+    const loadKg = opts.loadKg ?? s.loadKg;
+    // "Beat your last": for weighted reps compare volume (reps × kg), else the raw measure.
+    let prevDisplay: string | null = null;
+    let improved = false;
+    if (s.measure === 'time') {
+      const last = s.last?.seconds ?? null;
+      prevDisplay = last != null ? (last >= 60 ? mmss(last) : `${last} s`) : null;
+      improved = last != null && opts.seconds != null && opts.seconds > last;
+    } else {
+      const lastReps = s.last?.reps ?? null;
+      const lastLoad = s.last?.loadKg ?? null;
+      if (lastReps != null && lastLoad != null && loadKg != null) {
+        prevDisplay = `${lastReps} × ${fmtKg(lastLoad)} kg`;
+        improved = opts.reps != null && opts.reps * loadKg > lastReps * lastLoad;
+      } else if (lastReps != null) {
+        prevDisplay = `${lastReps} reps`;
+        improved = opts.reps != null && opts.reps > lastReps;
+      }
+    }
     setMarks((m) => ({
       ...m,
       [`${s.key}:${round}`]: {
@@ -141,10 +158,10 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
         reps: opts.reps ?? null,
         seconds: opts.seconds ?? null,
         distanceMeters: null,
-        loadKg: s.loadKg,
+        loadKg,
         display: opts.display,
         prevDisplay,
-        improved: lastVal != null && cur != null && cur > lastVal,
+        improved,
       },
     }));
   };
@@ -168,13 +185,17 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
 
   if (phase === 'summary') {
     const list = Object.values(marks);
-    const volume = list.reduce((sum, m) => sum + (m.reps || 0), 0);
+    // Strength scores tonnage (Σ reps × kg); everything else scores total reps.
+    const isStrength = session.format === 'strength';
+    const tonnage = list.reduce((sum, m) => sum + (m.reps || 0) * (m.loadKg || 0), 0);
+    const repVolume = list.reduce((sum, m) => sum + (m.reps || 0), 0);
+    const volume = isStrength ? tonnage : repVolume;
     const roundsCompleted = session.mode === 'amrap' ? Math.max(0, round - 1) : null;
     const stats: { k: string; v: string }[] = [];
     if (session.mode === 'amrap') stats.push({ k: 'Rondas', v: String(roundsCompleted) });
     stats.push({ k: 'Tiempo', v: mmss(elapsed) });
     stats.push({ k: 'Ejercicios', v: String(list.length) });
-    if (volume > 0) stats.push({ k: 'Volumen', v: `${volume}` });
+    if (volume > 0) stats.push({ k: 'Volumen', v: isStrength ? `${volume} kg` : `${volume}` });
     const markRows: MarkRow[] = list.map((m) => ({
       name: m.name,
       value: m.display,
@@ -258,6 +279,30 @@ function Player({ workout }: { workout: NonNullable<Awaited<ReturnType<typeof ap
         onDone={() => {
           const secs = step.targetSeconds ?? 0;
           logExercise(step, { seconds: secs, display: secs >= 60 ? mmss(secs) : `${secs} s` });
+          advance();
+        }}
+        onSkip={advance}
+      />
+    );
+  }
+
+  if (session.format === 'strength' && step.measure === 'reps') {
+    const strengthNav: Nav = {
+      exercisePos: distinctItems.indexOf(step.itemId) + 1,
+      exerciseTotal: distinctItems.length,
+      segIndex: (step.set ?? 1) - 1,
+      segCount: step.totalSets ?? 1,
+    };
+    return (
+      <StrengthSetScreen
+        key={step.key}
+        step={step}
+        session={session}
+        nav={strengthNav}
+        onExit={() => router.back()}
+        onDone={(reps, loadKg) => {
+          const display = loadKg > 0 ? `${reps} × ${fmtKg(loadKg)} kg` : `${reps} reps`;
+          logExercise(step, { reps, loadKg, display });
           advance();
         }}
         onSkip={advance}
