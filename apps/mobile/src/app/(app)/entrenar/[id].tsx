@@ -15,6 +15,7 @@ import {
   type Nav,
 } from '../../../components/player';
 import { AmrapPlayer } from '../../../components/player-amrap';
+import { EmomPlayer } from '../../../components/player-emom';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
 import { mmss } from '../../../lib/format';
@@ -50,6 +51,7 @@ export default function Entrenar() {
     );
   }
   if (q.data.format === 'amrap') return <AmrapPlayer workout={q.data} />;
+  if (q.data.format === 'emom') return <EmomPlayer workout={q.data} />;
   return <Player workout={q.data} />;
 }
 
