@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
@@ -299,6 +299,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [nameEditKey, setNameEditKey] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  // Item drag-and-drop (reorder exercises/rests within a block).
+  const [dragItem, setDragItem] = useState<{ bk: string; i: number } | null>(null);
+  const [overItem, setOverItem] = useState<{ bk: string; i: number } | null>(null);
 
   const { data: exList } = useQuery({
     queryKey: ['exercises', 'all'],
@@ -342,6 +345,20 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         b.key === bk ? { ...b, items: b.items.map((it) => (it.key === ik ? { ...it, ...patch } : it)) } : b,
       ),
     );
+  // Reorder items within a single block (drops are constrained to the block).
+  const moveItem = (bk: string, target: number) => {
+    setBlocks((bs) =>
+      bs.map((b) => {
+        if (b.key !== bk || !dragItem || dragItem.bk !== bk || dragItem.i === target) return b;
+        const items = [...b.items];
+        const [moved] = items.splice(dragItem.i, 1);
+        if (moved) items.splice(target, 0, moved);
+        return { ...b, items };
+      }),
+    );
+    setDragItem(null);
+    setOverItem(null);
+  };
 
   const metaLine = [
     type === 'video' ? 'Video' : FORMAT_LABEL[format],
@@ -386,13 +403,55 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       bs.map((b) => (b.key === bk ? { ...b, items: b.items.filter((x) => x.key !== key) } : b)),
     );
 
-  const itemRow = (bk: string, it: ItemState) => {
+  // Drag handle used to reorder an item within its block.
+  const dragHandle = (bk: string, i: number) => (
+    <span
+      draggable
+      onDragStart={(e) => {
+        setDragItem({ bk, i });
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragEnd={() => {
+        setDragItem(null);
+        setOverItem(null);
+      }}
+      className="cursor-grab select-none px-0.5 font-mono text-[14px] leading-none text-faint hover:text-ink-3 active:cursor-grabbing"
+      title="Arrastra para reordenar"
+    >
+      ⠿
+    </span>
+  );
+
+  const itemRow = (bk: string, it: ItemState, i: number) => {
+    const isDragging = dragItem?.bk === bk && dragItem?.i === i;
+    const isDropTarget =
+      dragItem?.bk === bk && dragItem.i !== i && overItem?.bk === bk && overItem?.i === i;
+    const dnd = {
+      onDragOver: (e: DragEvent) => {
+        if (!dragItem || dragItem.bk !== bk) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!(overItem?.bk === bk && overItem?.i === i)) setOverItem({ bk, i });
+      },
+      onDrop: (e: DragEvent) => {
+        if (!dragItem || dragItem.bk !== bk) return;
+        e.preventDefault();
+        e.stopPropagation();
+        moveItem(bk, i);
+      },
+    };
     if (it.kind === 'rest') {
       return (
         <div
           key={it.key}
-          className="flex items-center gap-2.5 border-b border-[#f4f1eb] px-3.5 py-2"
+          {...dnd}
+          className={cn(
+            'flex items-center gap-2 border-b border-[#f4f1eb] px-3.5 py-2',
+            isDragging && 'opacity-40',
+            isDropTarget && 'border-t-2 border-t-accent',
+          )}
         >
+          {dragHandle(bk, i)}
           <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
             Descanso
           </span>
@@ -417,12 +476,21 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     const tf = targetField(ex?.measurementType);
     const tLabel = tempoLabel(it.tempo);
     return (
-      <div key={it.key} className="border-b border-[#f4f1eb]">
+      <div
+        key={it.key}
+        {...dnd}
+        className={cn(
+          'border-b border-[#f4f1eb]',
+          isDragging && 'opacity-40',
+          isDropTarget && 'border-t-2 border-t-accent',
+        )}
+      >
         <div
           className="grid items-center gap-3 px-3.5 py-2"
           style={{ gridTemplateColumns: itemGtc }}
         >
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            {dragHandle(bk, i)}
             {ex?.thumbnailAssetId ? (
               <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
             ) : (
@@ -844,7 +912,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           </label>
                         </div>
                         {b.items.length > 0 && itemHeader()}
-                        {b.items.map((it) => itemRow(b.key, it))}
+                        {b.items.map((it, i) => itemRow(b.key, it, i))}
                         <div className="flex gap-2 p-3">
                           {addButton(es.workouts.addExercise, () => addExerciseTo(b.key))}
                           {addButton('+ Descanso', () => addRestItem(b.key))}
