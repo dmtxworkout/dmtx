@@ -339,7 +339,8 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [tempoOpen, setTempoOpen] = useState<Record<string, boolean>>({});
+  // Anchored floating tempo editor (key of the open item + viewport position).
+  const [tempoMenu, setTempoMenu] = useState<{ key: string; top: number; left: number } | null>(null);
   const [nameEditKey, setNameEditKey] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -361,7 +362,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
   const toggleCollapse = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
-  const toggleTempo = (key: string) => setTempoOpen((c) => ({ ...c, [key]: !c[key] }));
   const duplicateBlock = (index: number) =>
     setBlocks((bs) => {
       const b = bs[index];
@@ -515,22 +515,23 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             )}
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 {cols.showTarget ? (
-                  <div className="inline-flex shrink-0 overflow-hidden rounded-md border border-line-2">
-                    {MEASURES.map((m) => (
-                      <button
-                        key={m.v}
-                        type="button"
-                        onClick={() => updateItem(bk, it.key, { measure: m.v })}
-                        className={cn(
-                          'px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em]',
-                          measure === m.v ? 'bg-accent text-white' : 'text-muted hover:bg-surface-3',
-                        )}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
+                  <div className="relative inline-flex shrink-0">
+                    <select
+                      value={measure}
+                      onChange={(e) => updateItem(bk, it.key, { measure: e.target.value as MeasurementType })}
+                      className="cursor-pointer appearance-none rounded-md border border-line-2 bg-surface py-0.5 pl-2 pr-5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-ink-2 hover:bg-surface-3 focus:border-accent/40 focus:outline-none"
+                    >
+                      {MEASURES.map((m) => (
+                        <option key={m.v} value={m.v}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] text-muted">
+                      ▾
+                    </span>
                   </div>
                 ) : ex ? (
                   <span className="truncate font-mono text-[11px] text-muted">
@@ -540,16 +541,22 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 {showTempo && (
                   <button
                     type="button"
-                    onClick={() => toggleTempo(it.key)}
+                    onClick={(e) => {
+                      const r = e.currentTarget.getBoundingClientRect();
+                      setTempoMenu(
+                        tempoMenu?.key === it.key ? null : { key: it.key, top: r.bottom + 4, left: r.left },
+                      );
+                    }}
                     title="Tempo"
                     className={cn(
-                      'shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]',
+                      'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.06em]',
                       tLabel
                         ? 'border-accent/30 bg-accent/10 text-accent-dark'
                         : 'border-line-2 text-muted hover:bg-surface-3',
                     )}
                   >
                     {tLabel ?? 'Tempo'}
+                    <span className="text-[8px] opacity-60">▾</span>
                   </button>
                 )}
               </div>
@@ -591,27 +598,45 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             ✕
           </button>
         </div>
-        {showTempo && tempoOpen[it.key] && (
-          <div className="flex flex-wrap items-end gap-3 px-3.5 pb-2.5 pl-[84px]">
-            {TEMPO_PHASES.map((phase) => (
-              <label key={phase} className="flex flex-col gap-1">
-                <span className="font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-2">
-                  {es.exercises.tempo[phase]}
-                </span>
-                <input
-                  value={it.tempo[phase]}
-                  placeholder="0"
-                  onChange={(e) =>
-                    updateItem(bk, it.key, { tempo: { ...it.tempo, [phase]: e.target.value } })
-                  }
-                  className="h-7 w-14 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                />
-              </label>
-            ))}
-            <span className="pb-1.5 font-mono text-[10px] text-muted">
-              seg por fase · &quot;X&quot; = explosivo
-            </span>
-          </div>
+        {showTempo && tempoMenu?.key === it.key && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setTempoMenu(null)} />
+            <div
+              className="fixed z-40 rounded-xl border border-line-2 bg-surface p-3 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
+              style={{ top: tempoMenu.top, left: tempoMenu.left }}
+            >
+              <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
+                Tempo
+              </div>
+              <div className="flex items-end gap-2">
+                {TEMPO_PHASES.map((phase) => (
+                  <label key={phase} className="flex flex-col gap-1">
+                    <span className="font-mono text-[9px] font-medium uppercase tracking-[0.08em] text-muted-2">
+                      {es.exercises.tempo[phase]}
+                    </span>
+                    <input
+                      value={it.tempo[phase]}
+                      placeholder="0"
+                      onChange={(e) =>
+                        updateItem(bk, it.key, { tempo: { ...it.tempo, [phase]: e.target.value } })
+                      }
+                      className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                    />
+                  </label>
+                ))}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between gap-4">
+                <span className="font-mono text-[10px] text-muted">seg · &quot;X&quot; = explosivo</span>
+                <button
+                  type="button"
+                  onClick={() => updateItem(bk, it.key, { tempo: emptyTempo() })}
+                  className="font-mono text-[10px] font-medium text-accent-dark hover:underline"
+                >
+                  Limpiar
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </>
     );
