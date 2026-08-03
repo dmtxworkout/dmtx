@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, type DragEvent } from 'react';
+import { useState, type DragEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
@@ -171,7 +171,9 @@ const emptyItem = (exerciseId: string): ItemState => ({
 });
 const restItem = (): ItemState => ({ ...emptyItem(''), kind: 'rest' });
 
-type BlockKind = 'group' | 'rest';
+// 'single' is a builder-only kind: a loose exercise done once. It persists as a
+// group block with one item and no rounds; on reload we detect it the same way.
+type BlockKind = 'single' | 'group' | 'rest';
 type BlockState = {
   key: string;
   kind: BlockKind;
@@ -190,7 +192,14 @@ const emptyBlock = (): BlockState => ({
   items: [],
 });
 
-/** A rest between blocks: a rest-kind block holding a single rest item. */
+/** A loose exercise: one exercise, done once (no block wrapper). */
+const singleBlock = (exerciseId: string): BlockState => ({
+  ...emptyBlock(),
+  kind: 'single',
+  items: [emptyItem(exerciseId)],
+});
+
+/** A loose rest: a rest-kind block holding a single rest item. */
 const restBlock = (): BlockState => ({ ...emptyBlock(), kind: 'rest', items: [restItem()] });
 
 const uid = () => crypto.randomUUID();
@@ -266,10 +275,16 @@ function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): 
 }
 
 function initBlocks(w?: Workout): BlockState[] {
-  if (!w) return [emptyBlock()];
+  if (!w) return [];
   return w.blocks.map((b) => ({
     key: uid(),
-    kind: b.kind,
+    // A group with a single exercise and no rounds reads back as a loose exercise.
+    kind:
+      b.kind === 'rest'
+        ? 'rest'
+        : b.items.length === 1 && b.items[0]?.kind === 'exercise' && (b.rounds ?? 1) <= 1
+          ? 'single'
+          : 'group',
     name: b.label ?? '',
     type: b.type,
     rounds: b.rounds?.toString() ?? '',
@@ -415,6 +430,27 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     .join(' ');
 
   const addExerciseTo = (blockKey: string) => setPickerBlock(blockKey);
+  const removeBlock = (key: string) => setBlocks((bs) => bs.filter((x) => x.key !== key));
+
+  // Drag grip that reorders a top-level entry (loose exercise / rest / block).
+  const blockDragHandle = (bi: number) => (
+    <span
+      draggable
+      onDragStart={(e) => {
+        setDragIndex(bi);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
+      onDragEnd={() => {
+        setDragIndex(null);
+        setOverIndex(null);
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="cursor-grab select-none px-0.5 font-mono text-[15px] leading-none text-faint hover:text-ink-3 active:cursor-grabbing"
+      title="Arrastra para reordenar"
+    >
+      ⠿
+    </span>
+  );
 
   // Item header + row, reused by the flat list and the block editor.
   const itemHeader = () => (
@@ -455,79 +491,20 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     </span>
   );
 
-  const itemRow = (bk: string, it: ItemState, i: number) => {
-    const isDragging = dragItem?.bk === bk && dragItem?.i === i;
-    const isDropTarget =
-      dragItem?.bk === bk && dragItem.i !== i && overItem?.bk === bk && overItem?.i === i;
-    const dnd = {
-      onDragOver: (e: DragEvent) => {
-        if (!dragItem || dragItem.bk !== bk) return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (!(overItem?.bk === bk && overItem?.i === i)) setOverItem({ bk, i });
-      },
-      onDrop: (e: DragEvent) => {
-        if (!dragItem || dragItem.bk !== bk) return;
-        e.preventDefault();
-        e.stopPropagation();
-        moveItem(bk, i);
-      },
-    };
-    if (it.kind === 'rest') {
-      return (
-        <div
-          key={it.key}
-          {...dnd}
-          className={cn(
-            'flex items-center gap-2 border-b border-[#f4f1eb] px-3.5 py-2',
-            isDragging && 'opacity-40',
-            isDropTarget && 'border-t-2 border-t-accent',
-          )}
-        >
-          {dragHandle(bk, i)}
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
-            Descanso
-          </span>
-          <input
-            value={it.workSeconds}
-            placeholder="0"
-            onChange={(e) => updateItem(bk, it.key, { workSeconds: e.target.value })}
-            className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-          />
-          <span className="font-mono text-[11px] text-muted">seg</span>
-          <button
-            type="button"
-            onClick={() => removeItem(bk, it.key)}
-            className="ml-auto inline-flex items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
-          >
-            ✕
-          </button>
-        </div>
-      );
-    }
+  // The exercise controls (thumb, name, measure, objetivo, carga, rest, tempo),
+  // reused by a nested block item and by a loose top-level exercise. `handle`
+  // is the drag grip to show; `onDelete` removes the item or the whole entry.
+  const exerciseFields = (bk: string, it: ItemState, handle: ReactNode, onDelete: () => void) => {
     const ex = exercise(it.exerciseId);
-    // Effective measurement: item override, else the exercise's default.
     const measure: MeasurementType = it.measure || ex?.measurementType || 'reps';
     const tf = targetField(measure);
     const tLabel = tempoLabel(it.tempo);
-    // Tempo describes the phases of a rep — meaningless for distance work.
     const showTempo = measure !== 'distance';
     return (
-      <div
-        key={it.key}
-        {...dnd}
-        className={cn(
-          'border-b border-[#f4f1eb]',
-          isDragging && 'opacity-40',
-          isDropTarget && 'border-t-2 border-t-accent',
-        )}
-      >
-        <div
-          className="grid items-center gap-3 px-3.5 py-2"
-          style={{ gridTemplateColumns: itemGtc }}
-        >
+      <>
+        <div className="grid items-center gap-3 px-3.5 py-2" style={{ gridTemplateColumns: itemGtc }}>
           <div className="flex min-w-0 items-center gap-2">
-            {dragHandle(bk, i)}
+            {handle}
             {ex?.thumbnailAssetId ? (
               <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
             ) : (
@@ -608,7 +585,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           )}
           <button
             type="button"
-            onClick={() => removeItem(bk, it.key)}
+            onClick={onDelete}
             className="text-center text-faint-2 hover:text-accent-dark"
           >
             ✕
@@ -636,6 +613,71 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             </span>
           </div>
         )}
+      </>
+    );
+  };
+
+  const itemRow = (bk: string, it: ItemState, i: number) => {
+    const isDragging = dragItem?.bk === bk && dragItem?.i === i;
+    const isDropTarget =
+      dragItem?.bk === bk && dragItem.i !== i && overItem?.bk === bk && overItem?.i === i;
+    const dnd = {
+      onDragOver: (e: DragEvent) => {
+        if (!dragItem || dragItem.bk !== bk) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (!(overItem?.bk === bk && overItem?.i === i)) setOverItem({ bk, i });
+      },
+      onDrop: (e: DragEvent) => {
+        if (!dragItem || dragItem.bk !== bk) return;
+        e.preventDefault();
+        e.stopPropagation();
+        moveItem(bk, i);
+      },
+    };
+    if (it.kind === 'rest') {
+      return (
+        <div
+          key={it.key}
+          {...dnd}
+          className={cn(
+            'flex items-center gap-2 border-b border-[#f4f1eb] px-3.5 py-2',
+            isDragging && 'opacity-40',
+            isDropTarget && 'border-t-2 border-t-accent',
+          )}
+        >
+          {dragHandle(bk, i)}
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
+            Descanso
+          </span>
+          <input
+            value={it.workSeconds}
+            placeholder="0"
+            onChange={(e) => updateItem(bk, it.key, { workSeconds: e.target.value })}
+            className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+          />
+          <span className="font-mono text-[11px] text-muted">seg</span>
+          <button
+            type="button"
+            onClick={() => removeItem(bk, it.key)}
+            className="ml-auto inline-flex items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
+          >
+            ✕
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div
+        key={it.key}
+        {...dnd}
+        className={cn(
+          'border-b border-[#f4f1eb]',
+          isDragging && 'opacity-40',
+          isDropTarget && 'border-t-2 border-t-accent',
+        )}
+      >
+        {exerciseFields(bk, it, dragHandle(bk, i), () => removeItem(bk, it.key))}
       </div>
     );
   };
@@ -673,10 +715,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         };
       };
       const blocksPayload = blocks.map((b) => ({
-        kind: b.kind,
+        // A loose exercise ('single') persists as a group with one item, no rounds.
+        kind: b.kind === 'single' ? 'group' : b.kind,
         type: b.type,
-        label: b.name.trim() || null,
-        rounds: num(b.rounds),
+        label: b.kind === 'single' ? null : b.name.trim() || null,
+        rounds: b.kind === 'single' ? null : num(b.rounds),
         items: b.items.map(toItem),
       }));
       const payload: CreateWorkoutInput = {
@@ -958,7 +1001,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-7 py-5">
           {type === 'structured' ? (
             <>
-              <h2 className="text-[15px] font-bold">{es.workouts.blocks}</h2>
+              <h2 className="text-[15px] font-bold">Contenido</h2>
 
               <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent-tint/30 px-3 py-2.5">
                 <span className="mt-px font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
@@ -1013,7 +1056,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           ⠿
                         </span>
                         <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
-                          Descanso entre bloques
+                          Descanso
                         </span>
                         <input
                           value={b.items[0]?.workSeconds ?? ''}
@@ -1045,6 +1088,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           ✕
                         </button>
                       </div>
+                    ) : b.kind === 'single' ? (
+                      b.items[0] ? (
+                        exerciseFields(b.key, b.items[0], blockDragHandle(bi), () => removeBlock(b.key))
+                      ) : null
                     ) : (
                       <>
                     <div
@@ -1179,10 +1226,24 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               })}
               {blocks.length === 0 && (
                 <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
-                  {es.workouts.noBlocks}
+                  Añade un ejercicio, un descanso o un bloque para empezar.
                 </div>
               )}
               <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPickerBlock('__new__')}
+                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                >
+                  + Ejercicio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBlocks((bs) => [...bs, restBlock()])}
+                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                >
+                  + Descanso
+                </button>
                 <button
                   type="button"
                   onClick={() =>
@@ -1190,16 +1251,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   }
                   className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
                 >
-                  {es.workouts.addBlock}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBlocks((bs) => [...bs, restBlock()])}
-                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-                >
-                  + Descanso entre bloques
+                  + Bloque
                 </button>
               </div>
+              <p className="font-mono text-[11px] leading-relaxed text-muted">
+                Un bloque son varias rondas de lo que tenga dentro. Un ejercicio suelto se hace una vez.
+              </p>
             </>
           ) : (
             <div>
@@ -1327,7 +1384,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         renderTitle={(e) => e.name}
         renderSubtitle={(e) => `${es.difficulty[e.difficulty]} · ${es.measurement[e.measurementType]}`}
         onPick={(e) => {
-          if (pickerBlock) {
+          if (pickerBlock === '__new__') {
+            // Top-level "+ Ejercicio" → a loose exercise done once.
+            setBlocks((bs) => [...bs, singleBlock(e.id)]);
+          } else if (pickerBlock) {
             setBlocks((bs) =>
               bs.map((b) =>
                 b.key === pickerBlock ? { ...b, items: [...b.items, emptyItem(e.id)] } : b,
