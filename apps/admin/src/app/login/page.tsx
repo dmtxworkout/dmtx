@@ -11,10 +11,13 @@ import { Card } from '@/components/ui/card';
 import { Logo } from '@/components/ui/logo';
 import { MonoLabel } from '@/components/ui/mono-label';
 
+// Prefill the local admin creds while developing so testing is one click.
+const DEV = process.env.NODE_ENV !== 'production';
+
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState(DEV ? 'admin@dmtx.local' : '');
+  const [password, setPassword] = useState(DEV ? 'dmtxadmin' : '');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
