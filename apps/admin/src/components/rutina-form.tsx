@@ -317,6 +317,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   });
   const exercise = (id: string) => exList?.data.find((e) => e.id === id);
 
+  // Type and format define the data shape, so they're frozen once the workout
+  // exists — only editable while creating a new one.
+  const locked = Boolean(workout);
+
   const setCfg = (k: string, v: string) => setFormatCfg((c) => ({ ...c, [k]: v }));
   const updateBlock = (key: string, patch: Partial<BlockState>) =>
     setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
@@ -1016,44 +1020,56 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
 
           <div className="flex flex-col gap-2.5">
             <MonoLabel>{es.workouts.type}</MonoLabel>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(['structured', 'video'] as const).map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setType(t)}
-                  className={cn(
-                    'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                    type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
-                  )}
-                >
-                  {es.workouts.types[t]}
-                </button>
-              ))}
-            </div>
+            {locked ? (
+              <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
+                {es.workouts.types[type]}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['structured', 'video'] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setType(t)}
+                    className={cn(
+                      'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
+                      type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
+                    )}
+                  >
+                    {es.workouts.types[t]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {type === 'structured' && (
             <>
               <div className="flex flex-col gap-2.5">
                 <MonoLabel>{es.workouts.format}</MonoLabel>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {WORKOUT_FORMAT.map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => setFormat(f)}
-                      className={cn(
-                        'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                        format === f
-                          ? 'border-accent bg-accent-tint/50 text-accent-dark'
-                          : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
-                      )}
-                    >
-                      {FORMAT_LABEL[f]}
-                    </button>
-                  ))}
-                </div>
+                {locked ? (
+                  <div className="rounded-lg border border-accent/30 bg-accent-tint/40 px-3 py-2.5 text-xs font-semibold text-accent-dark">
+                    {FORMAT_LABEL[format]}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {WORKOUT_FORMAT.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => setFormat(f)}
+                        className={cn(
+                          'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
+                          format === f
+                            ? 'border-accent bg-accent-tint/50 text-accent-dark'
+                            : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
+                        )}
+                      >
+                        {FORMAT_LABEL[f]}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {FORMAT_FIELDS[format].length > 0 && (
