@@ -359,7 +359,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           </span>
           <input
             value={it.workSeconds}
-            placeholder="seg"
+            placeholder="0"
             onChange={(e) => updateItem(bk, it.key, { workSeconds: e.target.value })}
             className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
           />
@@ -617,7 +617,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                         </span>
                         <input
                           value={b.items[0]?.workSeconds ?? ''}
-                          placeholder="seg"
+                          placeholder="0"
                           onChange={(e) =>
                             b.items[0] && updateItem(b.key, b.items[0].key, { workSeconds: e.target.value })
                           }
