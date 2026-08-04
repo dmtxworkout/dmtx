@@ -2,7 +2,8 @@
 
 // A read-only, athlete-facing rendering of the whole rutina, driven live by the
 // builder state (plus the fetched warmup/cooldown rutinas). Plain text — each
-// exercise reads "{cantidad} {nombre} @{carga}", blocks separated by space.
+// exercise reads "{cantidad} {nombre} @{carga}". Loose exercises list tightly;
+// only real blocks (multi-exercise or multi-round) get a gap + a rounds header.
 export type PvItem =
   | { kind: 'rest'; seconds: number | null }
   | { kind: 'exercise'; prefix: string | null; name: string; load: string | null; tempo: string | null };
@@ -21,13 +22,13 @@ export type PvModel = {
 function Line({ item }: { item: PvItem }) {
   if (item.kind === 'rest') {
     return (
-      <div className="text-[13px] leading-relaxed text-muted">
+      <div className="text-[13px] leading-6 text-muted">
         Descanso{item.seconds ? ` ${item.seconds}s` : ''}
       </div>
     );
   }
   return (
-    <div className="text-[13px] leading-relaxed text-ink">
+    <div className="text-[13px] leading-6 text-ink">
       {item.prefix && <span className="tabular-nums">{item.prefix} </span>}
       {item.name}
       {item.load && <span className="text-ink-3"> @{item.load}</span>}
@@ -36,44 +37,49 @@ function Line({ item }: { item: PvItem }) {
   );
 }
 
-function BlockText({ block }: { block: PvBlock }) {
-  const head = [
-    block.title,
-    block.rounds != null && block.rounds > 1 ? `${block.rounds} rondas` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-  return (
-    <div>
-      {head && (
-        <div className="mb-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-          {head}
-        </div>
-      )}
-      {block.items.map((it, i) => (
-        <Line key={i} item={it} />
-      ))}
-    </div>
-  );
-}
+// A block counts as a "real block" (worth its own gap + rounds header) when it
+// has more than one exercise or repeats for multiple rounds. Otherwise it's a
+// loose exercise that should sit tight against its neighbours.
+const isBlock = (b: PvBlock) => b.items.length > 1 || (b.rounds != null && b.rounds > 1);
+
+type Unit = { rounds: number | null; items: PvItem[] };
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
-  const hasContent = blocks.some((b) => b.items.length > 0);
+  const units: Unit[] = [];
+  for (const b of blocks) {
+    if (b.items.length === 0) continue;
+    if (isBlock(b)) {
+      units.push({ rounds: b.rounds, items: b.items });
+    } else {
+      const last = units[units.length - 1];
+      // Merge consecutive loose exercises into one tight run.
+      if (last && last.rounds == null) last.items.push(...b.items);
+      else units.push({ rounds: null, items: b.items });
+    }
+  }
+
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-1.5">
       <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
         {label}
       </div>
-      {hasContent ? (
-        <div className="flex flex-col gap-3">
-          {blocks
-            .filter((b) => b.items.length > 0)
-            .map((b, i) => (
-              <BlockText key={i} block={b} />
-            ))}
-        </div>
-      ) : (
+      {units.length === 0 ? (
         <div className="text-[12px] text-muted">Sin ejercicios</div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {units.map((u, i) => (
+            <div key={i}>
+              {u.rounds != null && u.rounds > 1 && (
+                <div className="mb-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
+                  {u.rounds} rondas
+                </div>
+              )}
+              {u.items.map((it, j) => (
+                <Line key={j} item={it} />
+              ))}
+            </div>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -120,7 +126,7 @@ export function RutinaPreview({ model, name }: { model: PvModel; name: string })
         ) : (
           <div className="flex flex-col gap-5 px-4 py-4">
             {model.warmup && <Section label="Calentamiento" blocks={model.warmup.blocks} />}
-            <Section label="La rutina" blocks={model.main} />
+            <Section label="Rutina" blocks={model.main} />
             {model.cooldown && <Section label="Enfriamiento" blocks={model.cooldown.blocks} />}
           </div>
         )}
