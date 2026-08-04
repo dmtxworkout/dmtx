@@ -13,7 +13,7 @@ export type PvModel = {
   type: 'structured' | 'video';
   hasVideo: boolean;
   formatLabel: string;
-  summary: string[];
+  headline: string;
   warmup: PvSection | null;
   main: PvBlock[];
   cooldown: PvSection | null;
@@ -90,6 +90,8 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
 export function RutinaPreview({ model, name }: { model: PvModel; name: string }) {
   const mainHasContent = model.main.some((b) => b.items.length > 0);
   const empty = !model.warmup && !model.cooldown && !mainHasContent && !model.hasVideo;
+  // The main section is headed by the format itself (e.g. "AMRAP 10 min").
+  const mainLabel = `${model.formatLabel}${model.headline ? ` ${model.headline}` : ''}`;
 
   return (
     <div className="flex flex-col gap-3">
@@ -103,14 +105,6 @@ export function RutinaPreview({ model, name }: { model: PvModel; name: string })
       <div className="overflow-hidden rounded-xl border border-line-2 bg-surface">
         <div className="border-b border-line-3 px-4 py-3">
           <div className="truncate text-[15px] font-extrabold text-ink">{name || 'Rutina sin título'}</div>
-          {model.type === 'structured' && (model.formatLabel || model.summary.length > 0) && (
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 font-mono text-[11px] text-ink-3">
-              <span className="font-semibold text-accent-dark">{model.formatLabel}</span>
-              {model.summary.map((s) => (
-                <span key={s}>· {s}</span>
-              ))}
-            </div>
-          )}
         </div>
 
         {empty ? (
@@ -128,7 +122,7 @@ export function RutinaPreview({ model, name }: { model: PvModel; name: string })
         ) : (
           <div className="flex flex-col gap-5 px-4 py-4">
             {model.warmup && <Section label="Calentamiento" blocks={model.warmup.blocks} />}
-            <Section label="Rutina" blocks={model.main} />
+            <Section label={mainLabel} blocks={model.main} />
             {model.cooldown && <Section label="Enfriamiento" blocks={model.cooldown.blocks} />}
           </div>
         )}

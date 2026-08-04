@@ -297,31 +297,35 @@ function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): 
 
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 
-// Short human summary of the timing config, for the preview header.
-function formatSummary(format: WorkoutFormat, cfg: Record<string, string>): string[] {
+// Compact timing summary shown after the format name, e.g. "10 min" (AMRAP) or
+// "5:00 × 5" (EMOM). Whole-minute durations read as "N min".
+function formatHeadline(format: WorkoutFormat, cfg: Record<string, string>): string {
   const n = (k: string) => {
     const v = Number(cfg[k]);
     return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
   };
-  const out: string[] = [];
-  if (format === 'amrap') {
-    if (n('totalSeconds')) out.push(mmss(n('totalSeconds')));
-  } else if (format === 'emom') {
-    if (n('intervalSeconds')) out.push(`cada ${mmss(n('intervalSeconds'))}`);
-    if (n('rounds')) out.push(`${n('rounds')} rondas`);
-  } else if (format === 'tabata') {
-    if (n('rounds')) out.push(`${n('rounds')} rondas`);
-    if (n('workSeconds') || n('restSeconds')) out.push(`${n('workSeconds')}s / ${n('restSeconds')}s`);
-  } else if (format === 'chipper') {
-    if (n('timeCapSeconds')) out.push(`límite ${mmss(n('timeCapSeconds'))}`);
-  } else if (format === 'for_time') {
-    if (n('rounds')) out.push(`${n('rounds')} rondas`);
-    if (n('timeCapSeconds')) out.push(`límite ${mmss(n('timeCapSeconds'))}`);
-  } else if (format === 'circuit') {
-    if (n('rounds')) out.push(`${n('rounds')} rondas`);
-    if (n('restBetweenRoundsSeconds')) out.push(`descanso ${n('restBetweenRoundsSeconds')}s`);
+  const dur = (s: number) => (s % 60 === 0 ? `${s / 60} min` : mmss(s));
+  const join = (...parts: string[]) => parts.filter(Boolean).join(' · ');
+  switch (format) {
+    case 'amrap':
+      return n('totalSeconds') ? dur(n('totalSeconds')) : '';
+    case 'emom':
+      return [n('intervalSeconds') ? mmss(n('intervalSeconds')) : '', n('rounds') ? `× ${n('rounds')}` : '']
+        .filter(Boolean)
+        .join(' ');
+    case 'tabata':
+      return [n('rounds') ? `${n('rounds')} ×` : '', n('workSeconds') || n('restSeconds') ? `${n('workSeconds')}s/${n('restSeconds')}s` : '']
+        .filter(Boolean)
+        .join(' ');
+    case 'chipper':
+      return n('timeCapSeconds') ? `límite ${dur(n('timeCapSeconds'))}` : '';
+    case 'for_time':
+      return join(n('rounds') ? `${n('rounds')} rondas` : '', n('timeCapSeconds') ? `límite ${dur(n('timeCapSeconds'))}` : '');
+    case 'circuit':
+      return join(n('rounds') ? `${n('rounds')} rondas` : '', n('restBetweenRoundsSeconds') ? `desc ${n('restBetweenRoundsSeconds')}s` : '');
+    default:
+      return '';
   }
-  return out;
 }
 
 function initBlocks(w?: Workout): BlockState[] {
@@ -958,7 +962,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     type,
     hasVideo: type === 'video' && !!videoAssetId,
     formatLabel: type === 'structured' ? FORMAT_LABEL[format] : 'Video',
-    summary: type === 'structured' ? formatSummary(format, formatCfg) : [],
+    headline: type === 'structured' ? formatHeadline(format, formatCfg) : '',
     warmup: refSection(warmupWorkoutId, warmupQ.data, warmupBlocks),
     main: mainBlocks.map(bBlockToPv),
     cooldown: refSection(cooldownWorkoutId, cooldownQ.data, cooldownBlocks),
