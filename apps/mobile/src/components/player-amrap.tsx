@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,9 +39,11 @@ function targetText(it: WorkoutItem, du: DistanceUnit): string {
 export function AmrapPlayer({
   workout,
   onFinish,
+  renderCooldown,
 }: {
   workout: WorkoutDetail;
   onFinish?: () => void;
+  renderCooldown?: (onDone: () => void) => ReactNode;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -76,7 +78,7 @@ export function AmrapPlayer({
 
   const [remaining, setRemaining] = useState(cap);
   const [rounds, setRounds] = useState(0);
-  const [phase, setPhase] = useState<'running' | 'partial' | 'summary'>('running');
+  const [phase, setPhase] = useState<'running' | 'partial' | 'cooldown' | 'summary'>('running');
   const [partial, setPartial] = useState<Record<string, number>>({});
   // Which value the numeric keypad is editing (round count, or a partial rep).
   const [pad, setPad] = useState<
@@ -314,7 +316,7 @@ export function AmrapPlayer({
         </ScrollView>
         <View style={{ paddingBottom: insets.bottom + 12, paddingTop: 12 }}>
           <Pressable
-            onPress={() => setPhase('summary')}
+            onPress={() => setPhase(renderCooldown ? 'cooldown' : 'summary')}
             className="h-[54px] items-center justify-center rounded-xl bg-accent active:opacity-80"
           >
             <Text className="font-bold text-[17px] text-white">Ver resumen</Text>
@@ -334,6 +336,11 @@ export function AmrapPlayer({
         ) : null}
       </View>
     );
+  }
+
+  // ---- Cooldown (before results) -------------------------------------------
+  if (phase === 'cooldown' && renderCooldown) {
+    return <>{renderCooldown(() => setPhase('summary'))}</>;
   }
 
   // ---- Summary -------------------------------------------------------------

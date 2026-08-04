@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,9 +17,11 @@ import type { WorkoutDetail } from '../lib/types';
 export function EmomPlayer({
   workout,
   onFinish,
+  renderCooldown,
 }: {
   workout: WorkoutDetail;
   onFinish?: () => void;
+  renderCooldown?: (onDone: () => void) => ReactNode;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -30,7 +32,7 @@ export function EmomPlayer({
 
   const [current, setCurrent] = useState(1);
   const [remaining, setRemaining] = useState(intervalSec);
-  const [phase, setPhase] = useState<'running' | 'summary'>('running');
+  const [phase, setPhase] = useState<'running' | 'cooldown' | 'summary'>('running');
   const [elapsed, setElapsed] = useState(0);
   const [saveError, setSaveError] = useState<string | null>(null);
   const startRef = useRef(0);
@@ -42,7 +44,7 @@ export function EmomPlayer({
 
   const finish = () => {
     setElapsed(Math.round((Date.now() - startRef.current) / 1000));
-    setPhase('summary');
+    setPhase(renderCooldown ? 'cooldown' : 'summary');
   };
   const finishRef = useRef(finish);
   useEffect(() => {
@@ -93,6 +95,11 @@ export function EmomPlayer({
       results: [],
     });
   };
+
+  // ---- Cooldown (before results) -------------------------------------------
+  if (phase === 'cooldown' && renderCooldown) {
+    return <>{renderCooldown(() => setPhase('summary'))}</>;
+  }
 
   // ---- Summary -------------------------------------------------------------
   if (phase === 'summary') {

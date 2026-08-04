@@ -326,6 +326,15 @@ function initCfg(w?: Workout): Record<string, string> {
 const boxCls =
   'h-[30px] w-full rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
 
+// Anchor a floating (fixed-position) menu to a trigger, flipping it above the
+// trigger when there isn't room for `estHeight` px below it in the viewport.
+function menuAnchor(el: HTMLElement, estHeight: number) {
+  const r = el.getBoundingClientRect();
+  const spaceBelow = window.innerHeight - r.bottom;
+  const up = spaceBelow < estHeight + 16 && r.top > spaceBelow;
+  return { left: r.left + r.width / 2, top: up ? r.top - 6 : r.bottom + 6, up };
+}
+
 // Serialize builder blocks into API payload. `fmt` decides which prescription
 // fields are kept (e.g. tabata has no target/sets/rest columns).
 function blocksToPayload(blockList: BlockState[], fmt: WorkoutFormat): CreateWorkoutInput['blocks'] {
@@ -381,7 +390,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
-  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addMenu, setAddMenu] = useState<{ top: number; left: number; up: boolean } | null>(null);
   // Reusable warmup/cooldown: reference another rutina instead of inline blocks.
   const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(
     workout?.warmupWorkoutId ?? null,
@@ -391,10 +400,20 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   );
   // Which section's rutina picker is open, and its empty-slot add menu.
   const [rutinaPicker, setRutinaPicker] = useState<'warmup' | 'cooldown' | null>(null);
-  const [slotMenu, setSlotMenu] = useState<'warmup' | 'cooldown' | null>(null);
+  const [slotMenu, setSlotMenu] = useState<{
+    section: 'warmup' | 'cooldown';
+    top: number;
+    left: number;
+    up: boolean;
+  } | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   // Anchored floating tempo editor (key of the open item + viewport position).
-  const [tempoMenu, setTempoMenu] = useState<{ key: string; top: number; left: number } | null>(null);
+  const [tempoMenu, setTempoMenu] = useState<{
+    key: string;
+    top: number;
+    left: number;
+    up: boolean;
+  } | null>(null);
   const [nameEditKey, setNameEditKey] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
@@ -633,8 +652,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               type="button"
               onClick={(e) => {
                 const r = e.currentTarget.getBoundingClientRect();
+                const spaceBelow = window.innerHeight - r.bottom;
+                const up = spaceBelow < 128 && r.top > spaceBelow;
                 setTempoMenu(
-                  tempoMenu?.key === it.key ? null : { key: it.key, top: r.bottom + 4, left: r.left },
+                  tempoMenu?.key === it.key
+                    ? null
+                    : { key: it.key, left: r.left, top: up ? r.top - 6 : r.bottom + 6, up },
                 );
               }}
               title="Tempo"
@@ -664,7 +687,11 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             <div className="fixed inset-0 z-30" onClick={() => setTempoMenu(null)} />
             <div
               className="fixed z-40 rounded-xl border border-line-2 bg-surface p-3 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
-              style={{ top: tempoMenu.top, left: tempoMenu.left }}
+              style={{
+                top: tempoMenu.top,
+                left: tempoMenu.left,
+                transform: tempoMenu.up ? 'translateY(-100%)' : undefined,
+              }}
             >
               <div className="flex items-end gap-2">
                 {TEMPO_PHASES.map((phase) => (
@@ -902,10 +929,16 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
 
     // 3) Empty → a placeholder with a small choose-source menu.
     return (
-      <div className="relative">
+      <div>
         <button
           type="button"
-          onClick={() => setSlotMenu(slotMenu === section ? null : section)}
+          onClick={(e) =>
+            setSlotMenu(
+              slotMenu?.section === section
+                ? null
+                : { section, ...menuAnchor(e.currentTarget, 116) },
+            )
+          }
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-2/30 py-3 text-ink-3 hover:bg-surface-2 hover:text-ink-2"
         >
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
@@ -914,10 +947,17 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           <span className="text-[13px] font-semibold">+ Añadir</span>
           <span className="text-[9px] opacity-60">▾</span>
         </button>
-        {slotMenu === section && (
+        {slotMenu?.section === section && (
           <>
             <div className="fixed inset-0 z-30" onClick={() => setSlotMenu(null)} />
-            <div className="absolute left-1/2 top-full z-40 mt-1.5 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+            <div
+              className="fixed z-40 w-64 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
+              style={{
+                left: slotMenu.left,
+                top: slotMenu.top,
+                transform: slotMenu.up ? 'translate(-50%,-100%)' : 'translate(-50%,0)',
+              }}
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -1473,19 +1513,26 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   Añade un ejercicio, un descanso o un bloque para empezar.
                 </div>
               )}
-              <div className="relative">
+              <div>
                 <button
                   type="button"
-                  onClick={() => setAddMenuOpen((v) => !v)}
+                  onClick={(e) => setAddMenu(addMenu ? null : menuAnchor(e.currentTarget, 156))}
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
                 >
                   + Añadir
                   <span className="text-[9px] opacity-60">▾</span>
                 </button>
-                {addMenuOpen && (
+                {addMenu && (
                   <>
-                    <div className="fixed inset-0 z-30" onClick={() => setAddMenuOpen(false)} />
-                    <div className="absolute left-1/2 top-full z-40 mt-1.5 w-60 -translate-x-1/2 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+                    <div className="fixed inset-0 z-30" onClick={() => setAddMenu(null)} />
+                    <div
+                      className="fixed z-40 w-60 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
+                      style={{
+                        left: addMenu.left,
+                        top: addMenu.top,
+                        transform: addMenu.up ? 'translate(-50%,-100%)' : 'translate(-50%,0)',
+                      }}
+                    >
                       {[
                         {
                           label: 'Ejercicio',
@@ -1512,7 +1559,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           type="button"
                           onClick={() => {
                             o.on();
-                            setAddMenuOpen(false);
+                            setAddMenu(null);
                           }}
                           className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
                         >

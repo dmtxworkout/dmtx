@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -16,7 +16,7 @@ import {
 } from '../../../components/player';
 import { AmrapPlayer } from '../../../components/player-amrap';
 import { EmomPlayer } from '../../../components/player-emom';
-import { GuidedPlayer, SectionIntro } from '../../../components/player-guided';
+import { CooldownFlow, GuidedPlayer, SectionIntro } from '../../../components/player-guided';
 import type { WorkoutDetail } from '../../../lib/types';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
@@ -74,9 +74,9 @@ function Session({ workout }: { workout: WorkoutDetail }) {
   const hasWarmup = useMemo(() => hasExercises(warmup), [warmup]);
   const hasCooldown = useMemo(() => hasExercises(cooldown), [cooldown]);
 
-  const [phase, setPhase] = useState<
-    'warmup-intro' | 'warmup' | 'main' | 'cooldown-intro' | 'cooldown'
-  >(hasWarmup ? 'warmup-intro' : 'main');
+  const [phase, setPhase] = useState<'warmup-intro' | 'warmup' | 'main'>(
+    hasWarmup ? 'warmup-intro' : 'main',
+  );
   const exit = () => router.back();
 
   if (phase === 'warmup-intro') {
@@ -96,36 +96,25 @@ function Session({ workout }: { workout: WorkoutDetail }) {
   if (phase === 'warmup') {
     return <GuidedPlayer workout={warmup} onComplete={() => setPhase('main')} onExit={exit} />;
   }
-  if (phase === 'cooldown-intro') {
-    return (
-      <SectionIntro
-        workout={cooldown}
-        title="Enfriamiento"
-        subtitle="¿Quieres enfriar?"
-        doLabel="Hacer enfriamiento"
-        skipLabel="Saltar"
-        onDo={() => setPhase('cooldown')}
-        onSkip={exit}
-        onExit={exit}
-      />
-    );
-  }
-  if (phase === 'cooldown') {
-    return <GuidedPlayer workout={cooldown} onComplete={exit} onExit={exit} />;
-  }
 
-  const onFinish = () => (hasCooldown ? setPhase('cooldown-intro') : exit());
-  if (workout.format === 'amrap') return <AmrapPlayer workout={main} onFinish={onFinish} />;
-  if (workout.format === 'emom') return <EmomPlayer workout={main} onFinish={onFinish} />;
-  return <Player workout={main} onFinish={onFinish} />;
+  // The cooldown runs inside the player, after the work but before the results,
+  // so the player keeps its logged marks while the athlete cools down (or skips).
+  const renderCooldown = hasCooldown
+    ? (onDone: () => void) => <CooldownFlow workout={cooldown} onDone={onDone} />
+    : undefined;
+  if (workout.format === 'amrap') return <AmrapPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
+  if (workout.format === 'emom') return <EmomPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
+  return <Player workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
 }
 
 function Player({
   workout,
   onFinish,
+  renderCooldown,
 }: {
   workout: NonNullable<Awaited<ReturnType<typeof api.workout>>>;
   onFinish?: () => void;
+  renderCooldown?: (onDone: () => void) => ReactNode;
 }) {
   const router = useRouter();
   const { units } = useUnits();
@@ -145,7 +134,7 @@ function Player({
 
   const [stepIndex, setStepIndex] = useState(0);
   const [round, setRound] = useState(1);
-  const [phase, setPhase] = useState<'active' | 'summary'>('active');
+  const [phase, setPhase] = useState<'active' | 'cooldown' | 'summary'>('active');
   const [marks, setMarks] = useState<Record<string, Mark>>({});
   const [capRemaining, setCapRemaining] = useState(session.capSeconds ?? 0);
   const [elapsed, setElapsed] = useState(0);
@@ -166,7 +155,7 @@ function Player({
 
   const finish = () => {
     setElapsed(Math.round((Date.now() - startRef.current) / 1000));
-    setPhase('summary');
+    setPhase(renderCooldown ? 'cooldown' : 'summary');
   };
   const finishRef = useRef(finish);
   useEffect(() => {
@@ -263,6 +252,10 @@ function Player({
         </Pressable>
       </View>
     );
+  }
+
+  if (phase === 'cooldown' && renderCooldown) {
+    return <>{renderCooldown(() => setPhase('summary'))}</>;
   }
 
   if (phase === 'summary') {

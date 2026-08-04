@@ -74,6 +74,30 @@ export function SectionIntro({
 }
 
 /**
+ * The cooldown interstitial shown after the main work but before the results:
+ * prompt to do it or skip straight to results, then guide it (untracked).
+ * `onDone` fires for skip, exit, or completion — all lead to the results screen.
+ */
+export function CooldownFlow({ workout, onDone }: { workout: WorkoutDetail; onDone: () => void }) {
+  const [p, setP] = useState<'intro' | 'run'>('intro');
+  if (p === 'intro') {
+    return (
+      <SectionIntro
+        workout={workout}
+        title="Enfriamiento"
+        subtitle="¿Quieres enfriar?"
+        doLabel="Hacer enfriamiento"
+        skipLabel="Saltar y ver resultados"
+        onDo={() => setP('run')}
+        onSkip={onDone}
+        onExit={onDone}
+      />
+    );
+  }
+  return <GuidedPlayer workout={workout} onComplete={onDone} onExit={onDone} />;
+}
+
+/**
  * Guided walk-through of a section's exercises (warmup / cooldown). Steps through
  * the work with the same screens as the main player, but records nothing and
  * calls onComplete when finished.
