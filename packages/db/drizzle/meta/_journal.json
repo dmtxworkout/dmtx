@@ -64,6 +64,13 @@
       "when": 1785797141302,
       "tag": "0008_striped_colonel_america",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785802390711,
+      "tag": "0009_nebulous_maverick",
+      "breakpoints": true
     }
   ]
 }

@@ -258,11 +258,36 @@ appRoute.get('/workouts/:id', async (c) => {
     .limit(1);
   if (!w) return c.json({ error: 'No encontrado' }, 404);
 
-  const blocks = await db
+  // Warmup/cooldown may be a referenced rutina; pull its blocks too and re-tag
+  // them with that section so the player treats it uniformly. A set reference
+  // overrides any inline blocks of the same section.
+  const warmupRefId = w.warmupWorkoutId && w.warmupWorkoutId !== w.id ? w.warmupWorkoutId : null;
+  const cooldownRefId =
+    w.cooldownWorkoutId && w.cooldownWorkoutId !== w.id ? w.cooldownWorkoutId : null;
+  const workoutIds = [w.id, warmupRefId, cooldownRefId].filter((x): x is string => Boolean(x));
+
+  const allBlocks = await db
     .select()
     .from(workoutBlocks)
-    .where(eq(workoutBlocks.workoutId, w.id))
+    .where(inArray(workoutBlocks.workoutId, workoutIds))
     .orderBy(workoutBlocks.position);
+
+  // Resolve the section a block plays as; null = dropped (inline overridden).
+  const sectionOf = (b: (typeof allBlocks)[number]): 'warmup' | 'main' | 'cooldown' | null => {
+    if (b.workoutId === warmupRefId) return 'warmup';
+    if (b.workoutId === cooldownRefId) return 'cooldown';
+    if (b.section === 'warmup') return warmupRefId ? null : 'warmup';
+    if (b.section === 'cooldown') return cooldownRefId ? null : 'cooldown';
+    return 'main';
+  };
+  const rank = { warmup: 0, main: 1, cooldown: 2 } as const;
+  const blocks = allBlocks
+    .map((b) => ({ b, section: sectionOf(b) }))
+    .filter((x): x is { b: (typeof allBlocks)[number]; section: 'warmup' | 'main' | 'cooldown' } =>
+      x.section !== null,
+    )
+    .sort((a, z) => rank[a.section] - rank[z.section])
+    .map((x) => ({ ...x.b, section: x.section }));
   const blockIds = blocks.map((b) => b.id);
   const items = blockIds.length
     ? await db

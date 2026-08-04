@@ -15,6 +15,7 @@ import type {
   TempoPhase,
   Workout,
   WorkoutFormat,
+  WorkoutListItem,
 } from '@dmtx/schemas';
 import type { ExerciseListItem } from '@dmtx/api-client';
 import { api } from '@/lib/api';
@@ -325,6 +326,36 @@ function initCfg(w?: Workout): Record<string, string> {
 const boxCls =
   'h-[30px] w-full rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
 
+// Serialize builder blocks into API payload. `fmt` decides which prescription
+// fields are kept (e.g. tabata has no target/sets/rest columns).
+function blocksToPayload(blockList: BlockState[], fmt: WorkoutFormat): CreateWorkoutInput['blocks'] {
+  const cols = itemColumns(fmt);
+  const toItem = (it: ItemState) => {
+    const rest = it.kind === 'rest';
+    return {
+      kind: it.kind,
+      exerciseId: rest ? null : it.exerciseId,
+      measure: rest ? null : it.measure || 'reps',
+      sets: rest ? null : cols.showSets ? num(it.sets) : null,
+      reps: rest ? null : num(it.reps),
+      workSeconds: num(it.workSeconds),
+      distanceMeters: rest ? null : num(it.distanceMeters),
+      restBetweenSeconds: rest ? null : cols.showRest ? num(it.rest) : null,
+      loadPrescription: rest ? null : strToLoad(it.carga),
+      tempoOverride: rest ? null : buildTempo(it.tempo),
+      perSide: false,
+    };
+  };
+  return blockList.map((b) => ({
+    kind: b.kind === 'single' ? 'group' : b.kind,
+    section: b.section,
+    type: b.type,
+    label: b.kind === 'single' ? null : b.name.trim() || null,
+    rounds: b.kind === 'single' ? null : num(b.rounds),
+    items: b.items.map(toItem),
+  }));
+}
+
 export function RutinaForm({ workout }: { workout?: Workout }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -351,6 +382,16 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  // Reusable warmup/cooldown: reference another rutina instead of inline blocks.
+  const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(
+    workout?.warmupWorkoutId ?? null,
+  );
+  const [cooldownWorkoutId, setCooldownWorkoutId] = useState<string | null>(
+    workout?.cooldownWorkoutId ?? null,
+  );
+  // Which section's rutina picker is open, and its empty-slot add menu.
+  const [rutinaPicker, setRutinaPicker] = useState<'warmup' | 'cooldown' | null>(null);
+  const [slotMenu, setSlotMenu] = useState<'warmup' | 'cooldown' | null>(null);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   // Anchored floating tempo editor (key of the open item + viewport position).
   const [tempoMenu, setTempoMenu] = useState<{ key: string; top: number; left: number } | null>(null);
@@ -759,52 +800,162 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     </div>
   );
 
-  // A warmup/cooldown slot: an empty placeholder area, or the built content.
-  const sectionSlot = (secBlocks: BlockState[], section: 'warmup' | 'cooldown', title: string) =>
-    secBlocks.length > 0 ? (
-      looseSection(secBlocks, section, title)
-    ) : (
-      <button
-        type="button"
-        onClick={() => setPickerBlock(section === 'warmup' ? '__warmup__' : '__cooldown__')}
-        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-2/30 py-3 text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-      >
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
-          {title}
-        </span>
-        <span className="text-[13px] font-semibold">+ Añadir</span>
-      </button>
+  // Names/thumbs for the referenced warmup/cooldown chips (and picker source).
+  const refListQ = useQuery({
+    queryKey: ['workout-refs'],
+    queryFn: () => api.workouts.list({ pageSize: 100 }).then((r) => r.data),
+  });
+
+  // Promote inline warmup/cooldown blocks into a standalone reusable rutina,
+  // then reference it (dropping the now-migrated inline blocks).
+  const saveAsRutina = useMutation({
+    mutationFn: async (args: { section: 'warmup' | 'cooldown'; name: string; blockList: BlockState[] }) => {
+      const created = await api.workouts.create({
+        name: args.name,
+        type: 'structured',
+        format: 'circuit',
+        difficulty,
+        status: 'draft',
+        formatConfig: null,
+        blocks: blocksToPayload(
+          args.blockList.map((b) => ({ ...b, section: 'main' as const })),
+          'circuit',
+        ),
+      });
+      return { section: args.section, id: created.id };
+    },
+    onSuccess: ({ section, id }) => {
+      if (section === 'warmup') setWarmupWorkoutId(id);
+      else setCooldownWorkoutId(id);
+      setBlocks((bs) => bs.filter((b) => b.section !== section));
+      qc.invalidateQueries({ queryKey: ['workout-refs'] });
+      qc.invalidateQueries({ queryKey: ['workouts'] });
+    },
+    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
+  });
+
+  const promoteToRutina = (section: 'warmup' | 'cooldown', blockList: BlockState[]) => {
+    const suggested = `${name.trim() || 'Rutina'} · ${section === 'warmup' ? 'Calentamiento' : 'Enfriamiento'}`;
+    const rname = typeof window !== 'undefined' ? window.prompt('Nombre de la rutina reutilizable', suggested) : suggested;
+    if (!rname || !rname.trim()) return;
+    saveAsRutina.mutate({ section, name: rname.trim(), blockList });
+  };
+
+  const stripe = { background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' };
+
+  // A warmup/cooldown slot: referenced rutina, inline blocks, or empty placeholder.
+  const sectionSlot = (secBlocks: BlockState[], section: 'warmup' | 'cooldown', title: string) => {
+    const refId = section === 'warmup' ? warmupWorkoutId : cooldownWorkoutId;
+    const setRef = section === 'warmup' ? setWarmupWorkoutId : setCooldownWorkoutId;
+
+    // 1) A referenced reusable rutina.
+    if (refId) {
+      const w = refListQ.data?.find((x) => x.id === refId);
+      return (
+        <div className="flex items-center gap-3 rounded-xl border border-line-2 bg-surface-2/40 p-2.5">
+          <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
+            {title}
+          </span>
+          {w?.thumbnailAssetId ? (
+            <MediaThumb assetId={w.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
+          ) : (
+            <div className="h-9 w-[58px] shrink-0 rounded-md" style={stripe} />
+          )}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-semibold">{w?.name ?? '…'}</div>
+            <div className="font-mono text-[10px] text-muted">rutina reutilizable · no cuenta para resultados</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setRutinaPicker(section)}
+            className="shrink-0 rounded-md px-2 py-1 font-mono text-[11px] font-medium text-ink-3 hover:bg-surface-3"
+          >
+            Cambiar
+          </button>
+          <button
+            type="button"
+            onClick={() => setRef(null)}
+            className="shrink-0 rounded-md px-2 py-1 font-mono text-[11px] font-medium text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
+          >
+            Quitar
+          </button>
+        </div>
+      );
+    }
+
+    // 2) Inline-built content, with the option to promote it to a rutina.
+    if (secBlocks.length > 0) {
+      return (
+        <div className="flex flex-col gap-1.5">
+          {looseSection(secBlocks, section, title)}
+          <button
+            type="button"
+            onClick={() => promoteToRutina(section, secBlocks)}
+            disabled={saveAsRutina.isPending}
+            className="self-start rounded-md px-1 font-mono text-[11px] font-medium text-accent-dark hover:underline disabled:opacity-50"
+          >
+            {saveAsRutina.isPending ? 'Guardando…' : 'Guardar como rutina reutilizable →'}
+          </button>
+        </div>
+      );
+    }
+
+    // 3) Empty → a placeholder with a small choose-source menu.
+    return (
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setSlotMenu(slotMenu === section ? null : section)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-2/30 py-3 text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+        >
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
+            {title}
+          </span>
+          <span className="text-[13px] font-semibold">+ Añadir</span>
+          <span className="text-[9px] opacity-60">▾</span>
+        </button>
+        {slotMenu === section && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setSlotMenu(null)} />
+            <div className="absolute left-1/2 top-full z-40 mt-1.5 w-64 -translate-x-1/2 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+              <button
+                type="button"
+                onClick={() => {
+                  setRutinaPicker(section);
+                  setSlotMenu(null);
+                }}
+                className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
+              >
+                <span className="text-[13px] font-semibold text-ink">Elegir una rutina</span>
+                <span className="font-mono text-[10px] text-muted">Reutiliza una rutina existente</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPickerBlock(section === 'warmup' ? '__warmup__' : '__cooldown__');
+                  setSlotMenu(null);
+                }}
+                className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
+              >
+                <span className="text-[13px] font-semibold text-ink">Crear aquí</span>
+                <span className="font-mono text-[10px] text-muted">Añade ejercicios solo para esta rutina</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     );
+  };
 
   const save = useMutation({
     mutationFn: () => {
       const structured = type === 'structured';
-      const cols = itemColumns(format);
-      const toItem = (it: ItemState) => {
-        const rest = it.kind === 'rest';
-        return {
-          kind: it.kind,
-          exerciseId: rest ? null : it.exerciseId,
-          measure: rest ? null : it.measure || 'reps',
-          sets: rest ? null : cols.showSets ? num(it.sets) : null,
-          reps: rest ? null : num(it.reps),
-          workSeconds: num(it.workSeconds),
-          distanceMeters: rest ? null : num(it.distanceMeters),
-          restBetweenSeconds: rest ? null : cols.showRest ? num(it.rest) : null,
-          loadPrescription: rest ? null : strToLoad(it.carga),
-          tempoOverride: rest ? null : buildTempo(it.tempo),
-          perSide: false,
-        };
-      };
-      const blocksPayload = blocks.map((b) => ({
-        // A loose exercise ('single') persists as a group with one item, no rounds.
-        kind: b.kind === 'single' ? 'group' : b.kind,
-        section: b.section,
-        type: b.type,
-        label: b.kind === 'single' ? null : b.name.trim() || null,
-        rounds: b.kind === 'single' ? null : num(b.rounds),
-        items: b.items.map(toItem),
-      }));
+      // A set reference overrides inline blocks of that section.
+      const kept = blocks.filter(
+        (b) =>
+          !(b.section === 'warmup' && warmupWorkoutId) &&
+          !(b.section === 'cooldown' && cooldownWorkoutId),
+      );
       const payload: CreateWorkoutInput = {
         name,
         description: description || null,
@@ -816,7 +967,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         thumbnailAssetId,
         videoAssetId: structured ? null : videoAssetId,
         formatConfig: structured ? buildFormatConfig(format, formatCfg) : null,
-        blocks: structured ? blocksPayload : [],
+        warmupWorkoutId: structured ? warmupWorkoutId : null,
+        cooldownWorkoutId: structured ? cooldownWorkoutId : null,
+        blocks: structured ? blocksToPayload(kept, format) : [],
       };
       return workout ? api.workouts.update(workout.id, payload) : api.workouts.create(payload);
     },
@@ -1518,6 +1671,30 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 b.key === pickerBlock ? { ...b, items: [...b.items, emptyItem(e.id)] } : b,
               ),
             );
+          }
+        }}
+      />
+
+      <EntityPicker<WorkoutListItem>
+        open={rutinaPicker !== null}
+        onClose={() => setRutinaPicker(null)}
+        title={rutinaPicker === 'cooldown' ? 'Elegir enfriamiento' : 'Elegir calentamiento'}
+        queryKey="rutina-picker"
+        load={(s) =>
+          api.workouts.list({ search: s || undefined, pageSize: 50 }).then((r) =>
+            // A rutina can't reference itself, and only structured ones make sense.
+            r.data.filter((w) => w.id !== workout?.id && w.type === 'structured'),
+          )
+        }
+        renderTitle={(w) => w.name}
+        renderSubtitle={(w) => (w.format ? FORMAT_LABEL[w.format] : es.workouts.video)}
+        onPick={(w) => {
+          if (rutinaPicker === 'warmup') {
+            setWarmupWorkoutId(w.id);
+            setBlocks((bs) => bs.filter((b) => b.section !== 'warmup'));
+          } else if (rutinaPicker === 'cooldown') {
+            setCooldownWorkoutId(w.id);
+            setBlocks((bs) => bs.filter((b) => b.section !== 'cooldown'));
           }
         }}
       />

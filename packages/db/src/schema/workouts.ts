@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, pgTable, text, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { FormatConfig, Goal, LoadPrescription, Tempo } from '@dmtx/schemas';
 import {
   blockKindEnum,
@@ -35,6 +35,9 @@ export const workouts = pgTable('workouts', {
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   formatConfig: jsonb().$type<FormatConfig>(),
   scoringGoal: jsonb().$type<Goal>(),
+  // Optional reusable warmup/cooldown: another rutina, played untracked.
+  warmupWorkoutId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'set null' }),
+  cooldownWorkoutId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'set null' }),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   videoDurationSeconds: integer(),
   status: contentStatusEnum().notNull().default('draft'),

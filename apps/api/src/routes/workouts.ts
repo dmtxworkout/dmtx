@@ -84,6 +84,8 @@ async function loadFull(db: Database, w: WorkoutRow) {
     ...base(w),
     formatConfig: w.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
+    warmupWorkoutId: w.warmupWorkoutId,
+    cooldownWorkoutId: w.cooldownWorkoutId,
     blocks: blocks.map((b: BlockRow) => ({
       id: b.id,
       kind: b.kind,
@@ -228,6 +230,8 @@ workoutsRoute.openapi(
         videoDurationSeconds: structured ? null : (input.videoDurationSeconds ?? null),
         formatConfig: structured ? (input.formatConfig ?? null) : null,
         scoringGoal: input.scoringGoal ?? null,
+        warmupWorkoutId: structured ? (input.warmupWorkoutId ?? null) : null,
+        cooldownWorkoutId: structured ? (input.cooldownWorkoutId ?? null) : null,
       })
       .returning();
     if (!row) throw new Error('No se pudo crear la rutina');
@@ -270,6 +274,9 @@ workoutsRoute.openapi(
       set.videoDurationSeconds = input.videoDurationSeconds ?? null;
     if (input.formatConfig !== undefined) set.formatConfig = input.formatConfig ?? null;
     if (input.scoringGoal !== undefined) set.scoringGoal = input.scoringGoal ?? null;
+    if (input.warmupWorkoutId !== undefined) set.warmupWorkoutId = input.warmupWorkoutId ?? null;
+    if (input.cooldownWorkoutId !== undefined)
+      set.cooldownWorkoutId = input.cooldownWorkoutId ?? null;
 
     const [row] = await db
       .update(workouts)

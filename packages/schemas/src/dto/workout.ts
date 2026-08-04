@@ -60,6 +60,10 @@ export const createWorkoutSchema = z.object({
   videoDurationSeconds: z.number().int().positive().nullish(),
   formatConfig: formatConfigSchema.nullish(),
   scoringGoal: goalSchema.nullish(),
+  // Optional reusable warmup/cooldown: another rutina played (untracked) around
+  // this one. Mutually exclusive with inline blocks of that section.
+  warmupWorkoutId: uuidSchema.nullish(),
+  cooldownWorkoutId: uuidSchema.nullish(),
   blocks: z.array(workoutBlockInputSchema).default([]),
 });
 export type CreateWorkoutInput = z.infer<typeof createWorkoutSchema>;
@@ -95,6 +99,8 @@ export const workoutSchema = z.object({
   videoDurationSeconds: z.number().nullable(),
   formatConfig: formatConfigSchema.nullable(),
   scoringGoal: goalSchema.nullable(),
+  warmupWorkoutId: uuidSchema.nullable(),
+  cooldownWorkoutId: uuidSchema.nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   blocks: z.array(workoutBlockSchema),
@@ -105,5 +111,7 @@ export const workoutListItemSchema = workoutSchema.omit({
   blocks: true,
   formatConfig: true,
   scoringGoal: true,
+  warmupWorkoutId: true,
+  cooldownWorkoutId: true,
 });
 export type WorkoutListItem = z.infer<typeof workoutListItemSchema>;
