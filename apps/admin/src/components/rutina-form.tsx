@@ -896,16 +896,18 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   });
 
   // ---- Live "as the athlete sees it" preview model -------------------------
+  const pvPrefix = (measure: MeasurementType, tv: number | null, sets: number | null) => {
+    if (measure === 'time') return tv ? `${tv}s` : null;
+    if (measure === 'distance') return tv ? `${tv}m` : null;
+    return sets && tv ? `${sets}×${tv}` : tv ? `${tv}` : sets ? `${sets} series` : null;
+  };
   const bItemToPv = (it: ItemState): PvItem => {
     if (it.kind === 'rest') return { kind: 'rest', seconds: num(it.workSeconds) };
     const measure = it.measure || 'reps';
-    const tv = num(it[targetField(measure)]);
-    const unit = measure === 'time' ? 'seg' : measure === 'distance' ? 'm' : 'reps';
     return {
       kind: 'exercise',
+      prefix: pvPrefix(measure, num(it[targetField(measure)]), num(it.sets)),
       name: exercise(it.exerciseId)?.name ?? '…',
-      sets: num(it.sets),
-      target: tv ? `${tv} ${unit}` : null,
       load: it.carga.trim() || null,
       tempo: tempoLabel(it.tempo),
     };
@@ -920,12 +922,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds ?? null };
     const measure = it.measure ?? 'reps';
     const tv = measure === 'time' ? it.workSeconds : measure === 'distance' ? it.distanceMeters : it.reps;
-    const unit = measure === 'time' ? 'seg' : measure === 'distance' ? 'm' : 'reps';
     return {
       kind: 'exercise',
+      prefix: pvPrefix(measure, tv ?? null, it.sets ?? null),
       name: exercise(it.exerciseId ?? '')?.name ?? '…',
-      sets: it.sets ?? null,
-      target: tv ? `${tv} ${unit}` : null,
       load: loadToStr(it.loadPrescription) || null,
       tempo: it.tempoOverride ? tempoLabel(tempoStrFrom(it.tempoOverride)) : null,
     };
