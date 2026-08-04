@@ -370,6 +370,9 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const qc = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
+  // Per-input validation errors, keyed `${itemKey}:${field}`, to highlight the
+  // exact box that's wrong (e.g. reps set to 0).
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [name, setName] = useState(workout?.name ?? '');
   const [description, setDescription] = useState(workout?.description ?? '');
@@ -460,12 +463,23 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     setDragIndex(null);
     setOverIndex(null);
   };
-  const updateItem = (bk: string, ik: string, patch: Partial<ItemState>) =>
+  const updateItem = (bk: string, ik: string, patch: Partial<ItemState>) => {
     setBlocks((bs) =>
       bs.map((b) =>
         b.key === bk ? { ...b, items: b.items.map((it) => (it.key === ik ? { ...it, ...patch } : it)) } : b,
       ),
     );
+    // Editing a field clears its validation error.
+    setFieldErrors((fe) => {
+      const keys = Object.keys(patch);
+      if (!keys.some((k) => fe[`${ik}:${k}`])) return fe;
+      const next = { ...fe };
+      for (const k of keys) delete next[`${ik}:${k}`];
+      return next;
+    });
+  };
+  const fieldErr = (key: string, field: string) => Boolean(fieldErrors[`${key}:${field}`]);
+  const errRing = 'border-red-400 bg-red-50 focus:border-red-400';
   // Reorder items within a single block (drops are constrained to the block).
   const moveItem = (bk: string, target: number) => {
     setBlocks((bs) =>
@@ -605,33 +619,28 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             <input
               value={it.sets}
               onChange={(e) => updateItem(bk, it.key, { sets: e.target.value })}
-              className={boxCls}
+              className={cn(boxCls, fieldErr(it.key, 'sets') && errRing)}
             />
           )}
           {cols.showTarget && (
-            <div className="relative">
-              <select
-                value={measure}
-                onChange={(e) => updateItem(bk, it.key, { measure: e.target.value as MeasurementType })}
-                className="h-[30px] w-full cursor-pointer appearance-none rounded-[7px] border border-[#e6e2d9] bg-surface-3 pl-2 pr-4 text-center font-mono text-[12px] font-medium uppercase text-ink-2 focus:border-accent/40 focus:outline-none"
-              >
-                {MEASURES.map((m) => (
-                  <option key={m.v} value={m.v}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[7px] text-muted">
-                ▾
-              </span>
-            </div>
+            <select
+              value={measure}
+              onChange={(e) => updateItem(bk, it.key, { measure: e.target.value as MeasurementType })}
+              className="h-[30px] w-full cursor-pointer appearance-none rounded-[7px] border border-[#e6e2d9] bg-surface-3 px-2 text-center font-mono text-[12px] font-medium uppercase text-ink-2 focus:border-accent/40 focus:outline-none"
+            >
+              {MEASURES.map((m) => (
+                <option key={m.v} value={m.v}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           )}
           {cols.showTarget && (
             <input
               value={it[tf]}
               placeholder="0"
               onChange={(e) => updateItem(bk, it.key, { [tf]: e.target.value })}
-              className={boxCls}
+              className={cn(boxCls, fieldErr(it.key, tf) && errRing)}
             />
           )}
           <input
@@ -669,7 +678,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               )}
             >
               <span className="truncate">{tLabel ?? '—'}</span>
-              <span className="text-[7px] opacity-60">▾</span>
             </button>
           ) : (
             <span />
@@ -763,7 +771,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             value={it.workSeconds}
             placeholder="0"
             onChange={(e) => updateItem(bk, it.key, { workSeconds: e.target.value })}
-            className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+            className={cn(
+              'h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]',
+              fieldErr(it.key, 'workSeconds') && errRing,
+            )}
           />
           <span className="font-mono text-[11px] text-muted">seg</span>
           <button
@@ -945,7 +956,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             {title}
           </span>
           <span className="text-[13px] font-semibold">+ Añadir</span>
-          <span className="text-[9px] opacity-60">▾</span>
         </button>
         {slotMenu?.section === section && (
           <>
@@ -1077,6 +1087,54 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       return;
     }
     setNameError(false);
+
+    // Catch the values the API would reject (positive-only fields set to 0 or
+    // less) up front, so we can point at the exact box instead of "Datos
+    // inválidos".
+    if (type === 'structured') {
+      const cols = itemColumns(format);
+      const kept = blocks.filter(
+        (b) =>
+          !(b.section === 'warmup' && warmupWorkoutId) &&
+          !(b.section === 'cooldown' && cooldownWorkoutId),
+      );
+      const errs: Record<string, string> = {};
+      let firstMsg: string | null = null;
+      let firstBlock: string | null = null;
+      const bad = (raw: string) => raw.trim() !== '' && (num(raw) ?? 0) <= 0;
+      const flag = (bKey: string, itKey: string, field: string, msg: string) => {
+        errs[`${itKey}:${field}`] = msg;
+        if (!firstMsg) {
+          firstMsg = msg;
+          firstBlock = bKey;
+        }
+      };
+      for (const b of kept) {
+        for (const it of b.items) {
+          if (it.kind === 'rest') {
+            if (bad(it.workSeconds))
+              flag(b.key, it.key, 'workSeconds', 'El descanso debe ser mayor que 0 segundos.');
+          } else {
+            const exName = exercise(it.exerciseId)?.name ?? 'Un ejercicio';
+            if (cols.showSets && bad(it.sets))
+              flag(b.key, it.key, 'sets', `«${exName}»: las series deben ser mayores que 0.`);
+            if (cols.showTarget) {
+              const tf = targetField(it.measure || 'reps');
+              if (bad(it[tf]))
+                flag(b.key, it.key, tf, `«${exName}»: el objetivo debe ser mayor que 0.`);
+            }
+          }
+        }
+      }
+      if (firstMsg) {
+        setFieldErrors(errs);
+        setServerError(firstMsg);
+        if (firstBlock) setCollapsed((c) => ({ ...c, [firstBlock!]: false }));
+        return;
+      }
+    }
+
+    setFieldErrors({});
     save.mutate();
   };
 
@@ -1348,7 +1406,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                           onChange={(e) =>
                             b.items[0] && updateItem(b.key, b.items[0].key, { workSeconds: e.target.value })
                           }
-                          className="h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
+                          className={cn(
+                            'h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]',
+                            b.items[0] && fieldErr(b.items[0].key, 'workSeconds') && errRing,
+                          )}
                         />
                         <span className="font-mono text-[11px] text-muted">seg</span>
                         <span className="flex-1" />
@@ -1520,7 +1581,6 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
                 >
                   + Añadir
-                  <span className="text-[9px] opacity-60">▾</span>
                 </button>
                 {addMenu && (
                   <>
