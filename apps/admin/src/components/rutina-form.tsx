@@ -28,6 +28,7 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
 import { MediaThumb } from '@/components/media-thumb';
 import { EntityPicker } from '@/components/entity-picker';
+import { toast } from '@/components/ui/toast';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   amrap: 'AMRAP',
@@ -868,6 +869,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       setBlocks((bs) => bs.filter((b) => b.section !== section));
       qc.invalidateQueries({ queryKey: ['workout-refs'] });
       qc.invalidateQueries({ queryKey: ['workouts'] });
+      toast('Rutina reutilizable creada');
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -1023,9 +1025,16 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       };
       return workout ? api.workouts.update(workout.id, payload) : api.workouts.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      // Keep the freshly-saved detail in cache so re-opening this rutina shows
+      // the update immediately (queries have a 30s staleTime).
+      qc.setQueryData(['workout', saved.id], saved);
       qc.invalidateQueries({ queryKey: ['workouts'] });
-      router.push('/rutinas');
+      qc.invalidateQueries({ queryKey: ['workout-refs'] });
+      toast('Rutina guardada');
+      // A brand-new rutina moves to its edit page so the next save updates it
+      // (instead of creating another); edits just stay put.
+      if (!workout) router.replace(`/rutinas/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
