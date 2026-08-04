@@ -29,6 +29,13 @@ import { MediaField } from '@/components/media-field';
 import { MediaThumb } from '@/components/media-thumb';
 import { EntityPicker } from '@/components/entity-picker';
 import { toast } from '@/components/ui/toast';
+import {
+  RutinaPreview,
+  type PvBlock,
+  type PvItem,
+  type PvModel,
+  type PvSection,
+} from '@/components/rutina-preview';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   amrap: 'AMRAP',
@@ -287,6 +294,35 @@ function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): 
   }
 }
 
+const mmss = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+
+// Short human summary of the timing config, for the preview header.
+function formatSummary(format: WorkoutFormat, cfg: Record<string, string>): string[] {
+  const n = (k: string) => {
+    const v = Number(cfg[k]);
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+  };
+  const out: string[] = [];
+  if (format === 'amrap') {
+    if (n('totalSeconds')) out.push(mmss(n('totalSeconds')));
+  } else if (format === 'emom') {
+    if (n('intervalSeconds')) out.push(`cada ${mmss(n('intervalSeconds'))}`);
+    if (n('rounds')) out.push(`${n('rounds')} rondas`);
+  } else if (format === 'tabata') {
+    if (n('rounds')) out.push(`${n('rounds')} rondas`);
+    if (n('workSeconds') || n('restSeconds')) out.push(`${n('workSeconds')}s / ${n('restSeconds')}s`);
+  } else if (format === 'chipper') {
+    if (n('timeCapSeconds')) out.push(`límite ${mmss(n('timeCapSeconds'))}`);
+  } else if (format === 'for_time') {
+    if (n('rounds')) out.push(`${n('rounds')} rondas`);
+    if (n('timeCapSeconds')) out.push(`límite ${mmss(n('timeCapSeconds'))}`);
+  } else if (format === 'circuit') {
+    if (n('rounds')) out.push(`${n('rounds')} rondas`);
+    if (n('restBetweenRoundsSeconds')) out.push(`descanso ${n('restBetweenRoundsSeconds')}s`);
+  }
+  return out;
+}
+
 function initBlocks(w?: Workout): BlockState[] {
   if (!w) return [];
   return w.blocks.map((b) => ({
@@ -394,6 +430,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [addMenu, setAddMenu] = useState<{ top: number; left: number; up: boolean } | null>(null);
   // Reusable warmup/cooldown: reference another rutina instead of inline blocks.
   const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(
@@ -844,6 +881,81 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     queryKey: ['workout-refs'],
     queryFn: () => api.workouts.list({ pageSize: 100 }).then((r) => r.data),
   });
+
+  // Referenced warmup/cooldown rutinas, resolved so the preview can show their
+  // exercises (shares the ['workout', id] cache with the editor).
+  const warmupQ = useQuery({
+    queryKey: ['workout', warmupWorkoutId],
+    queryFn: () => api.workouts.get(warmupWorkoutId!),
+    enabled: !!warmupWorkoutId,
+  });
+  const cooldownQ = useQuery({
+    queryKey: ['workout', cooldownWorkoutId],
+    queryFn: () => api.workouts.get(cooldownWorkoutId!),
+    enabled: !!cooldownWorkoutId,
+  });
+
+  // ---- Live "as the athlete sees it" preview model -------------------------
+  const bItemToPv = (it: ItemState): PvItem => {
+    if (it.kind === 'rest') return { kind: 'rest', seconds: num(it.workSeconds) };
+    const measure = it.measure || 'reps';
+    const tv = num(it[targetField(measure)]);
+    const unit = measure === 'time' ? 'seg' : measure === 'distance' ? 'm' : 'reps';
+    return {
+      kind: 'exercise',
+      name: exercise(it.exerciseId)?.name ?? '…',
+      sets: num(it.sets),
+      target: tv ? `${tv} ${unit}` : null,
+      load: it.carga.trim() || null,
+      tempo: tempoLabel(it.tempo),
+    };
+  };
+  const bBlockToPv = (b: BlockState): PvBlock => ({
+    title: b.kind === 'single' ? null : b.name.trim() || null,
+    rounds: b.kind === 'single' ? null : num(b.rounds),
+    items: b.items.map(bItemToPv),
+  });
+  type ApiBlock = Workout['blocks'][number];
+  const aItemToPv = (it: ApiBlock['items'][number]): PvItem => {
+    if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds ?? null };
+    const measure = it.measure ?? 'reps';
+    const tv = measure === 'time' ? it.workSeconds : measure === 'distance' ? it.distanceMeters : it.reps;
+    const unit = measure === 'time' ? 'seg' : measure === 'distance' ? 'm' : 'reps';
+    return {
+      kind: 'exercise',
+      name: exercise(it.exerciseId ?? '')?.name ?? '…',
+      sets: it.sets ?? null,
+      target: tv ? `${tv} ${unit}` : null,
+      load: loadToStr(it.loadPrescription) || null,
+      tempo: it.tempoOverride ? tempoLabel(tempoStrFrom(it.tempoOverride)) : null,
+    };
+  };
+  const aBlockToPv = (b: ApiBlock): PvBlock => ({
+    title: b.label,
+    rounds: b.rounds,
+    items: b.items.map(aItemToPv),
+  });
+  const refSection = (
+    id: string | null,
+    data: Workout | undefined,
+    inline: BlockState[],
+  ): PvSection | null => {
+    if (id) {
+      const name = data?.name ?? refListQ.data?.find((w) => w.id === id)?.name ?? '…';
+      return { name, blocks: (data?.blocks ?? []).map(aBlockToPv) };
+    }
+    if (inline.length) return { name: null, blocks: inline.map(bBlockToPv) };
+    return null;
+  };
+  const previewModel: PvModel = {
+    type,
+    hasVideo: type === 'video' && !!videoAssetId,
+    formatLabel: type === 'structured' ? FORMAT_LABEL[format] : 'Video',
+    summary: type === 'structured' ? formatSummary(format, formatCfg) : [],
+    warmup: refSection(warmupWorkoutId, warmupQ.data, warmupBlocks),
+    main: mainBlocks.map(bBlockToPv),
+    cooldown: refSection(cooldownWorkoutId, cooldownQ.data, cooldownBlocks),
+  };
 
   // Promote inline warmup/cooldown blocks into a standalone reusable rutina,
   // then reference it (dropping the now-migrated inline blocks).
@@ -1324,6 +1436,23 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="mr-1.5"
+            >
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+            Ajustes
+          </Button>
           <Button type="button" variant="outline" onClick={() => router.push('/rutinas')}>
             {es.app.cancel}
           </Button>
@@ -1658,112 +1787,130 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
           )}
         </div>
 
-        {/* Right: config sidebar */}
-          <aside className="flex w-full flex-col gap-[22px] border-t border-line bg-surface px-[22px] py-[22px] lg:sticky lg:top-0 lg:w-[360px] lg:border-l lg:border-t-0">
-          <div className="flex flex-col gap-3">
-            <div>
-              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.status}</div>
-              <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
-                {CONTENT_STATUS.map((s) => (
-                  <option key={s} value={s}>
-                    {es.status[s]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.description}</div>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="min-h-16 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
+        {/* Right: live preview of the whole rutina */}
+          <aside className="flex w-full flex-col gap-[22px] border-t border-line bg-surface px-[22px] py-[22px] lg:sticky lg:top-0 lg:w-[380px] lg:border-l lg:border-t-0">
+            <RutinaPreview model={previewModel} name={name} />
+          </aside>
+        </div>
+      </div>
 
-          <div className="flex flex-col gap-2.5">
-            <MonoLabel>{es.workouts.type}</MonoLabel>
-            {locked ? (
-              <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
-                {es.workouts.types[type]}
+      {/* Settings drawer (moved out of the sidebar to free it for the preview) */}
+      {settingsOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setSettingsOpen(false)} />
+          <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[380px] flex-col overflow-y-auto border-l border-line bg-surface shadow-[0_0_40px_-10px_rgba(0,0,0,0.35)]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-5 py-4">
+              <h3 className="text-[15px] font-bold">Ajustes</h3>
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(false)}
+                aria-label="Cerrar"
+                className="rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-col gap-[22px] p-5">
+              <div className="flex flex-col gap-3">
+                <div>
+                  <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.status}</div>
+                  <Select value={status} onChange={(e) => setStatus(e.target.value as typeof status)}>
+                    {CONTENT_STATUS.map((s) => (
+                      <option key={s} value={s}>
+                        {es.status[s]}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.description}</div>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="min-h-16 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-1.5">
-                {(['structured', 'video'] as const).map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setType(t)}
-                    className={cn(
-                      'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                      type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
-                    )}
-                  >
-                    {es.workouts.types[t]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
 
-          {type === 'structured' && (
-            <>
               <div className="flex flex-col gap-2.5">
-                <MonoLabel>{es.workouts.format}</MonoLabel>
+                <MonoLabel>{es.workouts.type}</MonoLabel>
                 {locked ? (
-                  <div className="rounded-lg border border-accent/30 bg-accent-tint/40 px-3 py-2.5 text-xs font-semibold text-accent-dark">
-                    {FORMAT_LABEL[format]}
+                  <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
+                    {es.workouts.types[type]}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {WORKOUT_FORMAT.map((f) => (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(['structured', 'video'] as const).map((t) => (
                       <button
-                        key={f}
+                        key={t}
                         type="button"
-                        onClick={() => setFormat(f)}
+                        onClick={() => setType(t)}
                         className={cn(
                           'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                          format === f
-                            ? 'border-accent bg-accent-tint/50 text-accent-dark'
-                            : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
+                          type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
                         )}
                       >
-                        {FORMAT_LABEL[f]}
+                        {es.workouts.types[t]}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-            </>
-          )}
 
-          <div className="flex flex-col gap-3">
-            <MonoLabel>Ajustes</MonoLabel>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.difficulty}</div>
-                <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
-                  {DIFFICULTY.map((d) => (
-                    <option key={d} value={d}>
-                      {es.difficulty[d]}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
-                <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+              {type === 'structured' && (
+                <div className="flex flex-col gap-2.5">
+                  <MonoLabel>{es.workouts.format}</MonoLabel>
+                  {locked ? (
+                    <div className="rounded-lg border border-accent/30 bg-accent-tint/40 px-3 py-2.5 text-xs font-semibold text-accent-dark">
+                      {FORMAT_LABEL[format]}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {WORKOUT_FORMAT.map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => setFormat(f)}
+                          className={cn(
+                            'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
+                            format === f
+                              ? 'border-accent bg-accent-tint/50 text-accent-dark'
+                              : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
+                          )}
+                        >
+                          {FORMAT_LABEL[f]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.difficulty}</div>
+                    <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
+                      {DIFFICULTY.map((d) => (
+                        <option key={d} value={d}>
+                          {es.difficulty[d]}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div>
+                    <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
+                    <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+                  </div>
+                </div>
+
+              <div className="flex flex-col gap-2.5">
+                <MonoLabel>{es.fields.thumbnail}</MonoLabel>
+                <MediaField kind="image" label={es.fields.thumbnail} value={thumbnailAssetId} onChange={setThumbnailAssetId} />
               </div>
             </div>
-          </div>
-
-          <div className="flex flex-col gap-2.5">
-            <MonoLabel>{es.fields.thumbnail}</MonoLabel>
-            <MediaField kind="image" label={es.fields.thumbnail} value={thumbnailAssetId} onChange={setThumbnailAssetId} />
-          </div>
           </aside>
-        </div>
-      </div>
+        </>
+      )}
 
       <EntityPicker<ExerciseListItem>
         open={pickerBlock !== null}
