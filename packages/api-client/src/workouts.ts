@@ -3,6 +3,7 @@ import type {
   PaginationQuery,
   UpdateWorkoutInput,
   Workout,
+  WorkoutKind,
   WorkoutListItem,
 } from '@dmtx/schemas';
 import { type Http, listQuery } from './http';
@@ -10,7 +11,9 @@ import type { Paginated } from './exercises';
 
 export function workoutsApi(http: Http) {
   return {
-    list(query?: Partial<PaginationQuery>): Promise<Paginated<WorkoutListItem>> {
+    list(
+      query?: Partial<PaginationQuery> & { kind?: WorkoutKind },
+    ): Promise<Paginated<WorkoutListItem>> {
       return http.request(`/api/workouts${listQuery(query)}`);
     },
     get(id: string): Promise<Workout> {

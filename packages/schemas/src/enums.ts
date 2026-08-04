@@ -37,6 +37,12 @@ export const WORKOUT_TYPE = ['structured', 'video'] as const;
 export const workoutTypeSchema = enumOf(WORKOUT_TYPE);
 export type WorkoutType = z.infer<typeof workoutTypeSchema>;
 
+// A rutina is trackable content; a segment is a reusable warmup/cooldown piece
+// (untracked, no nested warmup/cooldown, kept out of the main catalog).
+export const WORKOUT_KIND = ['rutina', 'segment'] as const;
+export const workoutKindSchema = enumOf(WORKOUT_KIND);
+export type WorkoutKind = z.infer<typeof workoutKindSchema>;
+
 export const WORKOUT_FORMAT = [
   'amrap',
   'emom',

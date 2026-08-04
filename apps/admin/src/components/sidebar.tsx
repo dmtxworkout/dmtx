@@ -14,6 +14,7 @@ const groups = [
     label: es.nav.sections.contenido,
     items: [
       { href: '/rutinas', label: es.nav.workouts },
+      { href: '/segmentos', label: es.nav.segments },
       { href: '/ejercicios', label: es.nav.exercises },
       { href: '/programas', label: es.nav.programs },
       { href: '/habilidades', label: es.nav.skills },

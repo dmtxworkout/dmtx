@@ -130,6 +130,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
           .where(
             and(
               eq(workouts.status, 'published'),
+              eq(workouts.kind, 'rutina'),
               isNull(workouts.deletedAt),
               like ? ilike(workouts.name, like) : undefined,
             ),

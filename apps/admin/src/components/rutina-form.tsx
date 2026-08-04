@@ -15,6 +15,7 @@ import type {
   TempoPhase,
   Workout,
   WorkoutFormat,
+  WorkoutKind,
   WorkoutListItem,
 } from '@dmtx/schemas';
 import type { ExerciseListItem } from '@dmtx/api-client';
@@ -402,9 +403,15 @@ function blocksToPayload(blockList: BlockState[], fmt: WorkoutFormat): CreateWor
   }));
 }
 
-export function RutinaForm({ workout }: { workout?: Workout }) {
+export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; kind?: WorkoutKind }) {
   const router = useRouter();
   const qc = useQueryClient();
+  // A segment is a reusable warmup/cooldown piece: same editor, but no nested
+  // warmup/cooldown slots, and it lives under /segmentos.
+  const segmentMode = (workout?.kind ?? kind) === 'segment';
+  const basePath = segmentMode ? '/segmentos' : '/rutinas';
+  const listTitle = segmentMode ? es.segments.title : es.workouts.title;
+  const newLabel = segmentMode ? es.segments.new : es.workouts.new;
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
   // Per-input validation errors, keyed `${itemKey}:${field}`, to highlight the
@@ -423,7 +430,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   // New workouts start in a guided wizard (type → format → name); existing ones
   // skip straight to the builder.
   const [wizardStep, setWizardStep] = useState<'type' | 'format' | 'name' | 'done'>(
-    workout ? 'done' : 'type',
+    workout ? 'done' : segmentMode ? 'format' : 'type',
   );
   const [formatCfg, setFormatCfg] = useState<Record<string, string>>(initCfg(workout));
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
@@ -963,6 +970,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     mutationFn: async (args: { section: 'warmup' | 'cooldown'; name: string; blockList: BlockState[] }) => {
       const created = await api.workouts.create({
         name: args.name,
+        kind: 'segment',
         type: 'structured',
         format: 'circuit',
         difficulty,
@@ -981,7 +989,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       setBlocks((bs) => bs.filter((b) => b.section !== section));
       qc.invalidateQueries({ queryKey: ['workout-refs'] });
       qc.invalidateQueries({ queryKey: ['workouts'] });
-      toast('Rutina reutilizable creada');
+      toast('Segmento creado');
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -1046,7 +1054,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             disabled={saveAsRutina.isPending}
             className="self-start rounded-md px-1 font-mono text-[11px] font-medium text-accent-dark hover:underline disabled:opacity-50"
           >
-            {saveAsRutina.isPending ? 'Guardando…' : 'Guardar como rutina reutilizable →'}
+            {saveAsRutina.isPending ? 'Guardando…' : 'Guardar como segmento reutilizable →'}
           </button>
         </div>
       );
@@ -1123,6 +1131,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       const payload: CreateWorkoutInput = {
         name,
         description: description || null,
+        kind: segmentMode ? 'segment' : 'rutina',
         type,
         format: structured ? format : null,
         difficulty,
@@ -1143,10 +1152,10 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       qc.setQueryData(['workout', saved.id], saved);
       qc.invalidateQueries({ queryKey: ['workouts'] });
       qc.invalidateQueries({ queryKey: ['workout-refs'] });
-      toast('Rutina guardada');
-      // A brand-new rutina moves to its edit page so the next save updates it
+      toast(segmentMode ? 'Segmento guardado' : 'Rutina guardada');
+      // A brand-new item moves to its edit page so the next save updates it
       // (instead of creating another); edits just stay put.
-      if (!workout) router.replace(`/rutinas/${saved.id}`);
+      if (!workout) router.replace(`${basePath}/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -1278,19 +1287,29 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   };
 
   if (wizardStep !== 'done') {
-    const stepNum = wizardStep === 'type' ? 1 : wizardStep === 'format' ? 2 : type === 'video' ? 2 : 3;
-    const stepTotal = type === 'video' ? 2 : 3;
+    const stepTotal = segmentMode ? 2 : type === 'video' ? 2 : 3;
+    const stepNum = segmentMode
+      ? wizardStep === 'format'
+        ? 1
+        : 2
+      : wizardStep === 'type'
+        ? 1
+        : wizardStep === 'format'
+          ? 2
+          : type === 'video'
+            ? 2
+            : 3;
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between gap-6 border-b border-line bg-surface px-7 py-4">
           <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
-            <button type="button" onClick={() => router.push('/rutinas')} className="hover:text-ink-2">
-              {es.workouts.title}
+            <button type="button" onClick={() => router.push(basePath)} className="hover:text-ink-2">
+              {listTitle}
             </button>
             <span>/</span>
             <span className="text-ink-2">Nueva</span>
           </div>
-          <Button type="button" variant="outline" onClick={() => router.push('/rutinas')}>
+          <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
             {es.app.cancel}
           </Button>
         </header>
@@ -1331,13 +1350,15 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
 
             {wizardStep === 'format' && (
               <>
-                <button
-                  type="button"
-                  onClick={() => setWizardStep('type')}
-                  className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
-                >
-                  ← Atrás
-                </button>
+                {!segmentMode && (
+                  <button
+                    type="button"
+                    onClick={() => setWizardStep('type')}
+                    className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
+                  >
+                    ← Atrás
+                  </button>
+                )}
                 <h1 className="mb-1 text-2xl font-bold tracking-tight">Elige el formato</h1>
                 <p className="mb-6 text-sm text-ink-3">Define cómo se estructura y cronometra la rutina.</p>
                 <div className="grid gap-2.5 sm:grid-cols-2">
@@ -1365,7 +1386,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 >
                   ← Atrás
                 </button>
-                <h1 className="mb-1 text-2xl font-bold tracking-tight">Nombra tu rutina</h1>
+                <h1 className="mb-1 text-2xl font-bold tracking-tight">Nombra tu {segmentMode ? 'segmento' : 'rutina'}</h1>
                 <p className="mb-5 text-sm text-ink-3">
                   {es.workouts.types[type]}
                   {type === 'structured' ? ` · ${FORMAT_LABEL[format]}` : ''}
@@ -1380,7 +1401,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') finishWizard();
                   }}
-                  placeholder={es.workouts.new}
+                  placeholder={newLabel}
                 />
                 {nameError && (
                   <span className="mt-1.5 block text-xs font-medium text-accent-dark">
@@ -1404,8 +1425,8 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       <header className="flex items-start justify-between gap-6 border-b border-line bg-surface px-7 pb-4 pt-5">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
-            <button type="button" onClick={() => router.push('/rutinas')} className="hover:text-ink-2">
-              {es.workouts.title}
+            <button type="button" onClick={() => router.push(basePath)} className="hover:text-ink-2">
+              {listTitle}
             </button>
             <span>/</span>
             <span className="text-ink-2">{workout ? 'Editar' : 'Nueva'}</span>
@@ -1416,7 +1437,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               setName(e.target.value);
               if (nameError) setNameError(false);
             }}
-            placeholder={es.workouts.new}
+            placeholder={newLabel}
             className={cn(
               'w-full max-w-2xl bg-transparent text-[26px] font-bold tracking-[-0.02em] focus:outline-none',
               nameError ? 'placeholder:text-accent-dark' : 'placeholder:text-faint',
@@ -1453,7 +1474,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
             </svg>
             Ajustes
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.push('/rutinas')}>
+          <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
             {es.app.cancel}
           </Button>
           <Button onClick={doSave} disabled={save.isPending}>
@@ -1493,7 +1514,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 </div>
               )}
 
-              {sectionSlot(warmupBlocks, 'warmup', 'Calentamiento')}
+              {!segmentMode && sectionSlot(warmupBlocks, 'warmup', 'Calentamiento')}
 
               {mainBlocks.map((b) => {
                 const bi = blocks.indexOf(b);
@@ -1770,11 +1791,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 )}
               </div>
 
-              {sectionSlot(cooldownBlocks, 'cooldown', 'Enfriamiento')}
+              {!segmentMode && sectionSlot(cooldownBlocks, 'cooldown', 'Enfriamiento')}
 
               <p className="font-mono text-[11px] leading-relaxed text-muted">
-                Un bloque son varias rondas de lo que tenga dentro. Calentamiento y enfriamiento son
-                opcionales y no cuentan para los resultados.
+                {segmentMode
+                  ? 'Un segmento es un calentamiento o enfriamiento reutilizable. No se registra en los resultados y no lleva su propio calentamiento ni enfriamiento.'
+                  : 'Un bloque son varias rondas de lo que tenga dentro. Calentamiento y enfriamiento son opcionales y no cuentan para los resultados.'}
               </p>
             </>
           ) : (
@@ -1832,30 +1854,32 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-2.5">
-                <MonoLabel>{es.workouts.type}</MonoLabel>
-                {locked ? (
-                  <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
-                    {es.workouts.types[type]}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(['structured', 'video'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setType(t)}
-                        className={cn(
-                          'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                          type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
-                        )}
-                      >
-                        {es.workouts.types[t]}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {!segmentMode && (
+                <div className="flex flex-col gap-2.5">
+                  <MonoLabel>{es.workouts.type}</MonoLabel>
+                  {locked ? (
+                    <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
+                      {es.workouts.types[type]}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {(['structured', 'video'] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setType(t)}
+                          className={cn(
+                            'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
+                            type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
+                          )}
+                        >
+                          {es.workouts.types[t]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {type === 'structured' && (
                 <div className="flex flex-col gap-2.5">
@@ -1944,9 +1968,8 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
         title={rutinaPicker === 'cooldown' ? 'Elegir enfriamiento' : 'Elegir calentamiento'}
         queryKey="rutina-picker"
         load={(s) =>
-          api.workouts.list({ search: s || undefined, pageSize: 50 }).then((r) =>
-            // A rutina can't reference itself, and only structured ones make sense.
-            r.data.filter((w) => w.id !== workout?.id && w.type === 'structured'),
+          api.workouts.list({ search: s || undefined, pageSize: 50, kind: 'segment' }).then((r) =>
+            r.data.filter((w) => w.id !== workout?.id),
           )
         }
         renderTitle={(w) => w.name}

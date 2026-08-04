@@ -8,6 +8,7 @@ import {
   paginationQuerySchema,
   slugify,
   updateWorkoutSchema,
+  workoutKindSchema,
   workoutListItemSchema,
   workoutSchema,
 } from '@dmtx/schemas';
@@ -47,6 +48,7 @@ function base(w: WorkoutRow) {
     slug: w.slug,
     name: w.name,
     description: w.description,
+    kind: w.kind,
     type: w.type,
     format: w.format,
     difficulty: w.difficulty,
@@ -147,7 +149,7 @@ workoutsRoute.openapi(
     method: 'get',
     path: '/',
     tags: ['workouts'],
-    request: { query: paginationQuerySchema },
+    request: { query: paginationQuerySchema.extend({ kind: workoutKindSchema.optional() }) },
     responses: {
       200: {
         description: 'Lista de rutinas',
@@ -157,9 +159,10 @@ workoutsRoute.openapi(
   }),
   async (c) => {
     const db = c.get('db');
-    const { page, pageSize, search } = c.req.valid('query');
+    const { page, pageSize, search, kind } = c.req.valid('query');
     const where = and(
       isNull(workouts.deletedAt),
+      kind ? eq(workouts.kind, kind) : undefined,
       search ? ilike(workouts.name, `%${search}%`) : undefined,
     );
     const [rows, [totals]] = await Promise.all([
@@ -220,6 +223,7 @@ workoutsRoute.openapi(
         slug: input.slug ?? slugify(input.name),
         name: input.name,
         description: input.description ?? null,
+        kind: input.kind,
         type: input.type,
         format: structured ? (input.format ?? null) : null,
         difficulty: input.difficulty,
@@ -262,6 +266,7 @@ workoutsRoute.openapi(
     if (input.name !== undefined) set.name = input.name;
     if (input.slug !== undefined) set.slug = input.slug;
     if (input.description !== undefined) set.description = input.description ?? null;
+    if (input.kind !== undefined) set.kind = input.kind;
     if (input.type !== undefined) set.type = input.type;
     if (input.format !== undefined) set.format = input.format ?? null;
     if (input.difficulty !== undefined) set.difficulty = input.difficulty;

@@ -13,6 +13,7 @@ import {
   softDelete,
   timestamps,
   workoutFormatEnum,
+  workoutKindEnum,
   workoutTypeEnum,
 } from './_shared';
 import { mediaAssets } from './media';
@@ -28,6 +29,7 @@ export const workouts = pgTable('workouts', {
   slug: text().notNull().unique(),
   name: text().notNull(),
   description: text(),
+  kind: workoutKindEnum().notNull().default('rutina'),
   type: workoutTypeEnum().notNull(),
   format: workoutFormatEnum(),
   difficulty: difficultyEnum().notNull(),

@@ -53,11 +53,13 @@ export function listQuery(query?: {
   page?: number;
   pageSize?: number;
   search?: string;
+  kind?: string;
 }): string {
   const p = new URLSearchParams();
   if (query?.page) p.set('page', String(query.page));
   if (query?.pageSize) p.set('pageSize', String(query.pageSize));
   if (query?.search) p.set('search', query.search);
+  if (query?.kind) p.set('kind', query.kind);
   const s = p.toString();
   return s ? `?${s}` : '';
 }

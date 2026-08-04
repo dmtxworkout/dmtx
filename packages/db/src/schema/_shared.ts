@@ -20,6 +20,7 @@ import {
   PROGRAM_TYPE,
   SUBSCRIPTION_STATUS,
   WORKOUT_FORMAT,
+  WORKOUT_KIND,
   WORKOUT_TYPE,
 } from '@dmtx/schemas';
 
@@ -30,6 +31,7 @@ export const measurementTypeEnum = pgEnum('measurement_type', MEASUREMENT_TYPE);
 export const muscleRoleEnum = pgEnum('muscle_role', MUSCLE_ROLE);
 export const bodyRegionEnum = pgEnum('body_region', BODY_REGION);
 export const workoutTypeEnum = pgEnum('workout_type', WORKOUT_TYPE);
+export const workoutKindEnum = pgEnum('workout_kind', WORKOUT_KIND);
 export const workoutFormatEnum = pgEnum('workout_format', WORKOUT_FORMAT);
 export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
 export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);
