@@ -42,19 +42,21 @@ function Line({ item }: { item: PvItem }) {
 // loose exercise that should sit tight against its neighbours.
 const isBlock = (b: PvBlock) => b.items.length > 1 || (b.rounds != null && b.rounds > 1);
 
-type Unit = { rounds: number | null; items: PvItem[] };
+type Unit = { rounds: number | null; loose: boolean; items: PvItem[] };
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
+  // Build display units WITHOUT mutating the incoming block arrays (they belong
+  // to the live model and must stay intact across re-renders).
   const units: Unit[] = [];
   for (const b of blocks) {
     if (b.items.length === 0) continue;
     if (isBlock(b)) {
-      units.push({ rounds: b.rounds, items: b.items });
+      units.push({ rounds: b.rounds, loose: false, items: [...b.items] });
     } else {
       const last = units[units.length - 1];
       // Merge consecutive loose exercises into one tight run.
-      if (last && last.rounds == null) last.items.push(...b.items);
-      else units.push({ rounds: null, items: b.items });
+      if (last && last.loose) last.items.push(...b.items);
+      else units.push({ rounds: null, loose: true, items: [...b.items] });
     }
   }
 
