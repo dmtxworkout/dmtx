@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState, type DragEvent, type ReactNode } from 'react';
+import { Fragment, useState, type DragEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
@@ -350,6 +350,7 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   // Anchored floating tempo editor (key of the open item + viewport position).
   const [tempoMenu, setTempoMenu] = useState<{ key: string; top: number; left: number } | null>(null);
@@ -758,6 +759,23 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
     </div>
   );
 
+  // A warmup/cooldown slot: an empty placeholder area, or the built content.
+  const sectionSlot = (secBlocks: BlockState[], section: 'warmup' | 'cooldown', title: string) =>
+    secBlocks.length > 0 ? (
+      looseSection(secBlocks, section, title)
+    ) : (
+      <button
+        type="button"
+        onClick={() => setPickerBlock(section === 'warmup' ? '__warmup__' : '__cooldown__')}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-2/30 py-3 text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+      >
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
+          {title}
+        </span>
+        <span className="text-[13px] font-semibold">+ Añadir</span>
+      </button>
+    );
+
   const save = useMutation({
     mutationFn: () => {
       const structured = type === 'structured';
@@ -810,8 +828,12 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
   });
 
   // Renders one timing-config field (duration min:sec, plain seconds, or count).
+  // Compact, inline "Cada [5] min [0] seg · Rondas [5]" config bar.
+  const cfgBox =
+    'h-[30px] w-12 rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
+  const cfgLabel = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3';
+  const cfgUnit = 'font-mono text-[11px] text-muted';
   const configField = (f: CfgField) => {
-    const box = 'h-9 w-14 rounded-lg border border-line-2 bg-surface px-2 text-center font-mono text-sm';
     if (f.kind === 'duration') {
       const total = Math.max(0, Math.round(Number(formatCfg[f.key]) || 0));
       const min = Math.floor(total / 60);
@@ -819,42 +841,38 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
       const setDur = (m: number, s: number) =>
         setCfg(f.key, String(Math.max(0, m) * 60 + Math.max(0, s)));
       return (
-        <div key={f.key} className="flex flex-col gap-1.5">
-          <span className="text-[12px] font-semibold text-ink-2">{f.label}</span>
-          <div className="flex items-center gap-1">
-            <input
-              inputMode="numeric"
-              value={min ? String(min) : ''}
-              placeholder="0"
-              onChange={(e) => setDur(Math.round(Number(e.target.value) || 0), sec)}
-              className={box}
-            />
-            <span className="font-mono text-xs text-muted">min</span>
-            <input
-              inputMode="numeric"
-              value={sec ? String(sec) : ''}
-              placeholder="0"
-              onChange={(e) => setDur(min, Math.round(Number(e.target.value) || 0))}
-              className={box}
-            />
-            <span className="font-mono text-xs text-muted">seg</span>
-          </div>
+        <div key={f.key} className="flex items-center gap-2">
+          <span className={cfgLabel}>{f.label}</span>
+          <input
+            inputMode="numeric"
+            value={min ? String(min) : ''}
+            placeholder="0"
+            onChange={(e) => setDur(Math.round(Number(e.target.value) || 0), sec)}
+            className={cfgBox}
+          />
+          <span className={cfgUnit}>min</span>
+          <input
+            inputMode="numeric"
+            value={sec ? String(sec) : ''}
+            placeholder="0"
+            onChange={(e) => setDur(min, Math.round(Number(e.target.value) || 0))}
+            className={cfgBox}
+          />
+          <span className={cfgUnit}>seg</span>
         </div>
       );
     }
     return (
-      <div key={f.key} className="flex flex-col gap-1.5">
-        <span className="text-[12px] font-semibold text-ink-2">{f.label}</span>
-        <div className="flex items-center gap-1.5">
-          <input
-            inputMode="numeric"
-            value={formatCfg[f.key] ?? ''}
-            placeholder="0"
-            onChange={(e) => setCfg(f.key, e.target.value)}
-            className={box}
-          />
-          {f.kind === 'seconds' && <span className="font-mono text-xs text-muted">seg</span>}
-        </div>
+      <div key={f.key} className="flex items-center gap-2">
+        <span className={cfgLabel}>{f.label}</span>
+        <input
+          inputMode="numeric"
+          value={formatCfg[f.key] ?? ''}
+          placeholder="0"
+          onChange={(e) => setCfg(f.key, e.target.value)}
+          className={cfgBox}
+        />
+        {f.kind === 'seconds' && <span className={cfgUnit}>seg</span>}
       </div>
     );
   };
@@ -1076,12 +1094,17 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
               </div>
 
               {FORMAT_FIELDS[format].length > 0 && (
-                <div className="flex flex-wrap items-end gap-x-5 gap-y-3 rounded-xl border border-line-2 bg-surface px-4 py-3">
-                  {FORMAT_FIELDS[format].map(configField)}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-xl border border-line-2 bg-surface px-4 py-2.5">
+                  {FORMAT_FIELDS[format].map((f, i) => (
+                    <Fragment key={f.key}>
+                      {i > 0 && <span className="h-5 w-px bg-line-2" />}
+                      {configField(f)}
+                    </Fragment>
+                  ))}
                 </div>
               )}
 
-              {warmupBlocks.length > 0 && looseSection(warmupBlocks, 'warmup', 'Calentamiento')}
+              {sectionSlot(warmupBlocks, 'warmup', 'Calentamiento')}
 
               {mainBlocks.map((b) => {
                 const bi = blocks.indexOf(b);
@@ -1297,54 +1320,59 @@ export function RutinaForm({ workout }: { workout?: Workout }) {
                   Añade un ejercicio, un descanso o un bloque para empezar.
                 </div>
               )}
-              <div className="flex gap-2">
+              <div className="relative">
                 <button
                   type="button"
-                  onClick={() => setPickerBlock('__new__')}
-                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
+                  onClick={() => setAddMenuOpen((v) => !v)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
                 >
-                  + Ejercicio
+                  + Añadir
+                  <span className="text-[9px] opacity-60">▾</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setBlocks((bs) => [...bs, restBlock()])}
-                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-                >
-                  + Descanso
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setBlocks((bs) => [...bs, { ...emptyBlock(), name: `Bloque ${bs.length + 1}` }])
-                  }
-                  className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-                >
-                  + Bloque
-                </button>
+                {addMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setAddMenuOpen(false)} />
+                    <div className="absolute left-1/2 top-full z-40 mt-1.5 w-60 -translate-x-1/2 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+                      {[
+                        {
+                          label: 'Ejercicio',
+                          desc: 'Un ejercicio suelto',
+                          on: () => setPickerBlock('__new__'),
+                        },
+                        {
+                          label: 'Descanso',
+                          desc: 'Una pausa entre ejercicios',
+                          on: () => setBlocks((bs) => [...bs, restBlock()]),
+                        },
+                        {
+                          label: 'Bloque',
+                          desc: 'Varias rondas de ejercicios',
+                          on: () =>
+                            setBlocks((bs) => [
+                              ...bs,
+                              { ...emptyBlock(), name: `Bloque ${bs.length + 1}` },
+                            ]),
+                        },
+                      ].map((o) => (
+                        <button
+                          key={o.label}
+                          type="button"
+                          onClick={() => {
+                            o.on();
+                            setAddMenuOpen(false);
+                          }}
+                          className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
+                        >
+                          <span className="text-[13px] font-semibold text-ink">+ {o.label}</span>
+                          <span className="font-mono text-[10px] text-muted">{o.desc}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
 
-              {cooldownBlocks.length > 0 && looseSection(cooldownBlocks, 'cooldown', 'Enfriamiento')}
-
-              <div className="flex gap-2">
-                {warmupBlocks.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setPickerBlock('__warmup__')}
-                    className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-2.5 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-                  >
-                    + Calentamiento
-                  </button>
-                )}
-                {cooldownBlocks.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setPickerBlock('__cooldown__')}
-                    className="flex-1 rounded-xl border border-dashed border-line-2 bg-surface-3 py-2.5 text-[13px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-                  >
-                    + Enfriamiento
-                  </button>
-                )}
-              </div>
+              {sectionSlot(cooldownBlocks, 'cooldown', 'Enfriamiento')}
 
               <p className="font-mono text-[11px] leading-relaxed text-muted">
                 Un bloque son varias rondas de lo que tenga dentro. Calentamiento y enfriamiento son
