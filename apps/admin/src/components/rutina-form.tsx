@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { Fragment, useState, type DragEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type DragEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
 import type {
@@ -328,9 +328,11 @@ function formatHeadline(format: WorkoutFormat, cfg: Record<string, string>): str
   }
 }
 
-function initBlocks(w?: Workout): BlockState[] {
-  if (!w) return [];
-  return w.blocks.map((b) => ({
+// Convert API workout blocks into editable builder state. `forceSection` re-tags
+// them (used to import a segment's blocks as inline warmup/cooldown), otherwise
+// each block keeps its own section.
+function apiBlocksToState(blocks: Workout['blocks'], forceSection?: BlockSection): BlockState[] {
+  return blocks.map((b) => ({
     key: uid(),
     // A group with a single exercise and no rounds reads back as a loose exercise.
     kind:
@@ -339,7 +341,7 @@ function initBlocks(w?: Workout): BlockState[] {
         : b.items.length === 1 && b.items[0]?.kind === 'exercise' && (b.rounds ?? 1) <= 1
           ? 'single'
           : 'group',
-    section: b.section ?? 'main',
+    section: forceSection ?? b.section ?? 'main',
     name: b.label ?? '',
     type: b.type,
     rounds: b.rounds?.toString() ?? '',
@@ -357,6 +359,9 @@ function initBlocks(w?: Workout): BlockState[] {
       tempo: tempoStrFrom(it.tempoOverride),
     })),
   }));
+}
+function initBlocks(w?: Workout): BlockState[] {
+  return w ? apiBlocksToState(w.blocks) : [];
 }
 function initCfg(w?: Workout): Record<string, string> {
   const out: Record<string, string> = {};
@@ -906,6 +911,43 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     enabled: !!cooldownWorkoutId,
   });
 
+  // Copy a segment's exercises into the builder as inline warmup/cooldown blocks
+  // (editable), replacing whatever that section currently holds. Flattened to one
+  // exercise per row (the warmup/cooldown slot lists loose exercises).
+  const importSection = (section: 'warmup' | 'cooldown', src: Workout) => {
+    const rows = apiBlocksToState(src.blocks)
+      .flatMap((b) => b.items)
+      .map((it) => ({
+        ...emptyBlock(),
+        kind: (it.kind === 'rest' ? 'rest' : 'single') as BlockState['kind'],
+        section,
+        items: [it],
+      }));
+    setBlocks((bs) => [...bs.filter((b) => b.section !== section), ...rows]);
+    if (section === 'warmup') setWarmupWorkoutId(null);
+    else setCooldownWorkoutId(null);
+  };
+  const importSegment = useMutation({
+    mutationFn: async ({ section, id }: { section: 'warmup' | 'cooldown'; id: string }) => ({
+      section,
+      src: await api.workouts.get(id),
+    }),
+    onSuccess: ({ section, src }) => {
+      importSection(section, src);
+      toast(section === 'warmup' ? 'Calentamiento importado' : 'Enfriamiento importado');
+    },
+    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
+  });
+
+  // Legacy rutinas may still hold a warmup/cooldown *reference*; once resolved,
+  // fold it into inline editable blocks so everything is editable in place.
+  useEffect(() => {
+    if (warmupWorkoutId && warmupQ.data) importSection('warmup', warmupQ.data);
+  }, [warmupWorkoutId, warmupQ.data]);
+  useEffect(() => {
+    if (cooldownWorkoutId && cooldownQ.data) importSection('cooldown', cooldownQ.data);
+  }, [cooldownWorkoutId, cooldownQ.data]);
+
   // ---- Live "as the athlete sees it" preview model -------------------------
   const pvPrefix = (measure: MeasurementType, tv: number | null, sets: number | null) => {
     if (measure === 'time') return tv ? `${tv}s` : null;
@@ -1102,8 +1144,8 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 }}
                 className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
               >
-                <span className="text-[13px] font-semibold text-ink">Elegir una rutina</span>
-                <span className="font-mono text-[10px] text-muted">Reutiliza una rutina existente</span>
+                <span className="text-[13px] font-semibold text-ink">Importar un segmento</span>
+                <span className="font-mono text-[10px] text-muted">Copia sus ejercicios para editarlos</span>
               </button>
               <button
                 type="button"
@@ -1969,7 +2011,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       <EntityPicker<WorkoutListItem>
         open={rutinaPicker !== null}
         onClose={() => setRutinaPicker(null)}
-        title={rutinaPicker === 'cooldown' ? 'Elegir enfriamiento' : 'Elegir calentamiento'}
+        title={rutinaPicker === 'cooldown' ? 'Importar enfriamiento' : 'Importar calentamiento'}
         queryKey="rutina-picker"
         load={(s) =>
           api.workouts.list({ search: s || undefined, pageSize: 50, kind: 'segment' }).then((r) =>
@@ -1979,13 +2021,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         renderTitle={(w) => w.name}
         renderSubtitle={(w) => (w.format ? FORMAT_LABEL[w.format] : es.workouts.video)}
         onPick={(w) => {
-          if (rutinaPicker === 'warmup') {
-            setWarmupWorkoutId(w.id);
-            setBlocks((bs) => bs.filter((b) => b.section !== 'warmup'));
-          } else if (rutinaPicker === 'cooldown') {
-            setCooldownWorkoutId(w.id);
-            setBlocks((bs) => bs.filter((b) => b.section !== 'cooldown'));
-          }
+          if (rutinaPicker) importSegment.mutate({ section: rutinaPicker, id: w.id });
         }}
       />
     </div>
