@@ -31,6 +31,7 @@ const groups = [
   {
     label: es.nav.sections.negocio,
     items: [
+      { href: '/usuarios', label: es.nav.users },
       { href: '/suscripciones', label: es.nav.subscriptions },
       { href: '/reportes', label: es.nav.reports },
     ],

@@ -35,6 +35,7 @@ export const es = {
     collections: 'Colecciones',
     taxonomy: 'Músculos y equipo',
     media: 'Biblioteca',
+    users: 'Usuarios',
     subscriptions: 'Suscripciones',
     reports: 'Reportes',
     sections: {

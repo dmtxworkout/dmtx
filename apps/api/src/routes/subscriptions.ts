@@ -95,6 +95,32 @@ subscriptionsRoute.post('/:userId/grant', async (c) => {
   return c.json({ ok: true, entitlement: await resolveEntitlement(db, c.env, userId) });
 });
 
+/**
+ * POST /api/subscriptions/:userId/trial — (re)start a free trial of `days` days.
+ * Body: { days: number } (defaults to 7).
+ */
+subscriptionsRoute.post('/:userId/trial', async (c) => {
+  const db = c.get('db');
+  const userId = c.req.param('userId');
+  const body = (await c.req.json<{ days?: number }>().catch(() => ({}))) as { days?: number };
+  const days = typeof body.days === 'number' && body.days > 0 ? Math.floor(body.days) : 7;
+
+  const [exists] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1);
+  if (!exists) return c.json({ error: 'Usuario no encontrado' }, 404);
+
+  const now = new Date();
+  const trialEnd = new Date(now.getTime() + days * DAY_MS);
+  await db
+    .insert(subscriptions)
+    .values({ userId, stripeCustomerId: '', unitAmount: 0, status: 'trialing', trialEnd, startedAt: now })
+    .onConflictDoUpdate({
+      target: subscriptions.userId,
+      set: { status: 'trialing', trialEnd, canceledAt: null, cancelAtPeriodEnd: false },
+    });
+
+  return c.json({ ok: true, entitlement: await resolveEntitlement(db, c.env, userId) });
+});
+
 /** POST /api/subscriptions/:userId/revoke — cancel access. */
 subscriptionsRoute.post('/:userId/revoke', async (c) => {
   const db = c.get('db');

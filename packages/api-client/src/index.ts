@@ -4,6 +4,7 @@ import { mediaApi } from './media';
 import { workoutsApi } from './workouts';
 import { programsApi } from './programs';
 import { skillsApi } from './skills';
+import { subscriptionsApi } from './subscriptions';
 
 /**
  * Typed client for the DMTX API. Types come from `@dmtx/schemas` (the single
@@ -18,6 +19,7 @@ export function createApiClient(options: HttpClientOptions) {
     workouts: workoutsApi(http),
     programs: programsApi(http),
     skills: skillsApi(http),
+    subscriptions: subscriptionsApi(http),
   };
 }
 
@@ -25,6 +27,7 @@ export type ApiClient = ReturnType<typeof createApiClient>;
 
 export * from './http';
 export type { Paginated, ExerciseListItem } from './exercises';
+export type { AdminUser, UserSubscription, EntitlementResult } from './subscriptions';
 export type {
   PresignInput,
   PresignResult,

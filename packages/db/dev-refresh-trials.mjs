@@ -1,3 +1,4 @@
+/* eslint-disable */
 // Dev helper: extend every trialing subscription so the free trial never lapses
 // locally (it otherwise expires 7 days after signup and locks you out of the app).
 //
