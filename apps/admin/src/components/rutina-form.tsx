@@ -24,6 +24,7 @@ import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Dialog } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/select';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
@@ -447,6 +448,12 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
   const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // "Guardar como segmento" modal: the section being promoted + editable name.
+  const [promoteModal, setPromoteModal] = useState<{
+    section: 'warmup' | 'cooldown';
+    blockList: BlockState[];
+    name: string;
+  } | null>(null);
   const [addMenu, setAddMenu] = useState<{ top: number; left: number; up: boolean } | null>(null);
   // Reusable warmup/cooldown: reference another rutina instead of inline blocks.
   const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(
@@ -1069,9 +1076,16 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
 
   const promoteToRutina = (section: 'warmup' | 'cooldown', blockList: BlockState[]) => {
     const suggested = `${name.trim() || 'Rutina'} · ${section === 'warmup' ? 'Calentamiento' : 'Enfriamiento'}`;
-    const rname = typeof window !== 'undefined' ? window.prompt('Nombre de la rutina reutilizable', suggested) : suggested;
-    if (!rname || !rname.trim()) return;
-    saveAsRutina.mutate({ section, name: rname.trim(), blockList });
+    setPromoteModal({ section, blockList, name: suggested });
+  };
+  const confirmPromote = () => {
+    if (!promoteModal || !promoteModal.name.trim()) return;
+    saveAsRutina.mutate({
+      section: promoteModal.section,
+      name: promoteModal.name.trim(),
+      blockList: promoteModal.blockList,
+    });
+    setPromoteModal(null);
   };
 
   const stripe = { background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' };
@@ -2039,6 +2053,43 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
           if (rutinaPicker) importSegment.mutate({ section: rutinaPicker, id: w.id });
         }}
       />
+
+      <Dialog
+        open={promoteModal !== null}
+        onClose={() => setPromoteModal(null)}
+        title="Guardar como segmento"
+        className="max-w-md"
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre del segmento</div>
+            <Input
+              autoFocus
+              value={promoteModal?.name ?? ''}
+              onChange={(e) => setPromoteModal((m) => (m ? { ...m, name: e.target.value } : m))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') confirmPromote();
+              }}
+              placeholder="Nombre del segmento"
+            />
+            <p className="mt-2 text-[12px] leading-snug text-muted">
+              Se guardará en Segmentos como un calentamiento o enfriamiento reutilizable.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setPromoteModal(null)}>
+              {es.app.cancel}
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmPromote}
+              disabled={saveAsRutina.isPending || !promoteModal?.name.trim()}
+            >
+              {saveAsRutina.isPending ? es.app.saving : es.app.save}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }
