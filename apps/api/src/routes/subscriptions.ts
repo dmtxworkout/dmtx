@@ -10,6 +10,28 @@ const DAY_MS = 86_400_000;
 const LIVE = [...LIVE_SUBSCRIPTION_STATUS];
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
+/** The compact subscription "card" shape shared by the list + detail. */
+const subCard = (s: {
+  status: string;
+  unitAmount: number;
+  currency: string;
+  intervalUnit: string;
+  intervalCount: number;
+  trialEnd: Date | null;
+  currentPeriodEnd: Date | null;
+  nextChargeDate: string | null;
+}) => ({
+  status: s.status,
+  comp: s.unitAmount === 0,
+  unitAmount: s.unitAmount,
+  currency: s.currency,
+  intervalUnit: s.intervalUnit,
+  intervalCount: s.intervalCount,
+  trialEnd: iso(s.trialEnd),
+  currentPeriodEnd: iso(s.currentPeriodEnd),
+  nextChargeDate: s.nextChargeDate ?? null,
+});
+
 /** End the user's current live episode (keeps the row as history). */
 async function terminateLive(db: Database, userId: string, status: 'expired' | 'canceled', now: Date) {
   await db
@@ -41,8 +63,12 @@ subscriptionsRoute.get('/users', async (c) => {
       createdAt: user.createdAt,
       status: subscriptions.status,
       unitAmount: subscriptions.unitAmount,
+      currency: subscriptions.currency,
+      intervalUnit: subscriptions.intervalUnit,
+      intervalCount: subscriptions.intervalCount,
       trialEnd: subscriptions.trialEnd,
       currentPeriodEnd: subscriptions.currentPeriodEnd,
+      nextChargeDate: subscriptions.nextChargeDate,
     })
     .from(user)
     // Only the live episode (≤1 per user); history lives in the detail view.
@@ -60,14 +86,19 @@ subscriptionsRoute.get('/users', async (c) => {
       name: r.name,
       role: r.role,
       createdAt: r.createdAt.toISOString(),
-      subscription: r.status
-        ? {
-            status: r.status,
-            comp: r.unitAmount === 0,
-            trialEnd: r.trialEnd ? r.trialEnd.toISOString() : null,
-            currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
-          }
-        : null,
+      subscription:
+        r.status && r.unitAmount !== null
+          ? subCard({
+              status: r.status,
+              unitAmount: r.unitAmount,
+              currency: r.currency!,
+              intervalUnit: r.intervalUnit!,
+              intervalCount: r.intervalCount!,
+              trialEnd: r.trialEnd,
+              currentPeriodEnd: r.currentPeriodEnd,
+              nextChargeDate: r.nextChargeDate,
+            })
+          : null,
     })),
   });
 });
@@ -96,14 +127,7 @@ subscriptionsRoute.get('/users/:id', async (c) => {
     name: u.name,
     role: u.role,
     createdAt: u.createdAt.toISOString(),
-    subscription: live
-      ? {
-          status: live.status,
-          comp: live.unitAmount === 0,
-          trialEnd: iso(live.trialEnd),
-          currentPeriodEnd: iso(live.currentPeriodEnd),
-        }
-      : null,
+    subscription: live ? subCard(live) : null,
     history: subs.map((s) => ({
       status: s.status,
       comp: s.unitAmount === 0,

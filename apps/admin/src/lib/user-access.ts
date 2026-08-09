@@ -21,6 +21,25 @@ export function access(sub: UserSubscription | null): { tone: BadgeTone; label: 
   return { tone: 'canceled', label: 'Sin acceso', ends: sub.currentPeriodEnd ?? sub.trialEnd };
 }
 
+export function formatMoney(cents: number, currency = 'usd'): string {
+  return `$${(cents / 100).toFixed(2)}${currency && currency !== 'usd' ? ` ${currency.toUpperCase()}` : ''}`;
+}
+
+/** Human plan label for a subscription card. */
+export function planLabel(sub: UserSubscription): string {
+  if (sub.status === 'trialing') return 'Prueba';
+  if (sub.comp) return sub.currentPeriodEnd ? 'Cortesía' : 'Gratis';
+  const unit =
+    sub.intervalUnit === 'year'
+      ? 'Anual'
+      : sub.intervalUnit === 'week'
+        ? 'Semanal'
+        : sub.intervalUnit === 'day'
+          ? 'Diario'
+          : 'Mensual';
+  return sub.intervalCount > 1 ? `Cada ${sub.intervalCount} ${sub.intervalUnit}` : unit;
+}
+
 /** Status badge for one subscription episode in the history list. */
 export function historyLabel(item: SubscriptionHistoryItem): { tone: BadgeTone; label: string } {
   switch (item.status) {

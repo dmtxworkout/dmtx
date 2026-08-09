@@ -3,8 +3,13 @@ import type { Http } from './http';
 export interface UserSubscription {
   status: string;
   comp: boolean;
+  unitAmount: number;
+  currency: string;
+  intervalUnit: string;
+  intervalCount: number;
   trialEnd: string | null;
   currentPeriodEnd: string | null;
+  nextChargeDate: string | null;
 }
 
 export interface SubscriptionHistoryItem {
