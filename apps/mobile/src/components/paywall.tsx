@@ -22,7 +22,9 @@ export function Paywall({
   onRetry: () => void;
 }) {
   const insets = useSafeAreaInsets();
-  const trialEnded = entitlement.status === 'trialing' && Boolean(entitlement.trialEndsAt);
+  const trialEnded =
+    (entitlement.status === 'trialing' || entitlement.status === 'expired') &&
+    Boolean(entitlement.trialEndsAt);
   const endDate = fmtDate(entitlement.trialEndsAt ?? entitlement.currentPeriodEnd);
 
   return (

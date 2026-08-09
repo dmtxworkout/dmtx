@@ -1,10 +1,26 @@
-import { and, desc, eq, ilike, or } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, or } from 'drizzle-orm';
 import { subscriptions, user } from '@dmtx/db';
+import type { Database } from '@dmtx/db';
+import { LIVE_SUBSCRIPTION_STATUS } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { resolveEntitlement } from '../lib/entitlement';
 import { requireAdmin } from '../middleware/auth';
 
 const DAY_MS = 86_400_000;
+const LIVE = [...LIVE_SUBSCRIPTION_STATUS];
+const iso = (d: Date | null) => (d ? d.toISOString() : null);
+
+/** End the user's current live episode (keeps the row as history). */
+async function terminateLive(db: Database, userId: string, status: 'expired' | 'canceled', now: Date) {
+  await db
+    .update(subscriptions)
+    .set({
+      status,
+      endedAt: now,
+      ...(status === 'canceled' ? { canceledAt: now, cancelAtPeriodEnd: true } : {}),
+    })
+    .where(and(eq(subscriptions.userId, userId), inArray(subscriptions.status, LIVE)));
+}
 
 export const subscriptionsRoute = createApp();
 subscriptionsRoute.use('*', requireAdmin);
@@ -29,7 +45,11 @@ subscriptionsRoute.get('/users', async (c) => {
       currentPeriodEnd: subscriptions.currentPeriodEnd,
     })
     .from(user)
-    .leftJoin(subscriptions, eq(subscriptions.userId, user.id))
+    // Only the live episode (≤1 per user); history lives in the detail view.
+    .leftJoin(
+      subscriptions,
+      and(eq(subscriptions.userId, user.id), inArray(subscriptions.status, LIVE)),
+    )
     .where(where)
     .orderBy(desc(user.createdAt))
     .limit(100);
@@ -52,40 +72,50 @@ subscriptionsRoute.get('/users', async (c) => {
   });
 });
 
-/** GET /api/subscriptions/users/:id — one member + their access status. */
+/** GET /api/subscriptions/users/:id — one member, their live access + history. */
 subscriptionsRoute.get('/users/:id', async (c) => {
   const db = c.get('db');
-  const [r] = await db
-    .select({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      createdAt: user.createdAt,
-      status: subscriptions.status,
-      unitAmount: subscriptions.unitAmount,
-      trialEnd: subscriptions.trialEnd,
-      currentPeriodEnd: subscriptions.currentPeriodEnd,
-    })
+  const id = c.req.param('id');
+  const [u] = await db
+    .select({ id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt })
     .from(user)
-    .leftJoin(subscriptions, eq(subscriptions.userId, user.id))
-    .where(eq(user.id, c.req.param('id')))
+    .where(eq(user.id, id))
     .limit(1);
-  if (!r) return c.json({ error: 'Usuario no encontrado' }, 404);
+  if (!u) return c.json({ error: 'Usuario no encontrado' }, 404);
+
+  const subs = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.userId, id))
+    .orderBy(desc(subscriptions.startedAt), desc(subscriptions.createdAt));
+  const live = subs.find((s) => (LIVE as string[]).includes(s.status)) ?? null;
+
   return c.json({
-    id: r.id,
-    email: r.email,
-    name: r.name,
-    role: r.role,
-    createdAt: r.createdAt.toISOString(),
-    subscription: r.status
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    createdAt: u.createdAt.toISOString(),
+    subscription: live
       ? {
-          status: r.status,
-          comp: r.unitAmount === 0,
-          trialEnd: r.trialEnd ? r.trialEnd.toISOString() : null,
-          currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
+          status: live.status,
+          comp: live.unitAmount === 0,
+          trialEnd: iso(live.trialEnd),
+          currentPeriodEnd: iso(live.currentPeriodEnd),
         }
       : null,
+    history: subs.map((s) => ({
+      status: s.status,
+      comp: s.unitAmount === 0,
+      unitAmount: s.unitAmount,
+      currency: s.currency,
+      trialEnd: iso(s.trialEnd),
+      currentPeriodStart: iso(s.currentPeriodStart),
+      currentPeriodEnd: iso(s.currentPeriodEnd),
+      startedAt: iso(s.startedAt),
+      endedAt: iso(s.endedAt),
+      canceledAt: iso(s.canceledAt),
+    })),
   });
 });
 
@@ -134,28 +164,17 @@ subscriptionsRoute.post('/:userId/grant', async (c) => {
   } else if (days) {
     end = new Date(now.getTime() + days * DAY_MS);
   }
-  await db
-    .insert(subscriptions)
-    .values({
-      userId,
-      stripeCustomerId: '',
-      unitAmount: 0,
-      status: 'active',
-      currentPeriodStart: now,
-      currentPeriodEnd: end,
-      startedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: subscriptions.userId,
-      set: {
-        status: 'active',
-        unitAmount: 0,
-        currentPeriodStart: now,
-        currentPeriodEnd: end,
-        canceledAt: null,
-        cancelAtPeriodEnd: false,
-      },
-    });
+  // End the current episode, then start a fresh comp episode (keeps history).
+  await terminateLive(db, userId, 'expired', now);
+  await db.insert(subscriptions).values({
+    userId,
+    stripeCustomerId: '',
+    unitAmount: 0,
+    status: 'active',
+    currentPeriodStart: now,
+    currentPeriodEnd: end,
+    startedAt: now,
+  });
 
   return c.json({ ok: true, entitlement: await resolveEntitlement(db, c.env, userId) });
 });
@@ -175,24 +194,18 @@ subscriptionsRoute.post('/:userId/trial', async (c) => {
 
   const now = new Date();
   const trialEnd = new Date(now.getTime() + days * DAY_MS);
+  await terminateLive(db, userId, 'expired', now);
   await db
     .insert(subscriptions)
-    .values({ userId, stripeCustomerId: '', unitAmount: 0, status: 'trialing', trialEnd, startedAt: now })
-    .onConflictDoUpdate({
-      target: subscriptions.userId,
-      set: { status: 'trialing', trialEnd, canceledAt: null, cancelAtPeriodEnd: false },
-    });
+    .values({ userId, stripeCustomerId: '', unitAmount: 0, status: 'trialing', trialEnd, startedAt: now });
 
   return c.json({ ok: true, entitlement: await resolveEntitlement(db, c.env, userId) });
 });
 
-/** POST /api/subscriptions/:userId/revoke — cancel access. */
+/** POST /api/subscriptions/:userId/revoke — cancel the live episode (kept as history). */
 subscriptionsRoute.post('/:userId/revoke', async (c) => {
   const db = c.get('db');
   const userId = c.req.param('userId');
-  await db
-    .update(subscriptions)
-    .set({ status: 'canceled', canceledAt: new Date(), cancelAtPeriodEnd: true })
-    .where(and(eq(subscriptions.userId, userId)));
+  await terminateLive(db, userId, 'canceled', new Date());
   return c.json({ ok: true, entitlement: await resolveEntitlement(db, c.env, userId) });
 });

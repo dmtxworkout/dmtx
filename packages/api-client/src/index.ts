@@ -27,7 +27,12 @@ export type ApiClient = ReturnType<typeof createApiClient>;
 
 export * from './http';
 export type { Paginated, ExerciseListItem } from './exercises';
-export type { AdminUser, UserSubscription, EntitlementResult } from './subscriptions';
+export type {
+  AdminUser,
+  UserSubscription,
+  SubscriptionHistoryItem,
+  EntitlementResult,
+} from './subscriptions';
 export type {
   PresignInput,
   PresignResult,

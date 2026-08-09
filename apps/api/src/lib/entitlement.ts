@@ -1,7 +1,10 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { subscriptions } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
+import { LIVE_SUBSCRIPTION_STATUS } from '@dmtx/schemas';
 import type { Env } from '../env';
+
+const LIVE = new Set<string>(LIVE_SUBSCRIPTION_STATUS);
 
 export type EntitlementSource = 'trial' | 'subscription' | 'grant' | 'none';
 
@@ -38,13 +41,17 @@ export async function resolveEntitlement(
   env: Env,
   userId: string,
 ): Promise<Entitlement> {
-  let [sub] = await db
+  // A user accumulates subscription "episodes" over time; only one may be live
+  // (non-terminal). Newest first so the fallback picks the latest episode.
+  const rows = await db
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.userId, userId))
-    .limit(1);
+    .orderBy(desc(subscriptions.startedAt), desc(subscriptions.createdAt));
 
-  if (!sub) {
+  // First-ever access → lazily provision the free trial. Idempotent: the
+  // partial unique "one live per user" index rejects a concurrent second trial.
+  if (rows.length === 0) {
     const now = new Date();
     const trialEnd = new Date(now.getTime() + trialDays(env) * DAY_MS);
     const inserted = await db
@@ -57,19 +64,24 @@ export async function resolveEntitlement(
         trialEnd,
         startedAt: now,
       })
-      .onConflictDoNothing({ target: subscriptions.userId })
+      .onConflictDoNothing()
       .returning();
-    sub =
+    rows.push(
       inserted[0] ??
-      (
-        await db
-          .select()
-          .from(subscriptions)
-          .where(eq(subscriptions.userId, userId))
-          .limit(1)
-      )[0];
+        (
+          await db
+            .select()
+            .from(subscriptions)
+            .where(eq(subscriptions.userId, userId))
+            .orderBy(desc(subscriptions.startedAt))
+            .limit(1)
+        )[0]!,
+    );
   }
 
+  // The live episode drives entitlement; else fall back to the most recent
+  // (terminal) episode so `status`/`trialEndsAt` still describe what lapsed.
+  const sub = rows.find((r) => LIVE.has(r.status)) ?? rows[0];
   if (!sub) {
     return { active: false, status: 'none', source: 'none', trialEndsAt: null, currentPeriodEnd: null };
   }

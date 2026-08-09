@@ -104,7 +104,11 @@ export const SUBSCRIPTION_STATUS = [
   'past_due',
   'paused',
   'canceled',
+  'expired',
 ] as const;
+// Non-terminal statuses: a user may have at most one subscription in one of
+// these at a time (the "live" episode). The rest are history.
+export const LIVE_SUBSCRIPTION_STATUS = ['active', 'trialing', 'past_due', 'paused'] as const;
 export const subscriptionStatusSchema = enumOf(SUBSCRIPTION_STATUS);
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 

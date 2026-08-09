@@ -1,4 +1,15 @@
-import { boolean, date, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import {
+  boolean,
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 import {
   billingIntervalUnitEnum,
   discountDurationEnum,
@@ -44,12 +55,18 @@ export const discounts = pgTable('discounts', {
 /**
  * Our own billing record (self-managed billing; Stripe is only the payment
  * rail). The daily cron scans `nextChargeDate`.
+ *
+ * A row is one subscription "episode". A user accumulates episodes over time
+ * (trial → paid → resubscribe/comp…); only one may be "live" (non-terminal) at
+ * a time — enforced by the partial unique index below. Terminal rows are kept
+ * as history. Per-charge history lives in `payments`.
  */
-export const subscriptions = pgTable('subscriptions', {
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
   id: primaryId(),
   userId: text()
     .notNull()
-    .unique()
     .references(() => user.id, { onDelete: 'cascade' }),
   stripeCustomerId: text().notNull(),
   defaultPaymentMethodId: text(),
@@ -69,10 +86,21 @@ export const subscriptions = pgTable('subscriptions', {
   failedAttempts: integer().notNull().default(0),
   cancelAtPeriodEnd: boolean().notNull().default(false),
   canceledAt: timestamp({ withTimezone: true }),
+  // When the episode became terminal (canceled or expired).
+  endedAt: timestamp({ withTimezone: true }),
   startedAt: timestamp({ withTimezone: true }),
   trialEnd: timestamp({ withTimezone: true }),
   ...timestamps,
-});
+  },
+  (t) => [
+    index('subscriptions_user_idx').on(t.userId),
+    // At most one live (non-terminal) subscription per user; history rows are
+    // free to accumulate.
+    uniqueIndex('subscriptions_one_live_per_user')
+      .on(t.userId)
+      .where(sql`${t.status} in ('active', 'trialing', 'past_due', 'paused')`),
+  ],
+);
 
 /** Ledger: one row per charge attempt. Basis for all revenue reporting. */
 export const payments = pgTable('payments', {

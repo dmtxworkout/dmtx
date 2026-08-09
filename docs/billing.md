@@ -4,7 +4,7 @@ Stripe is only the **payment rail** (Customers, saved cards, PaymentIntents). Ou
 
 ## Tables (in `packages/db/src/schema/billing.ts`)
 
-- **`subscriptions`** (one per user): `unit_amount` / `currency` / `interval_unit` + `interval_count` (the custom price), `discount_id` / inline `discount_*`, `status` (active|trialing|past_due|paused|canceled), `current_period_start/end`, **`next_charge_date`** (what the cron scans), `default_payment_method_id`, `failed_attempts`, `stripe_customer_id`.
+- **`subscriptions`** — one row per subscription **episode** (a continuous relationship): trial → converts to paid in place → recurring charges advance it. A user accumulates episodes over time (resubscribe, comp); **at most one is "live"** (`status IN active|trialing|past_due|paused`), enforced by a partial unique index `subscriptions_one_live_per_user` on `user_id`. Terminal rows (`canceled`, `expired`) are kept as history. Fields: `unit_amount` / `currency` / `interval_unit` + `interval_count` (the custom price), `discount_id` / inline `discount_*`, `status` (active|trialing|past_due|paused|canceled|expired), `current_period_start/end`, `ended_at`, `trial_end`, **`next_charge_date`** (what the cron scans), `default_payment_method_id`, `failed_attempts`, `stripe_customer_id`.
 - **`discounts`** — reusable coupons (percent|fixed, duration, validity, max redemptions).
 - **`payments`** — ledger, one row per charge attempt: `amount`, `status` (pending|succeeded|failed|requires_action|refunded), `stripe_payment_intent_id`, `period_start/end`, `attempt`, `idempotency_key` (unique per `subscription+period`), failure info. **Basis for all revenue reporting.**
 - **`webhook_events`** — processed Stripe `event.id` for idempotent handling.

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
-import { access } from '@/lib/user-access';
+import { access, historyLabel } from '@/lib/user-access';
 import { formatDateEs } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -199,6 +199,32 @@ export function UserDetail({ id }: { id: string }) {
                 Revocar acceso
               </button>
             </section>
+
+            {/* Historial */}
+            {q.data.history && q.data.history.length > 0 && (
+              <section className="flex flex-col gap-3 rounded-xl border border-line-2 bg-surface p-5">
+                <MonoLabel>Historial</MonoLabel>
+                <div className="flex flex-col divide-y divide-line-3">
+                  {q.data.history.map((h, i) => {
+                    const hl = historyLabel(h);
+                    const price = h.unitAmount > 0 ? `${(h.unitAmount / 100).toFixed(2)} ${h.currency.toUpperCase()}` : null;
+                    const from = h.startedAt ? formatDateEs(h.startedAt) : '—';
+                    const to = h.endedAt ? formatDateEs(h.endedAt) : i === 0 ? 'actual' : '—';
+                    return (
+                      <div key={i} className="flex items-center justify-between gap-3 py-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Badge tone={hl.tone}>{hl.label}</Badge>
+                          {price && <span className="font-mono text-[12px] text-ink-3">{price}</span>}
+                        </div>
+                        <span className="font-mono text-[11px] text-muted">
+                          {from} → {to}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* Contraseña */}
             <section className="flex items-center justify-between gap-3 rounded-xl border border-line-2 bg-surface p-5">

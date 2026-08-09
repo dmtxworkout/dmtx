@@ -7,6 +7,19 @@ export interface UserSubscription {
   currentPeriodEnd: string | null;
 }
 
+export interface SubscriptionHistoryItem {
+  status: string;
+  comp: boolean;
+  unitAmount: number;
+  currency: string;
+  trialEnd: string | null;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  canceledAt: string | null;
+}
+
 export interface AdminUser {
   id: string;
   email: string;
@@ -14,6 +27,8 @@ export interface AdminUser {
   role: string | null;
   createdAt: string;
   subscription: UserSubscription | null;
+  /** Present on the detail endpoint: all episodes, newest first. */
+  history?: SubscriptionHistoryItem[];
 }
 
 export interface EntitlementResult {
