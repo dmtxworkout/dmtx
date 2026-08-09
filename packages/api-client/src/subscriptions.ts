@@ -30,11 +30,23 @@ export function subscriptionsApi(http: Http) {
       const qs = search ? `?search=${encodeURIComponent(search)}` : '';
       return http.request(`/api/subscriptions/users${qs}`);
     },
-    /** Comp free access. `days` omitted → indefinite (free forever). */
-    grant(userId: string, days?: number | null): Promise<{ ok: true; entitlement: EntitlementResult }> {
+    user(id: string): Promise<AdminUser> {
+      return http.request(`/api/subscriptions/users/${id}`);
+    },
+    updateUser(id: string, patch: { name?: string; email?: string }): Promise<{ ok: true }> {
+      return http.request(`/api/subscriptions/users/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      });
+    },
+    /** Comp free access. Pass `until` (ISO date) or `days`; both omitted → forever. */
+    grant(
+      userId: string,
+      opts?: { days?: number | null; until?: string | null },
+    ): Promise<{ ok: true; entitlement: EntitlementResult }> {
       return http.request(`/api/subscriptions/${userId}/grant`, {
         method: 'POST',
-        body: JSON.stringify({ days: days ?? null }),
+        body: JSON.stringify({ days: opts?.days ?? null, until: opts?.until ?? null }),
       });
     },
     /** (Re)start a free trial of `days` days. */

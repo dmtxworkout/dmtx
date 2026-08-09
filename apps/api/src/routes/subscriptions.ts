@@ -52,23 +52,88 @@ subscriptionsRoute.get('/users', async (c) => {
   });
 });
 
+/** GET /api/subscriptions/users/:id — one member + their access status. */
+subscriptionsRoute.get('/users/:id', async (c) => {
+  const db = c.get('db');
+  const [r] = await db
+    .select({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      createdAt: user.createdAt,
+      status: subscriptions.status,
+      unitAmount: subscriptions.unitAmount,
+      trialEnd: subscriptions.trialEnd,
+      currentPeriodEnd: subscriptions.currentPeriodEnd,
+    })
+    .from(user)
+    .leftJoin(subscriptions, eq(subscriptions.userId, user.id))
+    .where(eq(user.id, c.req.param('id')))
+    .limit(1);
+  if (!r) return c.json({ error: 'Usuario no encontrado' }, 404);
+  return c.json({
+    id: r.id,
+    email: r.email,
+    name: r.name,
+    role: r.role,
+    createdAt: r.createdAt.toISOString(),
+    subscription: r.status
+      ? {
+          status: r.status,
+          comp: r.unitAmount === 0,
+          trialEnd: r.trialEnd ? r.trialEnd.toISOString() : null,
+          currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
+        }
+      : null,
+  });
+});
+
+/** PATCH /api/subscriptions/users/:id — edit a member's name / email. */
+subscriptionsRoute.patch('/users/:id', async (c) => {
+  const db = c.get('db');
+  const id = c.req.param('id');
+  const body = (await c.req.json<{ name?: string; email?: string }>().catch(() => ({}))) as {
+    name?: string;
+    email?: string;
+  };
+  const set: Partial<typeof user.$inferInsert> = { updatedAt: new Date() };
+  if (typeof body.name === 'string' && body.name.trim()) set.name = body.name.trim();
+  if (typeof body.email === 'string' && body.email.trim()) set.email = body.email.trim().toLowerCase();
+  try {
+    const [updated] = await db.update(user).set(set).where(eq(user.id, id)).returning({ id: user.id });
+    if (!updated) return c.json({ error: 'Usuario no encontrado' }, 404);
+  } catch {
+    return c.json({ error: 'Ese correo ya está en uso' }, 409);
+  }
+  return c.json({ ok: true });
+});
+
 /**
  * POST /api/subscriptions/:userId/grant — comp a user free access.
- * Body: { days?: number|null }. `days` omitted / null = indefinite.
+ * Body: { days?: number|null, until?: string|null }. `until` (ISO date) wins;
+ * otherwise `days`; both omitted = indefinite.
  */
 subscriptionsRoute.post('/:userId/grant', async (c) => {
   const db = c.get('db');
   const userId = c.req.param('userId');
-  const body = (await c.req
-    .json<{ days?: number | null }>()
-    .catch(() => ({}))) as { days?: number | null };
+  const body = (await c.req.json<{ days?: number | null; until?: string | null }>().catch(() => ({}))) as {
+    days?: number | null;
+    until?: string | null;
+  };
   const days = typeof body.days === 'number' && body.days > 0 ? Math.floor(body.days) : null;
 
   const [exists] = await db.select({ id: user.id }).from(user).where(eq(user.id, userId)).limit(1);
   if (!exists) return c.json({ error: 'Usuario no encontrado' }, 404);
 
   const now = new Date();
-  const end = days ? new Date(now.getTime() + days * DAY_MS) : null;
+  let end: Date | null = null;
+  if (body.until) {
+    const d = new Date(body.until);
+    if (!Number.isNaN(d.getTime())) end = d;
+  } else if (days) {
+    end = new Date(now.getTime() + days * DAY_MS);
+  }
   await db
     .insert(subscriptions)
     .values({
