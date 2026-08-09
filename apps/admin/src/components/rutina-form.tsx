@@ -874,6 +874,33 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       <div className="flex items-center gap-2 px-1 pt-0.5">
         <MonoLabel>{title}</MonoLabel>
         <span className="font-mono text-[10px] text-muted">· opcional · no cuenta para resultados</span>
+        <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => setRutinaPicker(section)}
+          title="Cambiar por otro segmento"
+          className="inline-flex items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3 4 7l4 4" />
+            <path d="M4 7h16" />
+            <path d="m16 21 4-4-4-4" />
+            <path d="M20 17H4" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          onClick={() => promoteToRutina(section, secBlocks)}
+          disabled={saveAsRutina.isPending}
+          title="Guardar como segmento reutilizable"
+          className="inline-flex items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-accent-dark disabled:opacity-50"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h7" />
+            <line x1="16" y1="5" x2="22" y2="5" />
+            <line x1="19" y1="2" x2="19" y2="8" />
+          </svg>
+        </button>
       </div>
       {secBlocks.map((b) =>
         b.items[0] ? (
@@ -1089,21 +1116,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       );
     }
 
-    // 2) Inline-built content, with the option to promote it to a rutina.
+    // 2) Inline-built content (swap / save-as-segment live in the section header).
     if (secBlocks.length > 0) {
-      return (
-        <div className="flex flex-col gap-1.5">
-          {looseSection(secBlocks, section, title)}
-          <button
-            type="button"
-            onClick={() => promoteToRutina(section, secBlocks)}
-            disabled={saveAsRutina.isPending}
-            className="self-start rounded-md px-1 font-mono text-[11px] font-medium text-accent-dark hover:underline disabled:opacity-50"
-          >
-            {saveAsRutina.isPending ? 'Guardando…' : 'Guardar como segmento reutilizable →'}
-          </button>
-        </div>
-      );
+      return looseSection(secBlocks, section, title);
     }
 
     // 3) Empty → a placeholder with a small choose-source menu.
