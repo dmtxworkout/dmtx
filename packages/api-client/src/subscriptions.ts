@@ -10,6 +10,7 @@ export interface UserSubscription {
   trialEnd: string | null;
   currentPeriodEnd: string | null;
   nextChargeDate: string | null;
+  startedAt: string | null;
 }
 
 export interface SubscriptionHistoryItem {

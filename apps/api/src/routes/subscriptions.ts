@@ -20,6 +20,7 @@ const subCard = (s: {
   trialEnd: Date | null;
   currentPeriodEnd: Date | null;
   nextChargeDate: string | null;
+  startedAt: Date | null;
 }) => ({
   status: s.status,
   comp: s.unitAmount === 0,
@@ -30,6 +31,7 @@ const subCard = (s: {
   trialEnd: iso(s.trialEnd),
   currentPeriodEnd: iso(s.currentPeriodEnd),
   nextChargeDate: s.nextChargeDate ?? null,
+  startedAt: iso(s.startedAt),
 });
 
 /** End the user's current live episode (keeps the row as history). */
@@ -69,6 +71,7 @@ subscriptionsRoute.get('/users', async (c) => {
       trialEnd: subscriptions.trialEnd,
       currentPeriodEnd: subscriptions.currentPeriodEnd,
       nextChargeDate: subscriptions.nextChargeDate,
+      startedAt: subscriptions.startedAt,
     })
     .from(user)
     // Only the live episode (≤1 per user); history lives in the detail view.
@@ -97,6 +100,7 @@ subscriptionsRoute.get('/users', async (c) => {
               trialEnd: r.trialEnd,
               currentPeriodEnd: r.currentPeriodEnd,
               nextChargeDate: r.nextChargeDate,
+              startedAt: r.startedAt,
             })
           : null,
     })),

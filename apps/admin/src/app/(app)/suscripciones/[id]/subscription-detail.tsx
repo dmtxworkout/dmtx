@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { access, formatMoney, historyLabel, planLabel } from '@/lib/user-access';
-import { formatDateEs } from '@/lib/utils';
+import { cn, formatDateEs } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -17,6 +17,7 @@ export function SubscriptionDetail({ id }: { id: string }) {
   const q = useQuery({ queryKey: ['admin-user', id], queryFn: () => api.subscriptions.user(id) });
 
   const [trialDays, setTrialDays] = useState('30');
+  const [compMode, setCompMode] = useState<'forever' | 'until'>('forever');
   const [untilDate, setUntilDate] = useState('');
 
   const act = useMutation({
@@ -79,6 +80,7 @@ export function SubscriptionDetail({ id }: { id: string }) {
                   <Field label="Plan" value={planLabel(sub)} />
                   <Field label="Precio" value={formatMoney(sub.unitAmount, sub.currency)} mono />
                   <Field label="Estado" value={a?.label ?? '—'} />
+                  <Field label="Empezó" value={sub.startedAt ? formatDateEs(sub.startedAt) : '—'} mono />
                   <Field label={a?.tone === 'canceled' ? 'Venció' : 'Vence'} value={a?.ends ? formatDateEs(a.ends) : '—'} mono />
                   <Field label="Próximo cargo" value={sub.nextChargeDate ? formatDateEs(sub.nextChargeDate) : '—'} mono />
                 </div>
@@ -91,49 +93,68 @@ export function SubscriptionDetail({ id }: { id: string }) {
             <section className="flex flex-col gap-4 rounded-xl border border-line-2 bg-surface p-5">
               <MonoLabel>Gestionar acceso</MonoLabel>
 
+              {/* Trial: a temporary free trial period. */}
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line-3 bg-surface-2/40 p-3.5">
-                <span className="text-[13px] font-semibold text-ink-2">Prueba gratis</span>
-                <Input
-                  inputMode="numeric"
-                  value={trialDays}
-                  onChange={(e) => setTrialDays(e.target.value.replace(/[^0-9]/g, ''))}
-                  className="w-20 text-center"
-                />
-                <span className="text-[13px] text-muted">días</span>
-                <Button
-                  variant="outline"
-                  className="ml-auto"
-                  disabled={act.isPending || !Number(trialDays)}
-                  onClick={() => act.mutate({ t: 'trial', days: Number(trialDays) })}
-                >
-                  Iniciar prueba
-                </Button>
-              </div>
-
-              <div className="flex flex-col gap-3 rounded-lg border border-line-3 bg-surface-2/40 p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[13px] font-semibold text-ink-2">Acceso gratis para siempre</div>
-                    <div className="font-mono text-[11px] text-muted">Cortesía sin fecha de vencimiento</div>
-                  </div>
-                  <Button variant="outline" disabled={act.isPending} onClick={() => act.mutate({ t: 'forever' })}>
-                    Dar acceso
+                <div>
+                  <div className="text-[13px] font-semibold text-ink-2">Prueba gratis</div>
+                  <div className="font-mono text-[11px] text-muted">Periodo de prueba temporal</div>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <Input
+                    inputMode="numeric"
+                    value={trialDays}
+                    onChange={(e) => setTrialDays(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="w-16 text-center"
+                  />
+                  <span className="text-[13px] text-muted">días</span>
+                  <Button
+                    variant="outline"
+                    disabled={act.isPending || !Number(trialDays)}
+                    onClick={() => act.mutate({ t: 'trial', days: Number(trialDays) })}
+                  >
+                    Iniciar prueba
                   </Button>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 border-t border-line-3 pt-3">
-                  <span className="text-[13px] font-semibold text-ink-2">Gratis hasta</span>
-                  <input
-                    type="date"
-                    value={untilDate}
-                    onChange={(e) => setUntilDate(e.target.value)}
-                    className="h-9 rounded-lg border border-line-2 bg-surface px-3 text-sm text-ink focus:border-accent/40 focus:outline-none"
-                  />
+              </div>
+
+              {/* Comp: a courtesy grant — forever or until a date. */}
+              <div className="flex flex-col gap-3 rounded-lg border border-line-3 bg-surface-2/40 p-3.5">
+                <div>
+                  <div className="text-[13px] font-semibold text-ink-2">Cortesía (acceso gratis)</div>
+                  <div className="font-mono text-[11px] text-muted">Regala acceso sin costo</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="inline-flex rounded-lg border border-line-2 bg-surface p-0.5">
+                    {(['forever', 'until'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setCompMode(m)}
+                        className={cn(
+                          'rounded-md px-3 py-1 text-[12px] font-semibold',
+                          compMode === m ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink',
+                        )}
+                      >
+                        {m === 'forever' ? 'Para siempre' : 'Hasta una fecha'}
+                      </button>
+                    ))}
+                  </div>
+                  {compMode === 'until' && (
+                    <input
+                      type="date"
+                      value={untilDate}
+                      onChange={(e) => setUntilDate(e.target.value)}
+                      className="h-9 rounded-lg border border-line-2 bg-surface px-3 text-sm text-ink focus:border-accent/40 focus:outline-none"
+                    />
+                  )}
                   <Button
                     variant="outline"
                     className="ml-auto"
-                    disabled={act.isPending || !untilDate}
+                    disabled={act.isPending || (compMode === 'until' && !untilDate)}
                     onClick={() =>
-                      act.mutate({ t: 'until', until: new Date(`${untilDate}T23:59:59`).toISOString() })
+                      compMode === 'forever'
+                        ? act.mutate({ t: 'forever' })
+                        : act.mutate({ t: 'until', until: new Date(`${untilDate}T23:59:59`).toISOString() })
                     }
                   >
                     Dar acceso
