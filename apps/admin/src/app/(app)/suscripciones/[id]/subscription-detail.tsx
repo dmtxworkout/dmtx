@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MonoLabel } from '@/components/ui/mono-label';
+import { Dialog } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 
 export function SubscriptionDetail({ id }: { id: string }) {
@@ -19,6 +20,7 @@ export function SubscriptionDetail({ id }: { id: string }) {
   const [trialDays, setTrialDays] = useState('30');
   const [compMode, setCompMode] = useState<'forever' | 'until'>('forever');
   const [untilDate, setUntilDate] = useState('');
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   const act = useMutation({
     mutationFn: (
@@ -165,7 +167,7 @@ export function SubscriptionDetail({ id }: { id: string }) {
               <button
                 type="button"
                 disabled={act.isPending || !sub}
-                onClick={() => act.mutate({ t: 'revoke' })}
+                onClick={() => setConfirmRevoke(true)}
                 className="self-start text-[13px] font-medium text-accent-dark hover:underline disabled:opacity-50"
               >
                 Revocar acceso
@@ -200,6 +202,37 @@ export function SubscriptionDetail({ id }: { id: string }) {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={confirmRevoke}
+        onClose={() => setConfirmRevoke(false)}
+        title="Revocar acceso"
+        className="max-w-md"
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <p className="text-[13.5px] leading-relaxed text-ink-2">
+            Se cancelará la suscripción activa de{' '}
+            <span className="font-semibold text-ink">{q.data?.name || q.data?.email}</span>. Perderá el
+            acceso de inmediato. El registro queda en el historial y puedes volver a darle acceso cuando
+            quieras.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmRevoke(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={act.isPending}
+              onClick={() => {
+                act.mutate({ t: 'revoke' });
+                setConfirmRevoke(false);
+              }}
+            >
+              {act.isPending ? 'Revocando…' : 'Revocar acceso'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

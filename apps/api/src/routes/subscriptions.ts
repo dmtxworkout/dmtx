@@ -56,13 +56,11 @@ subscriptionsRoute.get('/users', async (c) => {
   const where = search
     ? or(ilike(user.email, `%${search}%`), ilike(user.name, `%${search}%`))
     : undefined;
-  const rows = await db
-    .select({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      createdAt: user.createdAt,
+  // Each user's most recent episode (live or terminal) — so canceled/expired
+  // subscriptions still show up instead of vanishing.
+  const latest = db
+    .selectDistinctOn([subscriptions.userId], {
+      userId: subscriptions.userId,
       status: subscriptions.status,
       unitAmount: subscriptions.unitAmount,
       currency: subscriptions.currency,
@@ -73,12 +71,28 @@ subscriptionsRoute.get('/users', async (c) => {
       nextChargeDate: subscriptions.nextChargeDate,
       startedAt: subscriptions.startedAt,
     })
+    .from(subscriptions)
+    .orderBy(subscriptions.userId, desc(subscriptions.startedAt), desc(subscriptions.createdAt))
+    .as('latest');
+  const rows = await db
+    .select({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      createdAt: user.createdAt,
+      status: latest.status,
+      unitAmount: latest.unitAmount,
+      currency: latest.currency,
+      intervalUnit: latest.intervalUnit,
+      intervalCount: latest.intervalCount,
+      trialEnd: latest.trialEnd,
+      currentPeriodEnd: latest.currentPeriodEnd,
+      nextChargeDate: latest.nextChargeDate,
+      startedAt: latest.startedAt,
+    })
     .from(user)
-    // Only the live episode (≤1 per user); history lives in the detail view.
-    .leftJoin(
-      subscriptions,
-      and(eq(subscriptions.userId, user.id), inArray(subscriptions.status, LIVE)),
-    )
+    .leftJoin(latest, eq(latest.userId, user.id))
     .where(where)
     .orderBy(desc(user.createdAt))
     .limit(100);

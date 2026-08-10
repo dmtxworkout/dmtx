@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatDateEs } from '@/lib/utils';
+import { cn, formatDateEs } from '@/lib/utils';
 import { access, formatMoney, planLabel } from '@/lib/user-access';
 import { PageHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +23,7 @@ function ini(name: string): string {
 
 export default function SuscripcionesPage() {
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'active' | 'all'>('active');
   const router = useRouter();
 
   const { data, isLoading, isError } = useQuery({
@@ -31,29 +32,45 @@ export default function SuscripcionesPage() {
     placeholderData: keepPreviousData,
   });
 
-  // Only users that currently hold a subscription (live episode).
-  const rows = (data?.data ?? []).filter((u) => u.subscription);
-  const withAccess = rows.filter((u) => access(u.subscription).tone === 'active').length;
-  const onTrial = rows.filter((u) => u.subscription!.status === 'trialing').length;
+  const all = (data?.data ?? []).filter((u) => u.subscription);
+  const hasAccess = (u: (typeof all)[number]) => {
+    const t = access(u.subscription).tone;
+    return t === 'active' || t === 'trialing';
+  };
+  const rows = filter === 'all' ? all : all.filter(hasAccess);
+  const withAccess = all.filter(hasAccess).length;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
         title="Suscripciones"
-        subtitle={
-          data
-            ? `${rows.length} suscripción${rows.length === 1 ? '' : 'es'} · ${withAccess} con acceso · ${onTrial} en prueba`
-            : 'Suscripciones'
-        }
+        subtitle={data ? `${all.length} en total · ${withAccess} con acceso` : 'Suscripciones'}
       >
-        <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
-          <span className="text-muted-2">⌕</span>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o correo"
-            className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
-          />
+        <div className="flex flex-wrap items-center gap-2.5">
+          <div className="inline-flex rounded-lg border border-line-2 bg-surface p-0.5">
+            {(['active', 'all'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setFilter(f)}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-[12px] font-semibold',
+                  filter === f ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink',
+                )}
+              >
+                {f === 'active' ? 'Con acceso' : 'Todas'}
+              </button>
+            ))}
+          </div>
+          <div className="flex h-9 w-[280px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
+            <span className="text-muted-2">⌕</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o correo"
+              className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
+            />
+          </div>
         </div>
       </PageHeader>
 
@@ -63,7 +80,9 @@ export default function SuscripcionesPage() {
         ) : isError ? (
           <div className="p-10 text-center text-sm text-accent-dark">Ocurrió un error.</div>
         ) : rows.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted">No hay suscripciones activas.</div>
+          <div className="p-10 text-center text-sm text-muted">
+            {filter === 'active' ? 'Nadie con acceso ahora mismo.' : 'No hay suscripciones.'}
+          </div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-line bg-surface">
             <div
