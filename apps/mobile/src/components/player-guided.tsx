@@ -14,6 +14,7 @@ export function SectionIntro({
   workout,
   title,
   subtitle,
+  note,
   doLabel,
   skipLabel,
   onDo,
@@ -23,10 +24,11 @@ export function SectionIntro({
   workout: WorkoutDetail;
   title: string;
   subtitle: string;
+  note?: string;
   doLabel: string;
-  skipLabel: string;
+  skipLabel?: string;
   onDo: () => void;
-  onSkip: () => void;
+  onSkip?: () => void;
   onExit: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -49,25 +51,27 @@ export function SectionIntro({
         <Text className="mt-2 font-extrabold text-[26px] leading-tight tracking-tight text-ink">
           {subtitle}
         </Text>
+        {note ? (
+          <Text className="mt-2 font-sans text-[14px] leading-6 text-ink-3">{note}</Text>
+        ) : null}
       </View>
 
       <ScrollView contentContainerClassName="gap-3 px-5 pb-4">
         <CircuitView workout={workout} />
       </ScrollView>
 
-      <View className="flex-row gap-2.5 px-5 pt-2" style={{ paddingBottom: insets.bottom + 14 }}>
-        <Pressable
-          onPress={onSkip}
-          className="h-[54px] flex-1 items-center justify-center rounded-xl bg-surface-2"
-        >
-          <Text className="font-bold text-[16px] text-ink-2">{skipLabel}</Text>
-        </Pressable>
+      <View className="gap-1 px-5 pt-2" style={{ paddingBottom: insets.bottom + 12 }}>
         <Pressable
           onPress={onDo}
-          className="h-[54px] flex-1 items-center justify-center rounded-xl bg-accent active:opacity-80"
+          className="h-[54px] items-center justify-center rounded-xl bg-accent active:opacity-80"
         >
           <Text className="font-bold text-[16px] text-white">{doLabel}</Text>
         </Pressable>
+        {onSkip ? (
+          <Pressable onPress={onSkip} className="items-center justify-center py-3 active:opacity-60">
+            <Text className="font-semibold text-[14px] text-ink-3">{skipLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -86,6 +90,7 @@ export function CooldownFlow({ workout, onDone }: { workout: WorkoutDetail; onDo
         workout={workout}
         title="Enfriamiento"
         subtitle="¿Quieres enfriar?"
+        note="Enfriar ayuda a tu recuperación y baja las pulsaciones poco a poco."
         doLabel="Hacer enfriamiento"
         skipLabel="Saltar y ver resultados"
         onDo={() => setP('run')}

@@ -57,6 +57,10 @@ export default function Entrenar() {
 
 const sectionWorkout = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail => ({
   ...w,
+  // Warmup/cooldown are independent of the main format — play them as a plain
+  // guided walk-through, never with the main's EMOM/AMRAP/Tabata timing.
+  format: section === 'main' ? w.format : 'circuit',
+  formatConfig: section === 'main' ? w.formatConfig : null,
   blocks: w.blocks.filter((b) => (b.section ?? 'main') === section),
 });
 const hasExercises = (w: WorkoutDetail) =>
@@ -74,7 +78,7 @@ function Session({ workout }: { workout: WorkoutDetail }) {
   const hasWarmup = useMemo(() => hasExercises(warmup), [warmup]);
   const hasCooldown = useMemo(() => hasExercises(cooldown), [cooldown]);
 
-  const [phase, setPhase] = useState<'warmup-intro' | 'warmup' | 'main'>(
+  const [phase, setPhase] = useState<'warmup-intro' | 'warmup' | 'warmup-done' | 'main'>(
     hasWarmup ? 'warmup-intro' : 'main',
   );
   const exit = () => router.back();
@@ -85,8 +89,9 @@ function Session({ workout }: { workout: WorkoutDetail }) {
         workout={warmup}
         title="Calentamiento"
         subtitle="¿Quieres calentar?"
+        note="Calentar reduce el riesgo de lesión y te prepara para rendir mejor."
         doLabel="Hacer calentamiento"
-        skipLabel="Saltar"
+        skipLabel="Saltar calentamiento"
         onDo={() => setPhase('warmup')}
         onSkip={() => setPhase('main')}
         onExit={exit}
@@ -94,7 +99,19 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     );
   }
   if (phase === 'warmup') {
-    return <GuidedPlayer workout={warmup} onComplete={() => setPhase('main')} onExit={exit} />;
+    return <GuidedPlayer workout={warmup} onComplete={() => setPhase('warmup-done')} onExit={exit} />;
+  }
+  if (phase === 'warmup-done') {
+    return (
+      <SectionIntro
+        workout={main}
+        title="Calentamiento completo"
+        subtitle="Ahora empieza la rutina"
+        doLabel="Empezar rutina"
+        onDo={() => setPhase('main')}
+        onExit={exit}
+      />
+    );
   }
 
   // The cooldown runs inside the player, after the work but before the results,
