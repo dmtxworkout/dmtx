@@ -48,6 +48,7 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   for_time: 'Por tiempo',
   circuit: 'Circuito',
 };
+const ALL_FORMATS = Object.keys(FORMAT_LABEL) as WorkoutFormat[];
 
 // One-liners shown on the format cards in the create wizard.
 const FORMAT_DESC: Record<WorkoutFormat, string> = {
@@ -364,11 +365,16 @@ function apiBlocksToState(blocks: Workout['blocks'], forceSection?: BlockSection
 function initBlocks(w?: Workout): BlockState[] {
   return w ? apiBlocksToState(w.blocks) : [];
 }
-function initCfg(w?: Workout): Record<string, string> {
+// A FormatConfig object → the editable string-keyed record the config boxes use.
+function cfgFrom(c: unknown): Record<string, string> {
   const out: Record<string, string> = {};
-  const c = w?.formatConfig;
-  if (c) for (const [k, v] of Object.entries(c)) if (k !== 'format' && k !== 'configVersion' && typeof v === 'number') out[k] = String(v);
+  if (c && typeof c === 'object')
+    for (const [k, v] of Object.entries(c))
+      if (k !== 'format' && k !== 'configVersion' && typeof v === 'number') out[k] = String(v);
   return out;
+}
+function initCfg(w?: Workout): Record<string, string> {
+  return cfgFrom(w?.formatConfig);
 }
 
 const boxCls =
@@ -462,6 +468,20 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [cooldownWorkoutId, setCooldownWorkoutId] = useState<string | null>(
     workout?.cooldownWorkoutId ?? null,
   );
+  // Each section (warmup/cooldown) runs on its own format, copied from the source
+  // segment on import and editable in place (null = a plain sequential list).
+  const [sectionFmt, setSectionFmt] = useState<Record<'warmup' | 'cooldown', WorkoutFormat | null>>({
+    warmup: workout?.warmupFormat ?? null,
+    cooldown: workout?.cooldownFormat ?? null,
+  });
+  const [sectionCfg, setSectionCfg] = useState<Record<'warmup' | 'cooldown', Record<string, string>>>({
+    warmup: cfgFrom(workout?.warmupFormatConfig),
+    cooldown: cfgFrom(workout?.cooldownFormatConfig),
+  });
+  const setSecFmt = (section: 'warmup' | 'cooldown', f: WorkoutFormat | null) =>
+    setSectionFmt((s) => ({ ...s, [section]: f }));
+  const setSecCfgKey = (section: 'warmup' | 'cooldown', k: string, v: string) =>
+    setSectionCfg((s) => ({ ...s, [section]: { ...s[section], [k]: v } }));
   // Which section's rutina picker is open, and its empty-slot add menu.
   const [rutinaPicker, setRutinaPicker] = useState<'warmup' | 'cooldown' | null>(null);
   const [slotMenu, setSlotMenu] = useState<{
@@ -909,6 +929,29 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
           </svg>
         </button>
       </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1">
+        <span className={cfgLabel}>Formato</span>
+        <select
+          value={sectionFmt[section] ?? ''}
+          onChange={(e) => setSecFmt(section, (e.target.value || null) as WorkoutFormat | null)}
+          className="h-[30px] rounded-[7px] border border-[#e6e2d9] bg-surface-3 px-2 font-mono text-[12px] font-medium focus:border-accent/40 focus:outline-none"
+        >
+          <option value="">Lista simple</option>
+          {ALL_FORMATS.map((f) => (
+            <option key={f} value={f}>
+              {FORMAT_LABEL[f]}
+            </option>
+          ))}
+        </select>
+        {sectionFmt[section]
+          ? FORMAT_FIELDS[sectionFmt[section]!].map((f, i) => (
+              <Fragment key={f.key}>
+                {i > 0 && <span className="h-5 w-px bg-line-2" />}
+                {configField(f, sectionCfg[section], (k, v) => setSecCfgKey(section, k, v))}
+              </Fragment>
+            ))
+          : null}
+      </div>
       {secBlocks.map((b) =>
         b.items[0] ? (
           <div key={b.key} className="rounded-lg bg-surface">
@@ -958,6 +1001,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         items: [it],
       }));
     setBlocks((bs) => [...bs.filter((b) => b.section !== section), ...rows]);
+    // Carry the segment's own format into the section so it plays on its own
+    // terms (a warmup AMRAP, a stretch list, …), independent of the main rutina.
+    setSecFmt(section, src.format ?? null);
+    setSectionCfg((s) => ({ ...s, [section]: cfgFrom(src.formatConfig) }));
     if (section === 'warmup') setWarmupWorkoutId(null);
     else setCooldownWorkoutId(null);
   };
@@ -1022,16 +1069,29 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     rounds: b.rounds,
     items: b.items.map(aItemToPv),
   });
+  // A section's own format shown next to its label, e.g. "AMRAP · 5 min".
+  const secFmtLabel = (section: 'warmup' | 'cooldown'): string | null => {
+    const f = sectionFmt[section];
+    if (!f) return null;
+    const h = formatHeadline(f, sectionCfg[section]);
+    return `${FORMAT_LABEL[f]}${h ? ` · ${h}` : ''}`;
+  };
   const refSection = (
     id: string | null,
     data: Workout | undefined,
     inline: BlockState[],
+    section: 'warmup' | 'cooldown',
   ): PvSection | null => {
     if (id) {
       const name = data?.name ?? refListQ.data?.find((w) => w.id === id)?.name ?? '…';
-      return { name, blocks: (data?.blocks ?? []).map(aBlockToPv) };
+      const f = data?.format;
+      return {
+        name,
+        formatLabel: f ? `${FORMAT_LABEL[f]}${formatHeadline(f, cfgFrom(data?.formatConfig)) ? ` · ${formatHeadline(f, cfgFrom(data?.formatConfig))}` : ''}` : null,
+        blocks: (data?.blocks ?? []).map(aBlockToPv),
+      };
     }
-    if (inline.length) return { name: null, blocks: inline.map(bBlockToPv) };
+    if (inline.length) return { name: null, formatLabel: secFmtLabel(section), blocks: inline.map(bBlockToPv) };
     return null;
   };
   const previewModel: PvModel = {
@@ -1039,9 +1099,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     hasVideo: type === 'video' && !!videoAssetId,
     formatLabel: type === 'structured' ? FORMAT_LABEL[format] : 'Video',
     headline: type === 'structured' ? formatHeadline(format, formatCfg) : '',
-    warmup: refSection(warmupWorkoutId, warmupQ.data, warmupBlocks),
+    warmup: refSection(warmupWorkoutId, warmupQ.data, warmupBlocks, 'warmup'),
     main: mainBlocks.map(bBlockToPv),
-    cooldown: refSection(cooldownWorkoutId, cooldownQ.data, cooldownBlocks),
+    cooldown: refSection(cooldownWorkoutId, cooldownQ.data, cooldownBlocks, 'cooldown'),
   };
 
   // Promote inline warmup/cooldown blocks into a standalone reusable rutina,
@@ -1203,6 +1263,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
           !(b.section === 'warmup' && warmupWorkoutId) &&
           !(b.section === 'cooldown' && cooldownWorkoutId),
       );
+      // A section keeps its own format only when it actually has inline content.
+      const secFmt = (section: 'warmup' | 'cooldown') =>
+        kept.some((b) => b.section === section) ? sectionFmt[section] : null;
       const payload: CreateWorkoutInput = {
         name,
         description: description || null,
@@ -1215,6 +1278,16 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         thumbnailAssetId,
         videoAssetId: structured ? null : videoAssetId,
         formatConfig: structured ? buildFormatConfig(format, formatCfg) : null,
+        warmupFormat: structured ? secFmt('warmup') : null,
+        warmupFormatConfig:
+          structured && secFmt('warmup')
+            ? buildFormatConfig(secFmt('warmup')!, sectionCfg.warmup)
+            : null,
+        cooldownFormat: structured ? secFmt('cooldown') : null,
+        cooldownFormatConfig:
+          structured && secFmt('cooldown')
+            ? buildFormatConfig(secFmt('cooldown')!, sectionCfg.cooldown)
+            : null,
         warmupWorkoutId: structured ? warmupWorkoutId : null,
         cooldownWorkoutId: structured ? cooldownWorkoutId : null,
         blocks: structured ? blocksToPayload(kept, format) : [],
@@ -1241,13 +1314,17 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     'h-[30px] w-12 rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
   const cfgLabel = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3';
   const cfgUnit = 'font-mono text-[11px] text-muted';
-  const configField = (f: CfgField) => {
+  const configField = (
+    f: CfgField,
+    cfg: Record<string, string> = formatCfg,
+    setKey: (k: string, v: string) => void = setCfg,
+  ) => {
     if (f.kind === 'duration') {
-      const total = Math.max(0, Math.round(Number(formatCfg[f.key]) || 0));
+      const total = Math.max(0, Math.round(Number(cfg[f.key]) || 0));
       const min = Math.floor(total / 60);
       const sec = total % 60;
       const setDur = (m: number, s: number) =>
-        setCfg(f.key, String(Math.max(0, m) * 60 + Math.max(0, s)));
+        setKey(f.key, String(Math.max(0, m) * 60 + Math.max(0, s)));
       return (
         <div key={f.key} className="flex items-center gap-2">
           <span className={cfgLabel}>{f.label}</span>
@@ -1275,9 +1352,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         <span className={cfgLabel}>{f.label}</span>
         <input
           inputMode="numeric"
-          value={formatCfg[f.key] ?? ''}
+          value={cfg[f.key] ?? ''}
           placeholder="0"
-          onChange={(e) => setCfg(f.key, e.target.value)}
+          onChange={(e) => setKey(f.key, e.target.value)}
           className={cfgBox}
         />
         {f.kind === 'seconds' && <span className={cfgUnit}>seg</span>}

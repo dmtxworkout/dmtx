@@ -85,6 +85,13 @@
       "when": 1786316726177,
       "tag": "0011_tiny_dracula",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1786335661783,
+      "tag": "0012_talented_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

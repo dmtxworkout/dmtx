@@ -388,12 +388,13 @@ appRoute.get('/workouts/:id', async (c) => {
     videoUrl: url(media, w.videoAssetId),
     videoDurationSeconds: w.videoDurationSeconds,
     formatConfig: w.formatConfig ?? null,
-    // Per-section format for referenced segments (null when the section is inline
-    // or absent) — lets the mobile play the warmup/cooldown on their own format.
-    warmupFormat: warmupSeg?.format ?? null,
-    warmupFormatConfig: warmupSeg?.formatConfig ?? null,
-    cooldownFormat: cooldownSeg?.format ?? null,
-    cooldownFormatConfig: cooldownSeg?.formatConfig ?? null,
+    // Per-section format so the mobile plays the warmup/cooldown on their own
+    // format. Prefer the rutina's own column (inline import copies it); fall back
+    // to a referenced segment's format for legacy rutinas that still hold a ref.
+    warmupFormat: w.warmupFormat ?? warmupSeg?.format ?? null,
+    warmupFormatConfig: w.warmupFormatConfig ?? warmupSeg?.formatConfig ?? null,
+    cooldownFormat: w.cooldownFormat ?? cooldownSeg?.format ?? null,
+    cooldownFormatConfig: w.cooldownFormatConfig ?? cooldownSeg?.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
     lastLog: lastLog
       ? {

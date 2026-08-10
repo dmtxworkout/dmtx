@@ -86,6 +86,10 @@ async function loadFull(db: Database, w: WorkoutRow) {
     ...base(w),
     formatConfig: w.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
+    warmupFormat: w.warmupFormat ?? null,
+    warmupFormatConfig: w.warmupFormatConfig ?? null,
+    cooldownFormat: w.cooldownFormat ?? null,
+    cooldownFormatConfig: w.cooldownFormatConfig ?? null,
     warmupWorkoutId: w.warmupWorkoutId,
     cooldownWorkoutId: w.cooldownWorkoutId,
     blocks: blocks.map((b: BlockRow) => ({
@@ -234,6 +238,10 @@ workoutsRoute.openapi(
         videoDurationSeconds: structured ? null : (input.videoDurationSeconds ?? null),
         formatConfig: structured ? (input.formatConfig ?? null) : null,
         scoringGoal: input.scoringGoal ?? null,
+        warmupFormat: structured ? (input.warmupFormat ?? null) : null,
+        warmupFormatConfig: structured ? (input.warmupFormatConfig ?? null) : null,
+        cooldownFormat: structured ? (input.cooldownFormat ?? null) : null,
+        cooldownFormatConfig: structured ? (input.cooldownFormatConfig ?? null) : null,
         warmupWorkoutId: structured ? (input.warmupWorkoutId ?? null) : null,
         cooldownWorkoutId: structured ? (input.cooldownWorkoutId ?? null) : null,
       })
@@ -279,6 +287,12 @@ workoutsRoute.openapi(
       set.videoDurationSeconds = input.videoDurationSeconds ?? null;
     if (input.formatConfig !== undefined) set.formatConfig = input.formatConfig ?? null;
     if (input.scoringGoal !== undefined) set.scoringGoal = input.scoringGoal ?? null;
+    if (input.warmupFormat !== undefined) set.warmupFormat = input.warmupFormat ?? null;
+    if (input.warmupFormatConfig !== undefined)
+      set.warmupFormatConfig = input.warmupFormatConfig ?? null;
+    if (input.cooldownFormat !== undefined) set.cooldownFormat = input.cooldownFormat ?? null;
+    if (input.cooldownFormatConfig !== undefined)
+      set.cooldownFormatConfig = input.cooldownFormatConfig ?? null;
     if (input.warmupWorkoutId !== undefined) set.warmupWorkoutId = input.warmupWorkoutId ?? null;
     if (input.cooldownWorkoutId !== undefined)
       set.cooldownWorkoutId = input.cooldownWorkoutId ?? null;

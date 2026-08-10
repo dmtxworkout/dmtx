@@ -62,6 +62,12 @@ export const createWorkoutSchema = z.object({
   videoDurationSeconds: z.number().int().positive().nullish(),
   formatConfig: formatConfigSchema.nullish(),
   scoringGoal: goalSchema.nullish(),
+  // The warmup/cooldown section's own format (copied from a source segment on
+  // import, editable in place). null → a plain sequential walk for that section.
+  warmupFormat: workoutFormatSchema.nullish(),
+  warmupFormatConfig: formatConfigSchema.nullish(),
+  cooldownFormat: workoutFormatSchema.nullish(),
+  cooldownFormatConfig: formatConfigSchema.nullish(),
   // Optional reusable warmup/cooldown: another rutina played (untracked) around
   // this one. Mutually exclusive with inline blocks of that section.
   warmupWorkoutId: uuidSchema.nullish(),
@@ -102,6 +108,10 @@ export const workoutSchema = z.object({
   videoDurationSeconds: z.number().nullable(),
   formatConfig: formatConfigSchema.nullable(),
   scoringGoal: goalSchema.nullable(),
+  warmupFormat: workoutFormatSchema.nullable(),
+  warmupFormatConfig: formatConfigSchema.nullable(),
+  cooldownFormat: workoutFormatSchema.nullable(),
+  cooldownFormatConfig: formatConfigSchema.nullable(),
   warmupWorkoutId: uuidSchema.nullable(),
   cooldownWorkoutId: uuidSchema.nullable(),
   createdAt: z.iso.datetime(),
@@ -114,6 +124,10 @@ export const workoutListItemSchema = workoutSchema.omit({
   blocks: true,
   formatConfig: true,
   scoringGoal: true,
+  warmupFormat: true,
+  warmupFormatConfig: true,
+  cooldownFormat: true,
+  cooldownFormatConfig: true,
   warmupWorkoutId: true,
   cooldownWorkoutId: true,
 });

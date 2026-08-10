@@ -8,7 +8,7 @@ export type PvItem =
   | { kind: 'rest'; seconds: number | null }
   | { kind: 'exercise'; prefix: string | null; name: string; load: string | null; tempo: string | null };
 export type PvBlock = { title: string | null; rounds: number | null; items: PvItem[] };
-export type PvSection = { name: string | null; blocks: PvBlock[] };
+export type PvSection = { name: string | null; formatLabel?: string | null; blocks: PvBlock[] };
 export type PvModel = {
   type: 'structured' | 'video';
   hasVideo: boolean;
@@ -121,9 +121,19 @@ export function RutinaPreview({ model, name }: { model: PvModel; name: string })
           </div>
         ) : (
           <div className="flex flex-col gap-5 px-4 py-4">
-            {model.warmup && <Section label="Calentamiento" blocks={model.warmup.blocks} />}
+            {model.warmup && (
+              <Section
+                label={`Calentamiento${model.warmup.formatLabel ? ` · ${model.warmup.formatLabel}` : ''}`}
+                blocks={model.warmup.blocks}
+              />
+            )}
             <Section label={mainLabel} blocks={model.main} />
-            {model.cooldown && <Section label="Enfriamiento" blocks={model.cooldown.blocks} />}
+            {model.cooldown && (
+              <Section
+                label={`Enfriamiento${model.cooldown.formatLabel ? ` · ${model.cooldown.formatLabel}` : ''}`}
+                blocks={model.cooldown.blocks}
+              />
+            )}
           </div>
         )}
       </div>
