@@ -273,23 +273,25 @@ appRoute.get('/workouts/:id', async (c) => {
     .where(inArray(workoutBlocks.workoutId, workoutIds))
     .orderBy(workoutBlocks.position);
 
-  // Resolve the section a block plays as; null = dropped (inline overridden).
-  const sectionOf = (b: (typeof allBlocks)[number]): 'warmup' | 'main' | 'cooldown' | null => {
-    if (b.workoutId === warmupRefId) return 'warmup';
-    if (b.workoutId === cooldownRefId) return 'cooldown';
-    if (b.section === 'warmup') return warmupRefId ? null : 'warmup';
-    if (b.section === 'cooldown') return cooldownRefId ? null : 'cooldown';
-    return 'main';
-  };
-  const rank = { warmup: 0, main: 1, cooldown: 2 } as const;
-  const blocks = allBlocks
-    .map((b) => ({ b, section: sectionOf(b) }))
-    .filter((x): x is { b: (typeof allBlocks)[number]; section: 'warmup' | 'main' | 'cooldown' } =>
-      x.section !== null,
-    )
-    .sort((a, z) => rank[a.section] - rank[z.section])
-    .map((x) => ({ ...x.b, section: x.section }));
-  const blockIds = blocks.map((b) => b.id);
+  // Assemble the played order — warmup, main, cooldown — pulling each section
+  // from its reference (if set) or the workout's own inline blocks. Building the
+  // sections explicitly (rather than tagging each block once) lets the SAME
+  // segment serve as both warmup and cooldown.
+  type BlockRow = (typeof allBlocks)[number];
+  const warmupSrc: BlockRow[] = warmupRefId
+    ? allBlocks.filter((b) => b.workoutId === warmupRefId)
+    : allBlocks.filter((b) => b.workoutId === w.id && b.section === 'warmup');
+  const mainSrc = allBlocks.filter((b) => b.workoutId === w.id && (b.section ?? 'main') === 'main');
+  const cooldownSrc: BlockRow[] = cooldownRefId
+    ? allBlocks.filter((b) => b.workoutId === cooldownRefId)
+    : allBlocks.filter((b) => b.workoutId === w.id && b.section === 'cooldown');
+  const blocks = [
+    ...warmupSrc.map((b) => ({ ...b, section: 'warmup' as const })),
+    ...mainSrc.map((b) => ({ ...b, section: 'main' as const })),
+    ...cooldownSrc.map((b) => ({ ...b, section: 'cooldown' as const })),
+  ];
+  // A shared warmup/cooldown segment yields duplicate block ids; load items once.
+  const blockIds = [...new Set(blocks.map((b) => b.id))];
   const items = blockIds.length
     ? await db
         .select()
