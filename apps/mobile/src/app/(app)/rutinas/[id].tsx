@@ -8,6 +8,7 @@ import { difficultyLabel, es, formatLabel } from '../../../i18n';
 import { durationLabel, loadLabel, mmss, targetLabel, tempoDash } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
 import type { Units } from '../../../lib/units';
+import type { WorkoutFormat } from '@dmtx/schemas';
 import type { WorkoutBlock, WorkoutItem } from '../../../lib/types';
 
 function itemSub(item: WorkoutItem, units: Units): string {
@@ -95,16 +96,30 @@ export default function RutinaDetalle() {
     { k: 'Nivel', v: difficultyLabel(w.difficulty, true) || '—' },
   ];
 
-  // Warmup → main → cooldown, each grouped like the admin Vista previa.
+  // Warmup → main → cooldown, each grouped like the admin Vista previa. A
+  // referenced warmup/cooldown segment shows its own format next to the label.
   const headline = formatHeadline(w.format, w.formatConfig);
+  const segLabel = (base: string, fmt: WorkoutFormat | null, cfg: unknown): string => {
+    if (!fmt) return base;
+    const h = formatHeadline(fmt, cfg);
+    return `${base} · ${formatLabel(fmt)}${h ? ` ${h}` : ''}`;
+  };
   const sections = [
-    { key: 'warmup', label: 'Calentamiento', units: unitsFor(w.blocks.filter((b) => b.section === 'warmup')) },
+    {
+      key: 'warmup',
+      label: segLabel('Calentamiento', w.warmupFormat, w.warmupFormatConfig),
+      units: unitsFor(w.blocks.filter((b) => b.section === 'warmup')),
+    },
     {
       key: 'main',
       label: `${formatLabel(w.format) || 'Rutina'}${headline ? ` ${headline}` : ''}`,
       units: unitsFor(w.blocks.filter((b) => (b.section ?? 'main') === 'main')),
     },
-    { key: 'cooldown', label: 'Enfriamiento', units: unitsFor(w.blocks.filter((b) => b.section === 'cooldown')) },
+    {
+      key: 'cooldown',
+      label: segLabel('Enfriamiento', w.cooldownFormat, w.cooldownFormatConfig),
+      units: unitsFor(w.blocks.filter((b) => b.section === 'cooldown')),
+    },
   ].filter((s) => s.units.length > 0);
 
   return (

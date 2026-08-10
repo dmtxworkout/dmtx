@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RepsScreen, RestScreen, TimeScreen, DistanceScreen, type Nav } from './player';
 import { CircuitView } from './circuit-view';
 import { buildSession, type ExerciseStep, type Step } from '../lib/session';
+import { mmss } from '../lib/format';
 import type { WorkoutDetail } from '../lib/types';
 
 /**
@@ -99,7 +100,104 @@ export function CooldownFlow({ workout, onDone }: { workout: WorkoutDetail; onDo
       />
     );
   }
-  return <GuidedPlayer workout={workout} onComplete={onDone} onExit={onDone} />;
+  return <SegmentPlayer workout={workout} onComplete={onDone} onExit={onDone} />;
+}
+
+/**
+ * Plays a warmup/cooldown segment on its OWN format, untracked. AMRAP needs a cap
+ * timer + repeating circuit (GuidedAmrap); every other format's structure is
+ * already baked into `buildSession`'s steps, so GuidedPlayer just walks them.
+ */
+export function SegmentPlayer({
+  workout,
+  onComplete,
+  onExit,
+}: {
+  workout: WorkoutDetail;
+  onComplete: () => void;
+  onExit: () => void;
+}) {
+  if (workout.format === 'amrap') {
+    return <GuidedAmrap workout={workout} onComplete={onComplete} onExit={onExit} />;
+  }
+  return <GuidedPlayer workout={workout} onComplete={onComplete} onExit={onExit} />;
+}
+
+/**
+ * Untracked AMRAP for a warmup/cooldown: a cap countdown with the circuit shown
+ * for reference. No round scoring or saving — when time runs out (or the athlete
+ * taps through) it just moves on.
+ */
+export function GuidedAmrap({
+  workout,
+  onComplete,
+  onExit,
+}: {
+  workout: WorkoutDetail;
+  onComplete: () => void;
+  onExit: () => void;
+}) {
+  const insets = useSafeAreaInsets();
+  const cap =
+    (workout.formatConfig as { totalSeconds?: number } | null)?.totalSeconds ??
+    workout.estimatedDurationSeconds ??
+    600;
+  const [remaining, setRemaining] = useState(cap);
+  const done = remaining <= 0;
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setRemaining((r) => {
+        if (r <= 1) {
+          clearInterval(t);
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <View className="flex-1 bg-bg" style={{ paddingTop: insets.top + 8 }}>
+      <View className="flex-row items-center px-5">
+        <Pressable onPress={onExit} hitSlop={12} className="h-10 w-10 items-center justify-center">
+          <Text className="text-[18px] text-ink-3">✕</Text>
+        </Pressable>
+        <Text numberOfLines={1} className="flex-1 text-center font-semibold text-[14px] text-ink">
+          {workout.name} · AMRAP
+        </Text>
+        <View className="h-10 w-10" />
+      </View>
+
+      <View className="items-center pb-2 pt-2">
+        <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
+          {done ? '¡Tiempo!' : 'Restante'}
+        </Text>
+        <Text className={`font-mono text-[68px] leading-none ${done ? 'text-ink' : 'text-accent'}`}>
+          {mmss(remaining)}
+        </Text>
+      </View>
+
+      <Text className="px-5 pb-1 font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
+        El circuito
+      </Text>
+      <ScrollView contentContainerClassName="gap-3 px-5 pb-4">
+        <CircuitView workout={workout} />
+      </ScrollView>
+
+      <View className="px-5 pt-2" style={{ paddingBottom: insets.bottom + 12 }}>
+        <Pressable
+          onPress={onComplete}
+          className={`h-[54px] items-center justify-center rounded-xl ${done ? 'bg-accent active:opacity-80' : 'bg-surface-2'}`}
+        >
+          <Text className={`font-bold text-[16px] ${done ? 'text-white' : 'text-ink'}`}>
+            {done ? 'Continuar' : 'Terminar'}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
 }
 
 /**

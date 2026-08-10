@@ -16,7 +16,7 @@ import {
 } from '../../../components/player';
 import { AmrapPlayer } from '../../../components/player-amrap';
 import { EmomPlayer } from '../../../components/player-emom';
-import { CooldownFlow, GuidedPlayer, SectionIntro } from '../../../components/player-guided';
+import { CooldownFlow, SectionIntro, SegmentPlayer } from '../../../components/player-guided';
 import type { WorkoutDetail } from '../../../lib/types';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
@@ -55,14 +55,18 @@ export default function Entrenar() {
   return <Session workout={q.data} />;
 }
 
-const sectionWorkout = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail => ({
-  ...w,
-  // Warmup/cooldown are independent of the main format — play them as a plain
-  // guided walk-through, never with the main's EMOM/AMRAP/Tabata timing.
-  format: section === 'main' ? w.format : 'circuit',
-  formatConfig: section === 'main' ? w.formatConfig : null,
-  blocks: w.blocks.filter((b) => (b.section ?? 'main') === section),
-});
+const sectionWorkout = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail => {
+  // Each section runs on its OWN format: the main's, or a referenced segment's.
+  // Inline warmup/cooldown blocks have no separate format → 'circuit' (a plain
+  // sequential walk honouring block rounds), never the main's EMOM/AMRAP timing.
+  const format =
+    section === 'main'
+      ? w.format
+      : (section === 'warmup' ? w.warmupFormat : w.cooldownFormat) ?? 'circuit';
+  const formatConfig =
+    section === 'main' ? w.formatConfig : section === 'warmup' ? w.warmupFormatConfig : w.cooldownFormatConfig;
+  return { ...w, format, formatConfig, blocks: w.blocks.filter((b) => (b.section ?? 'main') === section) };
+};
 const hasExercises = (w: WorkoutDetail) =>
   w.blocks.some((b) => b.items.some((it) => it.kind === 'exercise' && it.exercise));
 
@@ -99,7 +103,7 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     );
   }
   if (phase === 'warmup') {
-    return <GuidedPlayer workout={warmup} onComplete={() => setPhase('warmup-done')} onExit={exit} />;
+    return <SegmentPlayer workout={warmup} onComplete={() => setPhase('warmup-done')} onExit={exit} />;
   }
   if (phase === 'warmup-done') {
     return (

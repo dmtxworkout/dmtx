@@ -273,6 +273,20 @@ appRoute.get('/workouts/:id', async (c) => {
     .where(inArray(workoutBlocks.workoutId, workoutIds))
     .orderBy(workoutBlocks.position);
 
+  // A referenced warmup/cooldown segment carries its OWN format (a warmup may be
+  // an AMRAP while the main is an EMOM). Pull the segments' format so the player
+  // runs each section on its own terms. Inline sections have no separate format.
+  const refIds = [warmupRefId, cooldownRefId].filter((x): x is string => Boolean(x));
+  const refWorkouts = refIds.length
+    ? await db
+        .select({ id: workouts.id, format: workouts.format, formatConfig: workouts.formatConfig })
+        .from(workouts)
+        .where(inArray(workouts.id, refIds))
+    : [];
+  const refFmt = new Map(refWorkouts.map((r) => [r.id, r]));
+  const warmupSeg = warmupRefId ? refFmt.get(warmupRefId) : null;
+  const cooldownSeg = cooldownRefId ? refFmt.get(cooldownRefId) : null;
+
   // Assemble the played order — warmup, main, cooldown — pulling each section
   // from its reference (if set) or the workout's own inline blocks. Building the
   // sections explicitly (rather than tagging each block once) lets the SAME
@@ -374,6 +388,12 @@ appRoute.get('/workouts/:id', async (c) => {
     videoUrl: url(media, w.videoAssetId),
     videoDurationSeconds: w.videoDurationSeconds,
     formatConfig: w.formatConfig ?? null,
+    // Per-section format for referenced segments (null when the section is inline
+    // or absent) — lets the mobile play the warmup/cooldown on their own format.
+    warmupFormat: warmupSeg?.format ?? null,
+    warmupFormatConfig: warmupSeg?.formatConfig ?? null,
+    cooldownFormat: cooldownSeg?.format ?? null,
+    cooldownFormatConfig: cooldownSeg?.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
     lastLog: lastLog
       ? {

@@ -127,6 +127,11 @@ export interface WorkoutDetail {
   videoUrl: string | null;
   videoDurationSeconds: number | null;
   formatConfig: unknown;
+  /** Referenced warmup/cooldown segments carry their own format (null if inline). */
+  warmupFormat: WorkoutFormat | null;
+  warmupFormatConfig: unknown;
+  cooldownFormat: WorkoutFormat | null;
+  cooldownFormatConfig: unknown;
   scoringGoal: Goal | null;
   lastLog: {
     roundsCompleted: number | null;
