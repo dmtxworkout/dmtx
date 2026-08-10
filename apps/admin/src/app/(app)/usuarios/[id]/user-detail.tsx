@@ -6,11 +6,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { authClient } from '@/lib/auth-client';
 import { access, formatMoney, planLabel } from '@/lib/user-access';
-import { formatDateEs } from '@/lib/utils';
+import { cn, formatDateEs } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { MonoLabel } from '@/components/ui/mono-label';
+import { Dialog } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 
 export function UserDetail({ id }: { id: string }) {
@@ -19,6 +20,10 @@ export function UserDetail({ id }: { id: string }) {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [trialDays, setTrialDays] = useState('30');
+  const [compMode, setCompMode] = useState<'forever' | 'until'>('forever');
+  const [untilDate, setUntilDate] = useState('');
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   const loadedId = q.data?.id;
   useEffect(() => {
@@ -29,14 +34,38 @@ export function UserDetail({ id }: { id: string }) {
     // Re-seed the form only when a different user loads.
   }, [loadedId]);
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['admin-user', id] });
+    qc.invalidateQueries({ queryKey: ['admin-users'] });
+  };
+
   const saveUser = useMutation({
     mutationFn: () => api.subscriptions.updateUser(id, { name: name.trim(), email: email.trim() }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-user', id] });
-      qc.invalidateQueries({ queryKey: ['admin-users'] });
+      invalidate();
       toast('Datos guardados');
     },
     onError: (e) => toast(e instanceof Error ? e.message : 'No se pudo guardar', 'error'),
+  });
+
+  const act = useMutation({
+    mutationFn: (
+      v:
+        | { t: 'trial'; days: number }
+        | { t: 'forever' }
+        | { t: 'until'; until: string }
+        | { t: 'revoke' },
+    ) => {
+      if (v.t === 'trial') return api.subscriptions.trial(id, v.days);
+      if (v.t === 'forever') return api.subscriptions.grant(id, {});
+      if (v.t === 'until') return api.subscriptions.grant(id, { until: v.until });
+      return api.subscriptions.revoke(id);
+    },
+    onSuccess: () => {
+      invalidate();
+      toast('Suscripción actualizada');
+    },
+    onError: (e) => toast(e instanceof Error ? e.message : 'No se pudo actualizar', 'error'),
   });
 
   const reset = useMutation({
@@ -102,22 +131,26 @@ export function UserDetail({ id }: { id: string }) {
               </div>
             </section>
 
-            {/* Suscripción (read-only summary — managed from Suscripciones) */}
-            <section className="flex flex-col gap-3 rounded-xl border border-line-2 bg-surface p-5">
+            {/* Suscripción */}
+            <section className="flex flex-col gap-4 rounded-xl border border-line-2 bg-surface p-5">
               <div className="flex items-center justify-between">
                 <MonoLabel>Suscripción</MonoLabel>
                 <Link
-                  href={`/suscripciones/${id}`}
+                  href={`/usuarios/${id}/suscripciones`}
                   className="font-mono text-[11px] font-medium text-accent-dark hover:underline"
                 >
-                  Gestionar suscripción →
+                  Ver historial de suscripciones →
                 </Link>
               </div>
+
               {sub && a ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px]">
                   <Badge tone={a.tone}>{a.label}</Badge>
                   <span className="text-ink-2">{planLabel(sub)}</span>
                   <span className="font-mono text-ink-3">{formatMoney(sub.unitAmount, sub.currency)}</span>
+                  {sub.startedAt && (
+                    <span className="font-mono text-[11px] text-muted">desde {formatDateEs(sub.startedAt)}</span>
+                  )}
                   {a.ends && (
                     <span className="font-mono text-[11px] text-muted">
                       · {a.tone === 'canceled' ? 'venció' : 'hasta'} {formatDateEs(a.ends)}
@@ -127,6 +160,85 @@ export function UserDetail({ id }: { id: string }) {
               ) : (
                 <p className="text-[13px] text-muted">Sin suscripción activa.</p>
               )}
+
+              {/* Manage access */}
+              <div className="flex flex-col gap-3 border-t border-line-3 pt-4">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line-3 bg-surface-2/40 p-3.5">
+                  <div>
+                    <div className="text-[13px] font-semibold text-ink-2">Prueba gratis</div>
+                    <div className="font-mono text-[11px] text-muted">Periodo de prueba temporal</div>
+                  </div>
+                  <div className="ml-auto flex items-center gap-2">
+                    <Input
+                      inputMode="numeric"
+                      value={trialDays}
+                      onChange={(e) => setTrialDays(e.target.value.replace(/[^0-9]/g, ''))}
+                      className="w-16 text-center"
+                    />
+                    <span className="text-[13px] text-muted">días</span>
+                    <Button
+                      variant="outline"
+                      disabled={act.isPending || !Number(trialDays)}
+                      onClick={() => act.mutate({ t: 'trial', days: Number(trialDays) })}
+                    >
+                      Iniciar prueba
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-lg border border-line-3 bg-surface-2/40 p-3.5">
+                  <div>
+                    <div className="text-[13px] font-semibold text-ink-2">Cortesía (acceso gratis)</div>
+                    <div className="font-mono text-[11px] text-muted">Regala acceso sin costo</div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="inline-flex rounded-lg border border-line-2 bg-surface p-0.5">
+                      {(['forever', 'until'] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setCompMode(m)}
+                          className={cn(
+                            'rounded-md px-3 py-1 text-[12px] font-semibold',
+                            compMode === m ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink',
+                          )}
+                        >
+                          {m === 'forever' ? 'Para siempre' : 'Hasta una fecha'}
+                        </button>
+                      ))}
+                    </div>
+                    {compMode === 'until' && (
+                      <input
+                        type="date"
+                        value={untilDate}
+                        onChange={(e) => setUntilDate(e.target.value)}
+                        className="h-9 rounded-lg border border-line-2 bg-surface px-3 text-sm text-ink focus:border-accent/40 focus:outline-none"
+                      />
+                    )}
+                    <Button
+                      variant="outline"
+                      className="ml-auto"
+                      disabled={act.isPending || (compMode === 'until' && !untilDate)}
+                      onClick={() =>
+                        compMode === 'forever'
+                          ? act.mutate({ t: 'forever' })
+                          : act.mutate({ t: 'until', until: new Date(`${untilDate}T23:59:59`).toISOString() })
+                      }
+                    >
+                      Dar acceso
+                    </Button>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={act.isPending || !sub}
+                  onClick={() => setConfirmRevoke(true)}
+                  className="self-start text-[13px] font-medium text-accent-dark hover:underline disabled:opacity-50"
+                >
+                  Revocar acceso
+                </button>
+              </div>
             </section>
 
             {/* Contraseña */}
@@ -144,6 +256,32 @@ export function UserDetail({ id }: { id: string }) {
           </div>
         )}
       </div>
+
+      <Dialog open={confirmRevoke} onClose={() => setConfirmRevoke(false)} title="Revocar acceso" className="max-w-md">
+        <div className="flex flex-col gap-4 p-5">
+          <p className="text-[13.5px] leading-relaxed text-ink-2">
+            Se cancelará la suscripción activa de{' '}
+            <span className="font-semibold text-ink">{q.data?.name || q.data?.email}</span>. Perderá el
+            acceso de inmediato. El registro queda en el historial y puedes volver a darle acceso cuando
+            quieras.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmRevoke(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={act.isPending}
+              onClick={() => {
+                act.mutate({ t: 'revoke' });
+                setConfirmRevoke(false);
+              }}
+            >
+              {act.isPending ? 'Revocando…' : 'Revocar acceso'}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

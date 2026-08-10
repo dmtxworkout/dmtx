@@ -25,8 +25,14 @@ export function formatMoney(cents: number, currency = 'usd'): string {
   return `$${(cents / 100).toFixed(2)}${currency && currency !== 'usd' ? ` ${currency.toUpperCase()}` : ''}`;
 }
 
-/** Human plan label for a subscription card. */
-export function planLabel(sub: UserSubscription): string {
+/** Human plan label for a subscription card or history episode. */
+export function planLabel(sub: {
+  status: string;
+  comp: boolean;
+  currentPeriodEnd: string | null;
+  intervalUnit: string;
+  intervalCount: number;
+}): string {
   if (sub.status === 'trialing') return 'Prueba';
   if (sub.comp) return sub.currentPeriodEnd ? 'Cortesía' : 'Gratis';
   const unit =

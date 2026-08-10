@@ -14,10 +14,13 @@ export interface UserSubscription {
 }
 
 export interface SubscriptionHistoryItem {
+  id: string;
   status: string;
   comp: boolean;
   unitAmount: number;
   currency: string;
+  intervalUnit: string;
+  intervalCount: number;
   trialEnd: string | null;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;

@@ -147,10 +147,13 @@ subscriptionsRoute.get('/users/:id', async (c) => {
     createdAt: u.createdAt.toISOString(),
     subscription: live ? subCard(live) : null,
     history: subs.map((s) => ({
+      id: s.id,
       status: s.status,
       comp: s.unitAmount === 0,
       unitAmount: s.unitAmount,
       currency: s.currency,
+      intervalUnit: s.intervalUnit,
+      intervalCount: s.intervalCount,
       trialEnd: iso(s.trialEnd),
       currentPeriodStart: iso(s.currentPeriodStart),
       currentPeriodEnd: iso(s.currentPeriodEnd),
