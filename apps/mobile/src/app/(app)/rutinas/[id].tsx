@@ -13,18 +13,63 @@ import type { WorkoutBlock, WorkoutItem } from '../../../lib/types';
 function itemSub(item: WorkoutItem, units: Units): string {
   const tempo = item.tempoOverride ?? item.exercise?.defaultTempo ?? null;
   const parts: string[] = [];
-  const mt = item.measure;
   if (tempo) parts.push(`Tempo ${tempoDash(tempo)}`);
-  else if (mt) parts.push(es.measurement[mt]);
   const load = loadLabel(item.loadPrescription, units.weight);
   if (load) parts.push(load);
   if (item.perSide) parts.push('bilateral');
   return parts.join(' · ');
 }
 
-function blockTag(b: WorkoutBlock): string {
-  const map = { single: '', superset: 'Superserie', circuit: 'Circuito', emom: 'EMOM', tabata: 'Tabata' };
-  return map[b.type] || '';
+// Group a section's blocks into display units, matching the admin Vista previa:
+// consecutive loose exercises collapse into one tight run; a "real" block
+// (multiple exercises or >1 round) stands apart with a rounds header.
+type PvUnit = { rounds: number | null; loose: boolean; items: WorkoutItem[] };
+function unitsFor(blocks: WorkoutBlock[]): PvUnit[] {
+  const units: PvUnit[] = [];
+  for (const b of blocks) {
+    if (b.items.length === 0) continue;
+    const isBlock = b.items.length > 1 || (b.rounds != null && b.rounds > 1);
+    if (isBlock) {
+      units.push({ rounds: b.rounds, loose: false, items: [...b.items] });
+    } else {
+      const last = units[units.length - 1];
+      if (last && last.loose) last.items.push(...b.items);
+      else units.push({ rounds: null, loose: true, items: [...b.items] });
+    }
+  }
+  return units;
+}
+
+// Compact timing summary after the format name, e.g. "5:00 × 5" (EMOM).
+function formatHeadline(format: string | null, cfg: unknown): string {
+  if (!format || !cfg || typeof cfg !== 'object') return '';
+  const c = cfg as Record<string, unknown>;
+  const n = (k: string) => {
+    const v = Number(c[k]);
+    return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
+  };
+  const dur = (s: number) => (s % 60 === 0 ? `${s / 60} min` : mmss(s));
+  const join = (...p: string[]) => p.filter(Boolean).join(' · ');
+  switch (format) {
+    case 'amrap':
+      return n('totalSeconds') ? dur(n('totalSeconds')) : '';
+    case 'emom':
+      return [n('intervalSeconds') ? mmss(n('intervalSeconds')) : '', n('rounds') ? `× ${n('rounds')}` : '']
+        .filter(Boolean)
+        .join(' ');
+    case 'tabata':
+      return [n('rounds') ? `${n('rounds')} ×` : '', n('workSeconds') || n('restSeconds') ? `${n('workSeconds')}s/${n('restSeconds')}s` : '']
+        .filter(Boolean)
+        .join(' ');
+    case 'chipper':
+      return n('timeCapSeconds') ? `límite ${dur(n('timeCapSeconds'))}` : '';
+    case 'for_time':
+      return join(n('rounds') ? `${n('rounds')} rondas` : '', n('timeCapSeconds') ? `límite ${dur(n('timeCapSeconds'))}` : '');
+    case 'circuit':
+      return join(n('rounds') ? `${n('rounds')} rondas` : '', n('restBetweenRoundsSeconds') ? `desc ${n('restBetweenRoundsSeconds')}s` : '');
+    default:
+      return '';
+  }
 }
 
 export default function RutinaDetalle() {
@@ -49,6 +94,18 @@ export default function RutinaDetalle() {
     { k: 'Duración', v: w.estimatedDurationSeconds ? mmss(w.estimatedDurationSeconds) : '—' },
     { k: 'Nivel', v: difficultyLabel(w.difficulty, true) || '—' },
   ];
+
+  // Warmup → main → cooldown, each grouped like the admin Vista previa.
+  const headline = formatHeadline(w.format, w.formatConfig);
+  const sections = [
+    { key: 'warmup', label: 'Calentamiento', units: unitsFor(w.blocks.filter((b) => b.section === 'warmup')) },
+    {
+      key: 'main',
+      label: `${formatLabel(w.format) || 'Rutina'}${headline ? ` ${headline}` : ''}`,
+      units: unitsFor(w.blocks.filter((b) => (b.section ?? 'main') === 'main')),
+    },
+    { key: 'cooldown', label: 'Enfriamiento', units: unitsFor(w.blocks.filter((b) => b.section === 'cooldown')) },
+  ].filter((s) => s.units.length > 0);
 
   return (
     <View className="flex-1 bg-bg">
@@ -101,61 +158,56 @@ export default function RutinaDetalle() {
             <Text className="font-sans text-[14px] leading-6 text-ink-2">{w.description}</Text>
           ) : null}
 
-          {/* Blocks */}
-          <View className="gap-4 pt-1">
-            {w.blocks.map((b, bi) => (
-              <View key={b.id} className="gap-2.5">
-                <View className="flex-row items-baseline gap-2">
-                  <Text className="font-bold text-[15px] tracking-tight text-ink">
-                    {b.label || `Bloque ${bi + 1}`}
-                  </Text>
-                  {blockTag(b) ? (
-                    <View className="rounded bg-surface-2 px-1.5 py-0.5">
-                      <Text className="font-mono-medium text-[10px] tracking-wide text-ink-2">
-                        {blockTag(b)}
+          {/* Blocks — grouped by section (calentamiento · rutina · enfriamiento) */}
+          <View className="gap-5 pt-1">
+            {sections.map((sec) => (
+              <View key={sec.key} className="gap-2.5">
+                <Text className="font-mono-semibold text-[10px] uppercase tracking-widest text-ink-3">
+                  {sec.label}
+                </Text>
+                {sec.units.map((u, ui) => (
+                  <View key={ui} className="gap-2">
+                    {u.rounds != null && u.rounds > 1 ? (
+                      <Text className="font-mono-medium text-[10px] uppercase tracking-wider text-accent">
+                        {u.rounds} rondas
                       </Text>
-                    </View>
-                  ) : null}
-                  {b.rounds ? (
-                    <Text className="ml-auto font-mono text-[11px] text-ink-4">
-                      {b.rounds} rondas
-                    </Text>
-                  ) : null}
-                </View>
-                {b.items.map((it) =>
-                  it.kind === 'rest' ? (
-                    <View key={it.id} className="flex-row items-center gap-3">
-                      <View className="h-9 w-[58px]" />
-                      <Text className="flex-1 font-mono-semibold text-[11px] uppercase tracking-wider text-ink-3">
-                        Descanso
-                      </Text>
-                      <Text className="font-mono-semibold text-[13px] text-ink-3">
-                        {it.workSeconds != null
-                          ? it.workSeconds >= 60
-                            ? mmss(it.workSeconds)
-                            : `${it.workSeconds} s`
-                          : ''}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View key={it.id} className="flex-row items-center gap-3">
-                      <Thumb uri={it.exercise?.thumbnailUrl} className="h-9 w-[58px]" radius={7} />
-                      <View className="min-w-0 flex-1">
-                        <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
-                          {it.exercise?.name ?? 'Ejercicio'}
-                        </Text>
-                        {itemSub(it, units) ? (
-                          <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
-                            {itemSub(it, units)}
+                    ) : null}
+                    {u.items.map((it) =>
+                      it.kind === 'rest' ? (
+                        <View key={it.id} className="flex-row items-center gap-3">
+                          <View className="h-9 w-[58px]" />
+                          <Text className="flex-1 font-mono-semibold text-[11px] uppercase tracking-wider text-ink-3">
+                            Descanso
                           </Text>
-                        ) : null}
-                      </View>
-                      <Text className="font-mono-semibold text-[13px] text-ink-2">
-                        {targetLabel(it, units.distance)}
-                      </Text>
-                    </View>
-                  ),
-                )}
+                          <Text className="font-mono-semibold text-[13px] text-ink-3">
+                            {it.workSeconds != null
+                              ? it.workSeconds >= 60
+                                ? mmss(it.workSeconds)
+                                : `${it.workSeconds} s`
+                              : ''}
+                          </Text>
+                        </View>
+                      ) : (
+                        <View key={it.id} className="flex-row items-center gap-3">
+                          <Thumb uri={it.exercise?.thumbnailUrl} className="h-9 w-[58px]" radius={7} />
+                          <View className="min-w-0 flex-1">
+                            <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
+                              {it.exercise?.name ?? 'Ejercicio'}
+                            </Text>
+                            {itemSub(it, units) ? (
+                              <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
+                                {itemSub(it, units)}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text className="font-mono-semibold text-[13px] text-ink-2">
+                            {targetLabel(it, units.distance)}
+                          </Text>
+                        </View>
+                      ),
+                    )}
+                  </View>
+                ))}
               </View>
             ))}
             {w.type === 'video' ? (
