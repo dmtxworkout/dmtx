@@ -64,11 +64,17 @@ export interface InsertItem {
   id: string;
   title: string;
   desc?: string | null;
+  /** Built-in items insert this text straight away (no preview). */
+  text?: string;
+  /** After inserting, reopen the suggestions (the keyword takes a parameter). */
+  reopen?: boolean;
 }
 export interface InsertGroup {
-  kind: InsertKind;
+  kind: InsertKind | 'rondas' | 'descanso' | 'formato' | 'ejercicio';
   title: string;
   items: InsertItem[];
+  /** Items insert their `text` on click; no preview step. */
+  direct?: boolean;
 }
 
 /** Imperative access the form uses for "guardar bloque". */
@@ -479,7 +485,55 @@ const hoverTracker = EditorView.domEventHandlers({
     return false;
   },
 });
-const openInsertMenu = StateEffect.define<number | null>(); // 0-based line, or null to close
+/** Open the menu at a 0-based line (from the gutter "+", or from the line itself), or close it. */
+type MenuOrigin = 'gutter' | 'line';
+const openInsertMenu = StateEffect.define<{ line: number; origin: MenuOrigin } | null>();
+const setCatalog = StateEffect.define<Catalog>();
+const catalogField = StateField.define<Catalog | null>({
+  create: () => null,
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setCatalog)) return e.value;
+    return v;
+  },
+});
+// While a line-opened menu sits at its root, the editor keeps focus and routes
+// these keys to it (so typing anything else just closes it and goes to the text).
+const menuKeys = new WeakMap<EditorView, (key: string) => boolean>();
+
+const BUILT_IN_FORMATS: InsertItem[] = [
+  { id: 'amrap', title: 'AMRAP', desc: 'máximas rondas en un tiempo · AMRAP 12 min', text: 'AMRAP ', reopen: true },
+  { id: 'emom', title: 'EMOM', desc: 'cada intervalo, al intervalo · EMOM 10 x 90s', text: 'EMOM ', reopen: true },
+  { id: 'tabata', title: 'Tabata', desc: 'trabajo/descanso · Tabata 8 x 20/10', text: 'Tabata ', reopen: true },
+  { id: 'for_time', title: 'For time', desc: 'completar lo más rápido posible', text: 'For time' },
+  { id: 'chipper', title: 'Chipper', desc: 'lista completada una vez, por tiempo', text: 'Chipper' },
+  { id: 'fuerza', title: 'Fuerza', desc: 'series y repeticiones', text: 'Fuerza' },
+  { id: 'circuito', title: 'Circuito', desc: 'rondas con descanso · Circuito 3 rondas', text: 'Circuito ', reopen: true },
+];
+const BUILT_IN_RONDAS: InsertItem[] = Array.from({ length: 10 }, (_, i) => ({
+  id: `r${i + 1}`,
+  title: i === 0 ? '1 ronda' : `${i + 1} rondas`,
+  text: `${i + 1} rondas:`,
+}));
+const BUILT_IN_DESCANSO: InsertItem[] = ['10s', '20s', '30s', '45s', '60s', '90s', '2 min', '3 min', '5 min'].map((d) => ({
+  id: `d${d}`,
+  title: d,
+  text: `descanso ${d}`,
+}));
+/** The categories every menu starts with; the form adds templates, blocks and rutinas. */
+function builtInGroups(catalog: Catalog | null): InsertGroup[] {
+  const exercises = catalog ? catalog.search('', catalog.size) : [];
+  return [
+    { kind: 'rondas', title: 'Rondas', direct: true, items: BUILT_IN_RONDAS },
+    { kind: 'descanso', title: 'Descanso', direct: true, items: BUILT_IN_DESCANSO },
+    { kind: 'formato', title: 'Formatos', direct: true, items: BUILT_IN_FORMATS },
+    {
+      kind: 'ejercicio',
+      title: 'Ejercicios',
+      direct: true,
+      items: exercises.map((ex) => ({ id: ex.id, title: ex.name, text: `${ex.name} `, reopen: true })),
+    },
+  ];
+}
 const addGutter = gutter({
   class: 'rt-gutter-add',
   lineMarker(view, line) {
@@ -494,7 +548,7 @@ const addGutter = gutter({
     mousedown(view, line, event) {
       if (!(event.target as HTMLElement).classList?.contains('rt-add')) return false;
       event.preventDefault();
-      view.dispatch({ effects: openInsertMenu.of(view.state.doc.lineAt(line.from).number - 1) });
+      view.dispatch({ effects: openInsertMenu.of({ line: view.state.doc.lineAt(line.from).number - 1, origin: 'gutter' }) });
       return true;
     },
   },
@@ -542,8 +596,12 @@ function insertAtLine(view: EditorView, lineNo: number, text: string) {
 
 const foldText = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; destroy: () => void } {
-  const groups = view.state.field(insertsField);
+function buildInsertMenu(
+  view: EditorView,
+  lineNo: number,
+  origin: MenuOrigin,
+): { dom: HTMLElement; destroy: () => void } {
+  const groups = [...builtInGroups(view.state.field(catalogField)), ...view.state.field(insertsField)];
   const { insert } = view.state.field(handlersField);
   const parent = parentKindOf(view, lineNo);
   const nested = parent === 'format' || parent === 'group';
@@ -551,7 +609,10 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   const allowed = groups.filter((g) => !nested || g.kind !== 'rutina');
   const dom = document.createElement('div');
   dom.className = 'rt-insert';
-  const close = () => view.dispatch({ effects: openInsertMenu.of(null) });
+  const close = () => {
+    menuKeys.delete(view);
+    view.dispatch({ effects: openInsertMenu.of(null) });
+  };
 
   // A small three-level navigation: categories → items (searchable) → preview + insert.
   type Screen =
@@ -594,8 +655,10 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   };
   const back = () => {
     if (screen.level === 'preview') go({ level: 'list', group: screen.group, query: '' });
-    else if (screen.level === 'list' && allowed.length > 1) go({ level: 'root', query: '' });
-    else {
+    else if (screen.level === 'list' && allowed.length > 1) {
+      go({ level: 'root', query: '' });
+      if (origin === 'line') view.focus();
+    } else {
       close();
       view.focus();
     }
@@ -605,9 +668,17 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
     if (text) insertAtLine(view, lineNo, text);
     else view.focus();
   };
+  /** Built-in items (rondas, descanso, formatos, ejercicios): insert as they are. */
+  const pickDirect = (item: InsertItem) => {
+    close();
+    insertAtLine(view, lineNo, item.text ?? item.title);
+    if (item.reopen) window.setTimeout(() => startCompletion(view), 0);
+  };
+  const choose = (group: InsertGroup, item: InsertItem) => (group.direct ? pickDirect(item) : openPreview(group, item));
   const openPreview = (group: InsertGroup, item: InsertItem) => {
     go({ level: 'preview', group, item, text: null });
-    insert?.(group.kind, item.id).then((text) => {
+    if (group.direct) return;
+    insert?.(group.kind as InsertKind, item.id).then((text) => {
       if (screen.level === 'preview' && screen.item.id === item.id) go({ ...screen, text: text ?? '' });
     });
   };
@@ -616,12 +687,44 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
     dom.textContent = '';
     rows = [];
     active = 0;
+    if (screen.level === 'root' && origin === 'line') {
+      // Opened from the line itself: the categories only, focus stays in the
+      // editor. Arrows/Enter/Esc drive the menu; any other key closes it and types.
+      header('Insertar aquí', null);
+      const list = el('div', 'rt-insert-list');
+      for (const g of allowed) {
+        const b = button('rt-insert-item rt-insert-cat', list, () => go({ level: 'list', group: g, query: '' }));
+        b.innerHTML = `<span class="t">${escape(g.title)}</span><span class="n">${g.items.length}</span>${CHEVRON_ICON}`;
+        rows.push(b);
+      }
+      el('div', 'rt-insert-hint', 'o escribe directamente', list);
+      paint();
+      menuKeys.set(view, (key) => {
+        if (key === 'ArrowDown' || key === 'ArrowUp') {
+          if (!rows.length) return true;
+          active = (active + (key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+          paint();
+          return true;
+        }
+        if (key === 'Enter') {
+          rows[active]?.click();
+          return true;
+        }
+        if (key === 'Escape') {
+          close();
+          return true;
+        }
+        return false;
+      });
+      return;
+    }
+    menuKeys.delete(view);
     if (screen.level === 'root') {
       header('Insertar aquí', null);
       // Search across every category; with nothing typed, the categories.
       const input = document.createElement('input');
       input.type = 'text';
-      input.placeholder = 'Buscar plantilla, bloque o rutina…';
+      input.placeholder = 'Buscar rondas, descanso, formato, ejercicio, plantilla…';
       input.className = 'rt-insert-search';
       input.value = screen.query;
       dom.appendChild(input);
@@ -643,7 +746,7 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
             if (!items.length) continue;
             el('div', 'rt-insert-group', g.title, list);
             for (const it of items) {
-              const b = button('rt-insert-item', list, () => openPreview(g, it));
+              const b = button('rt-insert-item', list, () => choose(g, it));
               b.innerHTML = `<span class="t">${escape(it.title)}</span>${it.desc ? `<span class="d">${escape(it.desc)}</span>` : ''}`;
               rows.push(b);
             }
@@ -689,7 +792,7 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
         rows = [];
         const items = group.items.filter((it) => !q || foldText(`${it.title} ${it.desc ?? ''}`).includes(q));
         for (const it of items) {
-          const b = button('rt-insert-item', list, () => openPreview(group, it));
+          const b = button('rt-insert-item', list, () => choose(group, it));
           b.innerHTML = `<span class="t">${escape(it.title)}</span>${it.desc ? `<span class="d">${escape(it.desc)}</span>` : ''}`;
           rows.push(b);
         }
@@ -748,7 +851,13 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   };
   window.setTimeout(() => document.addEventListener('mousedown', onDocDown), 0);
   render();
-  return { dom, destroy: () => document.removeEventListener('mousedown', onDocDown) };
+  return {
+    dom,
+    destroy: () => {
+      document.removeEventListener('mousedown', onDocDown);
+      menuKeys.delete(view);
+    },
+  };
 }
 
 const insertMenuField = StateField.define<Tooltip | null>({
@@ -757,16 +866,16 @@ const insertMenuField = StateField.define<Tooltip | null>({
     let next = v;
     for (const e of tr.effects) {
       if (e.is(openInsertMenu)) {
-        if (e.value == null || e.value >= tr.state.doc.lines) next = null;
+        if (e.value == null || e.value.line >= tr.state.doc.lines) next = null;
         else {
-          const lineNo = e.value;
+          const { line: lineNo, origin } = e.value;
           next = {
             pos: tr.state.doc.line(lineNo + 1).from,
             above: false,
             arrow: false,
             create: (view) => {
-              const { dom, destroy } = buildInsertMenu(view, lineNo);
-              return { dom, destroy, offset: { x: -20, y: 4 } };
+              const { dom, destroy } = buildInsertMenu(view, lineNo, origin);
+              return { dom, destroy, offset: { x: origin === 'gutter' ? -20 : 0, y: 4 } };
             },
           };
         }
@@ -939,6 +1048,7 @@ const theme = EditorView.theme({
   '.rt-insert-item .d': { fontSize: '12px', color: 'var(--color-muted)', lineHeight: '1.3' },
   '.rt-insert-item:hover, .rt-insert-item.active': { background: 'var(--color-accent-tint)' },
   '.rt-insert-empty': { padding: '10px 8px', fontSize: '12px', color: 'var(--color-muted)' },
+  '.rt-insert-hint': { padding: '6px 10px 2px', fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--color-faint)' },
   '.rt-insert-head': { display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 4px 6px' },
   '.rt-insert-back': {
     display: 'inline-flex',
@@ -1196,6 +1306,10 @@ export function RutinaTextEditor({
       create: { name: 'Nuevo', rank: 7 },
     };
     const source = (ctx: CompletionContext): CompletionResult | null => {
+      // A blank line is the insert menu's job (opened by Enter or a click);
+      // the popup starts once something is typed, or on Ctrl-Space.
+      const line = ctx.state.doc.lineAt(ctx.pos);
+      if (!ctx.explicit && !line.text.slice(0, ctx.pos - line.from).trim()) return null;
       const r = completionsAt(ctx.state.doc.toString(), ctx.pos, catalogRef.current, {
         explicit: ctx.explicit,
         extras: extrasRef.current,
@@ -1292,6 +1406,11 @@ export function RutinaTextEditor({
     // level; on an empty indented line, dedent one level in place (so each
     // Enter climbs out of one container, like leaving a Python block);
     // otherwise keep the current indentation.
+    /** The line-opened menu: everything that can go on the (blank) cursor line. */
+    const openMenuAtCursor = (view: EditorView) => {
+      const line = view.state.doc.lineAt(view.state.selection.main.head).number - 1;
+      view.dispatch({ effects: openInsertMenu.of({ line, origin: 'line' }) });
+    };
     const smartEnter = (view: EditorView) => {
       const { state } = view;
       const sel = state.selection.main;
@@ -1307,7 +1426,7 @@ export function RutinaTextEditor({
           selection: { anchor: line.from + less.length },
           userEvent: 'input.type',
         });
-        startCompletion(view);
+        openMenuAtCursor(view);
         return true;
       }
       let insert: string;
@@ -1322,7 +1441,7 @@ export function RutinaTextEditor({
         userEvent: 'input.type',
       });
       // Show what can go on the new line right away.
-      startCompletion(view);
+      openMenuAtCursor(view);
       return true;
     };
 
@@ -1370,6 +1489,7 @@ export function RutinaTextEditor({
           indentUnit.of('  '),
           handlersField,
           diagsField,
+          catalogField,
           parsedLinesField,
           insertsField,
           hoverLineField,
@@ -1401,6 +1521,11 @@ export function RutinaTextEditor({
           hoverCard,
           Prec.highest(
             keymap.of([
+              // The line-opened menu takes these while it is at its root.
+              ...(['ArrowDown', 'ArrowUp', 'Enter', 'Escape'] as const).map((key) => ({
+                key,
+                run: (view: EditorView) => menuKeys.get(view)?.(key) ?? false,
+              })),
               { key: 'Enter', run: enterKey },
               { key: 'Tab', run: tabKey },
               { key: 'Shift-Tab', run: indentLess },
@@ -1423,15 +1548,17 @@ export function RutinaTextEditor({
               u.transactions.some((tr) => tr.isUserEvent('select.pointer')) &&
               u.state.selection.main.empty &&
               !u.state.doc.lineAt(u.state.selection.main.head).text.trim() &&
-              completionStatus(u.state) !== 'active'
+              completionStatus(u.state) !== 'active' &&
+              !u.state.field(insertMenuField)
             ) {
-              window.setTimeout(() => startCompletion(u.view), 0);
+              window.setTimeout(() => openMenuAtCursor(u.view), 0);
             }
           }),
         ],
       }),
     });
     viewRef.current = view;
+    view.dispatch({ effects: setCatalog.of(catalogRef.current) });
     view.dispatch({
       effects: setHandlers.of({
         create: onCreateRef.current ? (n) => onCreateRef.current?.(n) : null,
@@ -1480,10 +1607,13 @@ export function RutinaTextEditor({
     });
   }, [parsed]);
 
-  // The "+" menu's contents follow the lists loaded by the form.
+  // The "+" menu's contents follow the lists loaded by the form, and the catalog.
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setInserts.of(inserts ?? []) });
   }, [inserts]);
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setCatalog.of(catalog) });
+  }, [catalog]);
 
   return <div ref={host} className={className} />;
 }
