@@ -504,6 +504,15 @@ export function parseItemLine(
       message: `Ejercicio no encontrado: "${it.rawName}".`,
       suggestions: res.suggestions.slice(0, 3),
     });
+  } else if (res.match.archived) {
+    diag(ctx, {
+      line,
+      from,
+      to,
+      severity: 'warning',
+      code: 'archived_exercise',
+      message: `"${res.match.name}" está archivado: ya no se sugiere. Restáuralo en Ejercicios si lo vas a seguir usando.`,
+    });
   } else if (res.ambiguous) {
     diag(ctx, {
       line,

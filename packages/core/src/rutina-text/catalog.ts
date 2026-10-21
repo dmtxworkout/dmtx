@@ -26,15 +26,18 @@ export class Catalog {
   resolve(raw: string): { match: ExerciseMatch | null; suggestions: string[]; ambiguous: boolean } {
     const q = fold(raw);
     if (!q) return { match: null, suggestions: [], ambiguous: false };
-    const exact = this.entries.find((e) => e.keys.includes(q));
+    // An exact name still resolves when archived (rutinas written before keep
+    // working); typos and suggestions only ever look at live exercises.
+    const exact = this.entries.find((e) => e.keys.includes(q) && !e.ex.archived) ?? this.entries.find((e) => e.keys.includes(q));
     if (exact) {
       return {
-        match: { id: exact.ex.id, name: exact.ex.name, confidence: 'exact' },
+        match: { id: exact.ex.id, name: exact.ex.name, confidence: 'exact', archived: !!exact.ex.archived },
         suggestions: [],
         ambiguous: false,
       };
     }
     const scored = this.entries
+      .filter((e) => !e.ex.archived)
       .map((e) => ({ e, score: Math.max(...e.keys.map((k) => similarity(q, k))) }))
       .filter((s) => s.score >= 0.5)
       .sort((a, b) => b.score - a.score);

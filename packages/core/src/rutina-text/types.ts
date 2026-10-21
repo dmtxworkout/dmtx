@@ -32,7 +32,8 @@ export type DiagnosticCode =
   | 'orphan_note'
   | 'empty_group'
   | 'rest_with_more'
-  | 'two_items';
+  | 'two_items'
+  | 'archived_exercise';
 
 /** A problem on one line. `from`/`to` are column offsets within that line. */
 export interface Diagnostic {
@@ -50,6 +51,8 @@ export interface ExerciseMatch {
   id: string;
   name: string;
   confidence: 'exact' | 'fuzzy';
+  /** The exercise is archived: it still resolves (old rutinas keep working) but gets a warning. */
+  archived?: boolean;
 }
 
 export interface ParsedItem {
