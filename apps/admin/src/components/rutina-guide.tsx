@@ -1,7 +1,6 @@
 'use client';
-
-// The editor's guide: live examples (a real editor you can type in, with the
-// preview the athlete gets) and short animated scenes for the things you do
+// The editor's guide: static examples coloured like the editor and short
+// animated scenes for the things you do
 // with the mouse (the "+" menu, the error card, editing an exercise, the
 // placeholders). Everything is rendered, nothing is a screenshot, so it never
 // goes stale.
@@ -9,7 +8,6 @@ import { Children, cloneElement, createContext, isValidElement, useContext, useM
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Catalog, parseRutina } from '@dmtx/core';
 import { cn } from '@/lib/utils';
-import { RutinaPreview, previewFrom } from '@/components/rutina-preview';
 
 // A small catalog so the examples resolve (and one archived exercise for the warning).
 const DEMO_CATALOG = new Catalog([
@@ -60,7 +58,7 @@ function Mark({ text }: { text: string }) {
   return <>{marked(text, useContext(MarkCtx))}</>;
 }
 
-// --- Example: the text as the editor shows it, and the athlete's preview --------
+// --- Example: the text as the editor shows it ---------------------------------
 
 const LINE_CLASS: Record<string, string> = {
   format: 'font-semibold text-[#0451a5]',
@@ -73,46 +71,38 @@ const LINE_CLASS: Record<string, string> = {
 
 /** A line of rutina text with the editor's colours: numbers, loads, tempo and notes tinted. */
 function Tokens({ text }: { text: string }) {
+  const q = useContext(MarkCtx);
   const parts = text.split(/(\/\/.*$|@\S+(?:\s*(?:kg|lb))?|tempo \S+|\b\d+(?:[.,]\d+)?(?:\s*(?:x|×)\s*\d+)?(?:\s*(?:min|s|m|km|reps))?\b)/);
   return (
     <>
       {parts.map((p, i) => {
         if (!p) return null;
-        if (p.startsWith('//')) return <span key={i} className="italic text-[#008000]">{p}</span>;
-        if (p.startsWith('@')) return <span key={i} className="text-[#a31515]">{p}</span>;
-        if (p.startsWith('tempo')) return <span key={i} className="text-[#267f99]">{p}</span>;
-        if (/^\d/.test(p)) return <span key={i} className="text-[#098658]">{p}</span>;
-        return <span key={i}>{p}</span>;
+        const m = marked(p, q);
+        if (p.startsWith('//')) return <span key={i} className="italic text-[#008000]">{m}</span>;
+        if (p.startsWith('@')) return <span key={i} className="text-[#a31515]">{m}</span>;
+        if (p.startsWith('tempo')) return <span key={i} className="text-[#267f99]">{m}</span>;
+        if (/^\d/.test(p)) return <span key={i} className="text-[#098658]">{m}</span>;
+        return <span key={i}>{m}</span>;
       })}
     </>
   );
 }
 
-function Example({ text, preview = true, goal = false }: { text: string; preview?: boolean; goal?: boolean }) {
+function Example({ text }: { text: string }) {
   const parsed = useMemo(() => parseRutina(text, { catalog: DEMO_CATALOG }), [text]);
-  const model = useMemo(() => previewFrom(parsed, 'structured', false, !goal), [parsed, goal]);
   const lines = text.replace(/\n$/, '').split('\n');
   return (
-    <div className="overflow-hidden rounded-xl border border-line-2 bg-surface">
-      <div className="border-b border-line-3 bg-surface-2 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">Editor</div>
-      <div className="py-2">
-        {lines.map((line, i) => {
-          const kind = parsed.lines[i]?.kind ?? 'item';
-          const cls = LINE_CLASS[kind];
-          return (
-            <div key={i} className="flex h-7 items-center font-mono text-[12.5px] text-ink">
-              <span className="w-10 shrink-0 text-right text-[11px] text-faint-2">{i + 1}</span>
-              <span className={cn('ml-4 whitespace-pre', cls)}>{cls ? line : <Tokens text={line} />}</span>
-            </div>
-          );
-        })}
-      </div>
-      {preview && (
-        <div className="border-t border-line-3 bg-surface-2/40 px-4 py-3">
-          <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">Así lo ve el usuario</div>
-          <RutinaPreview model={model} name="" hideHeader />
-        </div>
-      )}
+    <div className="rounded-lg bg-surface-2/50 py-2">
+      {lines.map((line, i) => {
+        const kind = parsed.lines[i]?.kind ?? 'item';
+        const cls = LINE_CLASS[kind];
+        return (
+          <div key={i} className="flex h-7 items-center font-mono text-[12.5px] text-ink">
+            <span className="w-10 shrink-0 text-right text-[11px] text-faint-2">{i + 1}</span>
+            <span className={cn('ml-4 whitespace-pre', cls)}>{cls ? <Mark text={line} /> : <Tokens text={line} />}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -129,18 +119,22 @@ function Row({ n, children, marker, hover }: { n: number; children: ReactNode; m
         {marker === 'warning' && <span className="text-[12px] text-[#bf8803]">▲</span>}
       </span>
       <span className="w-7 shrink-0 text-right font-mono text-[11px] text-faint-2">{n}</span>
-      <span className="ml-4 whitespace-pre text-ink">{children}</span>
+      <span className="ml-4 whitespace-pre text-ink">{kids(children)}</span>
     </div>
   );
 }
-const F = ({ children }: { children: ReactNode }) => <span className="font-semibold text-[#0451a5]">{children}</span>;
-const G = ({ children }: { children: ReactNode }) => <span className="font-semibold text-[#795e26]">{children}</span>;
-const N = ({ children }: { children: ReactNode }) => <span className="text-[#098658]">{children}</span>;
+/** The text of a mock-editor line, with the search matches marked. */
+function kids(children: ReactNode): ReactNode {
+  return Children.map(children, (c) => (typeof c === 'string' ? <Mark text={c} /> : c));
+}
+const F = ({ children }: { children: ReactNode }) => <span className="font-semibold text-[#0451a5]">{kids(children)}</span>;
+const G = ({ children }: { children: ReactNode }) => <span className="font-semibold text-[#795e26]">{kids(children)}</span>;
+const N = ({ children }: { children: ReactNode }) => <span className="text-[#098658]">{kids(children)}</span>;
 const Err = ({ children }: { children: ReactNode }) => (
-  <span className="underline decoration-[#e51400] decoration-wavy underline-offset-[3px]">{children}</span>
+  <span className="underline decoration-[#e51400] decoration-wavy underline-offset-[3px]">{kids(children)}</span>
 );
 const Warn = ({ children }: { children: ReactNode }) => (
-  <span className="underline decoration-[#bf8803] decoration-wavy underline-offset-[3px]">{children}</span>
+  <span className="underline decoration-[#bf8803] decoration-wavy underline-offset-[3px]">{kids(children)}</span>
 );
 
 const CURSOR =
@@ -172,7 +166,7 @@ function Scene({
   caption: ReactNode;
 }) {
   return (
-    <figure className="overflow-hidden rounded-xl border border-line-2 bg-surface">
+    <figure className="flex flex-col gap-2.5">
       <style>{`
         @keyframes ${name}-cursor { ${cursor} }
         @keyframes ${name}-click { 0%,100%{transform:scale(.4);opacity:0} 50%{transform:scale(1);opacity:.9} }
@@ -181,11 +175,11 @@ function Scene({
         .${name} .g-show { opacity:0; }
         ${css ?? ''}
       `}</style>
-      <div className={cn('relative select-none px-2 py-2', name)} style={{ minHeight: height }}>
+      <div className={cn('relative select-none overflow-hidden rounded-lg bg-surface-2/50 px-2 py-2', name)} style={{ minHeight: height }}>
         {children}
         <span className="g-cursor" dangerouslySetInnerHTML={{ __html: CURSOR }} aria-hidden />
       </div>
-      <figcaption className="border-t border-line-3 bg-surface-2/40 px-4 py-2.5 text-[12px] leading-snug text-ink-2">
+      <figcaption className="text-[13px] leading-relaxed text-ink-2">
         {typeof caption === 'string' ? <Mark text={caption} /> : caption}
       </figcaption>
     </figure>
@@ -500,10 +494,10 @@ function SceneVersions({ skillMode }: { skillMode: boolean }) {
       name={n}
       duration={8}
       height={210}
-      cursor="0%,20%{left:200px;top:110px} 45%,100%{left:468px;top:14px}"
+      cursor="0%,20%{left:200px;top:110px} 45%,100%{left:calc(100% - 54px);top:14px}"
       css={`
         @keyframes ${n}-ring { 0%,50%{transform:scale(.4);opacity:0} 56%{transform:scale(1);opacity:.9} 64%,100%{transform:scale(1.2);opacity:0} }
-        .${n} .g-ring { left:478px; top:20px; animation:${n}-ring 8s ease-out infinite; }
+        .${n} .g-ring { right:30px; top:20px; animation:${n}-ring 8s ease-out infinite; }
         @keyframes ${n}-menu { 0%,58%{opacity:0;transform:translateY(-4px)} 64%,94%{opacity:1;transform:translateY(0)} 100%{opacity:0} }
         .${n} .g-menu { animation:${n}-menu 8s ease-out infinite; }
       `}
@@ -561,10 +555,13 @@ function SceneBlock() {
       name={n}
       duration={9}
       height={190}
-      cursor="0%,12%{left:60px;top:40px} 30%,45%{left:230px;top:96px} 62%,100%{left:262px;top:124px}"
+      cursor="0%,12%{left:72px;top:40px} 30%,45%{left:172px;top:72px} 62%,100%{left:262px;top:124px}"
       css={`
-        @keyframes ${n}-sel { 0%,12%{width:0} 30%,100%{width:170px} }
-        .${n} .g-sel { position:absolute; left:58px; top:36px; height:56px; background:rgba(209,80,42,0.18); animation:${n}-sel 9s ease-in-out infinite; }
+        @keyframes ${n}-sel1 { 0%,12%{width:0} 21%,100%{width:120px} }
+        @keyframes ${n}-sel2 { 0%,21%{width:0} 30%,100%{width:98px} }
+        .${n} .g-sel { position:absolute; left:72px; height:28px; background:rgba(66,133,244,0.3); }
+        .${n} .g-sel1 { top:36px; animation:${n}-sel1 9s ease-in-out infinite; }
+        .${n} .g-sel2 { top:64px; animation:${n}-sel2 9s ease-in-out infinite; }
         @keyframes ${n}-chip { 0%,32%{opacity:0;transform:translateY(-4px)} 40%,90%{opacity:1;transform:translateY(0)} 100%{opacity:0} }
         .${n} .g-chip { animation:${n}-chip 9s ease-out infinite; }
         @keyframes ${n}-ring { 0%,64%{transform:scale(.4);opacity:0} 70%{transform:scale(1);opacity:.9} 78%,100%{transform:scale(1.2);opacity:0} }
@@ -574,7 +571,8 @@ function SceneBlock() {
       `}
       caption="Selecciona dos líneas o más y aparece «Guardar como bloque»: le pones un nombre y queda guardado. Después lo insertas desde el menú + (Bloques reutilizables), igual que cualquier otra rutina del catálogo: se copia su texto en la línea."
     >
-      <span className="g-sel" aria-hidden />
+      <span className="g-sel g-sel1" aria-hidden />
+      <span className="g-sel g-sel2" aria-hidden />
       <Row n={1}>
         <G>3 rondas</G>
       </Row>
@@ -586,7 +584,7 @@ function SceneBlock() {
         {'  '}
         <N>8</N> Flexiones
       </Row>
-      <div className="g-show g-chip absolute left-[230px] top-[112px] z-[1] flex items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-ink shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]">
+      <div className="g-show g-chip absolute left-[190px] top-[112px] z-[1] flex items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-ink shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]">
         <span className="text-accent-dark">🔖</span> Guardar como bloque
       </div>
       <span className="g-ring" aria-hidden />
@@ -639,8 +637,8 @@ function sections(skillMode: boolean): Section[] {
       body: (
         <>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            Se escribe como en una pizarra: una cosa por línea. Primero la cantidad, luego el ejercicio. Lo que escribes a la
-            izquierda es lo que el usuario ve a la derecha.
+            Se escribe como en una pizarra: una cosa por línea. Primero la cantidad, luego el ejercicio. Lo que escribes es
+            lo que el usuario ve en la app.
           </p>
           <Example
             text={`AMRAP 12 min
@@ -841,7 +839,6 @@ For time cap 20 min
             con la gramática de siempre. Hay que cumplirlas todas. El último nivel no lleva objetivo.
           </p>
           <Example
-            goal
             text={`Objetivo
   3 Dominadas
   Plancha 60s
