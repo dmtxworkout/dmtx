@@ -191,7 +191,8 @@ export function serializeRutina(
     if (b.rounds) head.push(`${b.rounds} rondas`);
     if (!head.length) head.push('Bloque');
     let line = head.join(' ');
-    if (b.label) line += ` - ${b.label}`;
+    // "Bloque N" was the old block builder's default name: not worth writing.
+    if (b.label && !/^bloque\s*\d+$/i.test(b.label.trim())) line += ` - ${b.label}`;
     out.push(`${pad}${line}:`);
     b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), fmt)}`));
     out.push('');

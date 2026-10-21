@@ -493,3 +493,20 @@ describe('EMOM interval groups', () => {
     expect(toWorkoutInput(parse(out))).toEqual(first);
   });
 });
+
+describe('legacy block names', () => {
+  it('drops the old builder\'s automatic "Bloque N" label', () => {
+    const out = serializeRutina(
+      {
+        format: 'for_time',
+        blocks: [
+          { kind: 'group', section: 'main', type: 'circuit', rounds: 3, label: 'Bloque 1', items: [{ kind: 'exercise', exerciseId: 'burpee', reps: 10 }] },
+          { kind: 'group', section: 'main', type: 'circuit', rounds: 2, label: 'Pierna', items: [{ kind: 'exercise', exerciseId: 'squat', reps: 10 }] },
+        ],
+      },
+      catalog,
+    );
+    expect(out).toContain('  3 rondas:\n');
+    expect(out).toContain('  2 rondas - Pierna:\n');
+  });
+});
