@@ -5,7 +5,8 @@
 // with the mouse (the "+" menu, the error card, editing an exercise, the
 // placeholders). Everything is rendered, nothing is a screenshot, so it never
 // goes stale.
-import { useMemo, useState, type ReactNode } from 'react';
+import { Children, cloneElement, createContext, isValidElement, useContext, useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { Catalog, parseRutina } from '@dmtx/core';
 import { cn } from '@/lib/utils';
 import { RutinaPreview, previewFrom } from '@/components/rutina-preview';
@@ -24,6 +25,40 @@ const DEMO_CATALOG = new Catalog([
 ]);
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+// --- Search highlighting ---------------------------------------------------------
+
+/** The folded search text; components deep in a section mark it in their own copy. */
+const MarkCtx = createContext('');
+
+/** Fold a string character by character so offsets line up with the original. */
+const foldChars = (str: string) => [...str].map((c) => fold(c)[0] ?? c).join('');
+
+/** `text` with every occurrence of the folded query `q` wrapped in <mark>. */
+function marked(text: string, q: string): ReactNode {
+  if (!q) return text;
+  const folded = foldChars(text);
+  let at = folded.indexOf(q);
+  if (at < 0) return text;
+  const parts: ReactNode[] = [];
+  let i = 0;
+  while (at >= 0) {
+    if (at > i) parts.push(text.slice(i, at));
+    parts.push(
+      <mark key={at} className="rounded-[2px] bg-[#ffe58a] px-0.5 text-ink">
+        {text.slice(at, at + q.length)}
+      </mark>,
+    );
+    i = at + q.length;
+    at = folded.indexOf(q, i);
+  }
+  if (i < text.length) parts.push(text.slice(i));
+  return <>{parts}</>;
+}
+
+function Mark({ text }: { text: string }) {
+  return <>{marked(text, useContext(MarkCtx))}</>;
+}
 
 // --- Example: the text as the editor shows it, and the athlete's preview --------
 
@@ -134,7 +169,7 @@ function Scene({
   children: ReactNode;
   /** Extra keyframes/rules for the parts that appear during the scene. */
   css?: string;
-  caption: string;
+  caption: ReactNode;
 }) {
   return (
     <figure className="overflow-hidden rounded-xl border border-line-2 bg-surface">
@@ -150,7 +185,9 @@ function Scene({
         {children}
         <span className="g-cursor" dangerouslySetInnerHTML={{ __html: CURSOR }} aria-hidden />
       </div>
-      <figcaption className="border-t border-line-3 bg-surface-2/40 px-4 py-2.5 text-[12px] leading-snug text-ink-2">{caption}</figcaption>
+      <figcaption className="border-t border-line-3 bg-surface-2/40 px-4 py-2.5 text-[12px] leading-snug text-ink-2">
+        {typeof caption === 'string' ? <Mark text={caption} /> : caption}
+      </figcaption>
     </figure>
   );
 }
@@ -567,16 +604,25 @@ function SceneBlock() {
 // --- Reference rows ----------------------------------------------------------
 
 type Ref = { k: string; v: string };
+/** One way of writing it per pill; the alternatives in `k` are separated by " · ". */
 function Reference({ rows }: { rows: Ref[] }) {
   return (
-    <dl className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface-2/40 p-3">
+    <div className="flex flex-col divide-y divide-line-3 rounded-xl border border-line-2 bg-surface">
       {rows.map((g) => (
-        <div key={g.k} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3">
-          <dt className="font-mono text-[12px] font-medium text-ink">{g.k}</dt>
-          <dd className="text-[12.5px] leading-snug text-ink-2">{g.v}</dd>
+        <div key={g.k} className="grid grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] items-start gap-4 px-3 py-2.5">
+          <div className="flex flex-wrap gap-1.5">
+            {g.k.split(' · ').map((alt) => (
+              <code key={alt} className="rounded-md border border-line-2 bg-surface-2 px-1.5 py-0.5 font-mono text-[11.5px] text-ink">
+                <Mark text={alt} />
+              </code>
+            ))}
+          </div>
+          <div className="pt-0.5 text-[12.5px] leading-snug text-ink-2">
+            <Mark text={g.v} />
+          </div>
         </div>
       ))}
-    </dl>
+    </div>
   );
 }
 
@@ -825,11 +871,29 @@ For time cap 20 min
   return out;
 }
 
+// --- Search: whole sections that mention the text, with the matches marked -----
+
+/** Plain strings inside a section's own markup (paragraphs) get the marks; components mark their own text. */
+function highlight(node: ReactNode, q: string): ReactNode {
+  if (!q) return node;
+  if (typeof node === 'string') return marked(node, q);
+  if (Array.isArray(node)) return Children.map(node, (c) => highlight(c, q));
+  if (isValidElement<{ children?: ReactNode }>(node) && typeof node.type === 'string' && node.props.children !== undefined) {
+    return cloneElement(node as ReactElement<{ children?: ReactNode }>, { children: highlight(node.props.children, q) });
+  }
+  return node;
+}
+
+/** Everything a section shows, as text, for matching (rendered once, tags stripped). */
+const sectionText = (s: Section) =>
+  fold(`${s.title} ${s.keywords} ${renderToStaticMarkup(<>{s.body}</>).replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ')}`);
+
 export function RutinaGuide({ open, onClose, skillMode = false }: { open: boolean; onClose: () => void; skillMode?: boolean }) {
   const [query, setQuery] = useState('');
   const all = useMemo(() => sections(skillMode), [skillMode]);
   const q = fold(query.trim());
-  const visible = q ? all.filter((s) => fold(`${s.title} ${s.keywords}`).includes(q)) : all;
+  const index = useMemo(() => all.map(sectionText), [all]);
+  const visible = q ? all.filter((_, i) => index[i]!.includes(q)) : all;
   if (!open) return null;
   return (
     <>
@@ -861,24 +925,17 @@ export function RutinaGuide({ open, onClose, skillMode = false }: { open: boolea
             )}
           </div>
         </div>
-        {!q && (
-          <nav className="flex shrink-0 flex-wrap gap-1.5 px-5 pt-3">
-            {all.map((s) => (
-              <a key={s.id} href={`#guide-${s.id}`} className="rounded-full border border-line-2 bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink-3 hover:bg-surface-2 hover:text-ink">
-                {s.title}
-              </a>
+        <MarkCtx.Provider value={q}>
+          <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-5 pb-10 pt-4">
+            {visible.length === 0 && <p className="text-[12px] text-muted">Nada coincide con «{query}».</p>}
+            {visible.map((s) => (
+              <section key={s.id} id={`guide-${s.id}`} className="flex scroll-mt-4 flex-col gap-3">
+                <h4 className="text-[14px] font-bold text-ink">{marked(s.title, q)}</h4>
+                {highlight(s.body, q)}
+              </section>
             ))}
-          </nav>
-        )}
-        <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-5 pb-10 pt-4">
-          {visible.length === 0 && <p className="text-[12px] text-muted">Nada coincide con «{query}».</p>}
-          {visible.map((s) => (
-            <section key={s.id} id={`guide-${s.id}`} className="flex scroll-mt-4 flex-col gap-3">
-              <h4 className="text-[14px] font-bold text-ink">{s.title}</h4>
-              {s.body}
-            </section>
-          ))}
-        </div>
+          </div>
+        </MarkCtx.Provider>
       </aside>
     </>
   );
