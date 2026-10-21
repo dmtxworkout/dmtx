@@ -59,7 +59,7 @@ import {
   type ParsedRutina,
 } from '@dmtx/core';
 
-export type InsertKind = 'template' | 'snippet' | 'rutina';
+export type InsertKind = 'template' | 'block' | 'rutina';
 export interface InsertItem {
   id: string;
   title: string;
@@ -98,7 +98,7 @@ export interface RutinaTextEditorProps {
   extras?: CompletionExtra[];
   /** The same things, grouped, for the "+" menu in the gutter. */
   inserts?: InsertGroup[];
-  /** Resolves the text to insert for a template / snippet / rutina. */
+  /** Resolves the text to insert for a template / block / rutina. */
   onInsertBlock?: (kind: InsertKind, id: string) => Promise<string | null>;
   /** Shown as a floating action when two or more lines are selected. */
   onSaveBlock?: (text: string) => void;
@@ -1305,7 +1305,7 @@ export function RutinaTextEditor({
       format: { name: 'Formatos', rank: 2 },
       exercise: { name: 'Ejercicios', rank: 3 },
       template: { name: 'Plantillas', rank: 4 },
-      snippet: { name: 'Bloques reutilizables', rank: 5 },
+      block: { name: 'Bloques reutilizables', rank: 5 },
       rutina: { name: 'Rutinas', rank: 6 },
       create: { name: 'Nuevo', rank: 7 },
     };
@@ -1335,7 +1335,7 @@ export function RutinaTextEditor({
           apply:
             o.type === 'create'
               ? () => onCreateRef.current?.(o.apply)
-              : o.type === 'snippet' || o.type === 'rutina' || o.type === 'template'
+              : o.type === 'block' || o.type === 'rutina' || o.type === 'template'
                 ? (view: EditorView, _c: unknown, from: number, to: number) =>
                     insertBlock(view, o.type as InsertKind, o.apply, from, to)
                 : o.apply.endsWith(' ')

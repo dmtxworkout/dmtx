@@ -354,17 +354,17 @@ describe('completionsAt extras', () => {
   });
 });
 
-describe('completionsAt extras (snippets / rutinas)', () => {
+describe('completionsAt extras (blocks / rutinas)', () => {
   const extras = [
-    { kind: 'snippet' as const, items: [{ id: 's1', name: 'Core express' }] },
+    { kind: 'block' as const, items: [{ id: 's1', name: 'Core express' }] },
     { kind: 'rutina' as const, items: [{ id: 'r1', name: 'Murph' }, { id: 'r2', name: 'Cindy' }] },
   ];
   it('suggests saved blocks and rutinas at line start, not after a count', () => {
     const t = 'For time\ncor';
     const c = completionsAt(t, t.length, catalog, { extras });
-    expect(c?.options.find((o) => o.type === 'snippet')).toMatchObject({ label: 'Core express', apply: 's1' });
+    expect(c?.options.find((o) => o.type === 'block')).toMatchObject({ label: 'Core express', apply: 's1' });
     const t2 = 'For time\n10 cor';
-    expect(completionsAt(t2, t2.length, catalog, { extras })?.options.some((o) => o.type === 'snippet') ?? false).toBe(false);
+    expect(completionsAt(t2, t2.length, catalog, { extras })?.options.some((o) => o.type === 'block') ?? false).toBe(false);
     const t3 = 'For time\nmur';
     expect(completionsAt(t3, t3.length, catalog, { extras })?.options[0]).toMatchObject({ type: 'rutina', apply: 'r1' });
   });

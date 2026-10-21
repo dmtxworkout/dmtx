@@ -9,14 +9,14 @@ export type CompletionType =
   | 'section'
   | 'group'
   | 'create'
-  | 'snippet'
+  | 'block'
   | 'rutina'
   | 'template'
   | 'unit';
 
 /** Named things (templates, saved blocks, other rutinas) the editor can insert whole. */
 export interface CompletionExtra {
-  kind: 'template' | 'snippet' | 'rutina';
+  kind: 'template' | 'block' | 'rutina';
   items: { id: string; name: string }[];
 }
 
@@ -394,7 +394,7 @@ export function completionsAt(
 
 const EXTRA_DETAIL: Record<CompletionExtra['kind'], string> = {
   template: 'plantilla',
-  snippet: 'bloque guardado',
+  block: 'bloque reutilizable',
   rutina: 'rutina',
 };
 

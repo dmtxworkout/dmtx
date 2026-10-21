@@ -475,7 +475,7 @@ export function RutinaForm({
   const extras = useMemo<CompletionExtra[]>(
     () => [
       { kind: 'template', items: TEMPLATES.map((t) => ({ id: t.id, name: t.title })) },
-      { kind: 'snippet', items: (blocksQ.data?.data ?? []).map((sn) => ({ id: sn.id, name: sn.name })) },
+      { kind: 'block', items: (blocksQ.data?.data ?? []).map((sn) => ({ id: sn.id, name: sn.name })) },
       {
         kind: 'rutina',
         items: (rutinasQ.data?.data ?? [])
@@ -490,7 +490,7 @@ export function RutinaForm({
     () => [
       { kind: 'template', title: 'Plantillas', items: TEMPLATES.map((t) => ({ id: t.id, title: t.title, desc: t.desc })) },
       {
-        kind: 'snippet',
+        kind: 'block',
         title: 'Bloques reutilizables',
         items: (blocksQ.data?.data ?? []).map((sn) => ({ id: sn.id, title: sn.name })),
       },
@@ -508,7 +508,7 @@ export function RutinaForm({
   const insertBlock = async (kind: InsertKind, id: string): Promise<string | null> => {
     // Templates use real catalog exercises so they do not land full of errors.
     if (kind === 'template') return TEMPLATES.find((t) => t.id === id)?.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio') ?? null;
-    if (kind === 'snippet') return blocksQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
+    if (kind === 'block') return blocksQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
     const src = await api.workouts.get(id);
     // Another rutina's main section, as written (its parts included).
     return serializeRutina({ blocks: src.blocks.filter((b) => b.section === 'main') }, catalog).replace(/\s+$/, '');
