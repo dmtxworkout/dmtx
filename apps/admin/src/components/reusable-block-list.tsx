@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Snippet } from '@dmtx/schemas';
+import type { ReusableBlock } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { formatDateEs } from '@/lib/utils';
@@ -15,26 +15,26 @@ import { Button } from '@/components/ui/button';
 
 const COLS = 'grid-cols-[minmax(0,1fr)_minmax(0,2fr)_130px_34px] items-center gap-3 px-4';
 
-export function SnippetList() {
+export function ReusableBlockList() {
   const qc = useQueryClient();
   const router = useRouter();
   const [search, setSearch] = useState('');
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['snippets', 'list', search],
-    queryFn: () => api.snippets.list({ search: search || undefined, pageSize: 200 }),
+    queryKey: ['reusable-blocks', 'list', search],
+    queryFn: () => api.reusableBlocks.list({ search: search || undefined, pageSize: 200 }),
     placeholderData: keepPreviousData,
   });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['snippets'] });
-  const remove = useMutation({ mutationFn: (id: string) => api.snippets.remove(id), onSuccess: invalidate });
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['reusable-blocks'] });
+  const remove = useMutation({ mutationFn: (id: string) => api.reusableBlocks.remove(id), onSuccess: invalidate });
 
   const items = data?.data ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader
-        title={es.snippets.title}
-        subtitle={data ? `${es.snippets.count(data.total)} · ${es.snippets.subtitle}` : es.snippets.subtitle}
+        title={es.reusableBlocks.title}
+        subtitle={data ? `${es.reusableBlocks.count(data.total)} · ${es.reusableBlocks.subtitle}` : es.reusableBlocks.subtitle}
         actions={
           <Button type="button" onClick={() => router.push('/bloques/nuevo')}>
             Nuevo bloque
@@ -58,7 +58,7 @@ export function SnippetList() {
         ) : isError ? (
           <div className="p-10 text-center text-sm text-accent-dark">{es.app.error}</div>
         ) : items.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted">{es.snippets.empty}</div>
+          <div className="p-10 text-center text-sm text-muted">{es.reusableBlocks.empty}</div>
         ) : (
           <div className="overflow-hidden rounded-xl border border-line bg-surface">
             <div
@@ -69,7 +69,7 @@ export function SnippetList() {
               <span>Actualizado</span>
               <span />
             </div>
-            {items.map((sn: Snippet) => (
+            {items.map((sn: ReusableBlock) => (
               <div
                 key={sn.id}
                 onClick={() => router.push(`/bloques/${sn.id}`)}

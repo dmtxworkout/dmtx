@@ -1,5 +1,5 @@
-import { SnippetList } from '@/components/snippet-list';
+import { ReusableBlockList } from '@/components/reusable-block-list';
 
 export default function BloquesPage() {
-  return <SnippetList />;
+  return <ReusableBlockList />;
 }

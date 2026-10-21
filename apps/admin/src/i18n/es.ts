@@ -29,7 +29,7 @@ export const es = {
     dashboard: 'Panel',
     exercises: 'Ejercicios',
     workouts: 'Rutinas',
-    snippets: 'Bloques reutilizables',
+    reusableBlocks: 'Bloques reutilizables',
     programs: 'Programas',
     skills: 'Habilidades',
     collections: 'Colecciones',
@@ -154,7 +154,7 @@ export const es = {
     },
     video: 'Video',
   },
-  snippets: {
+  reusableBlocks: {
     title: 'Bloques reutilizables',
     subtitle: 'Bloques de rutina reutilizables; aparecen como sugerencia al escribir',
     empty: 'Aún no hay bloques reutilizables. Selecciona líneas en una rutina y pulsa "Guardar bloque".',

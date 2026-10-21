@@ -1,12 +1,12 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike } from 'drizzle-orm';
-import { rutinaSnippets } from '@dmtx/db';
+import { reusableBlocks } from '@dmtx/db';
 import {
-  createSnippetSchema,
+  createReusableBlockSchema,
   paginated,
   paginationQuerySchema,
-  snippetSchema,
-  updateSnippetSchema,
+  reusableBlockSchema,
+  updateReusableBlockSchema,
 } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
@@ -14,7 +14,7 @@ import { requireAdmin } from '../middleware/auth';
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
-type Row = typeof rutinaSnippets.$inferSelect;
+type Row = typeof reusableBlocks.$inferSelect;
 const serialize = (r: Row) => ({
   id: r.id,
   name: r.name,
@@ -23,90 +23,90 @@ const serialize = (r: Row) => ({
   updatedAt: r.updatedAt.toISOString(),
 });
 
-export const snippetsRoute = createApp();
-snippetsRoute.use('*', requireAdmin);
+export const reusableBlocksRoute = createApp();
+reusableBlocksRoute.use('*', requireAdmin);
 
-snippetsRoute.openapi(
+reusableBlocksRoute.openapi(
   createRoute({
     method: 'get',
     path: '/',
-    tags: ['snippets'],
+    tags: ['reusable-blocks'],
     request: { query: paginationQuerySchema },
     responses: {
       200: {
-        description: 'Bloques guardados',
-        content: { 'application/json': { schema: paginated(snippetSchema) } },
+        description: 'Bloques reutilizables',
+        content: { 'application/json': { schema: paginated(reusableBlockSchema) } },
       },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const { page, pageSize, search } = c.req.valid('query');
-    const where = and(search ? ilike(rutinaSnippets.name, `%${search}%`) : undefined);
+    const where = and(search ? ilike(reusableBlocks.name, `%${search}%`) : undefined);
     const [rows, [totals]] = await Promise.all([
       db
         .select()
-        .from(rutinaSnippets)
+        .from(reusableBlocks)
         .where(where)
-        .orderBy(desc(rutinaSnippets.updatedAt))
+        .orderBy(desc(reusableBlocks.updatedAt))
         .limit(pageSize)
         .offset((page - 1) * pageSize),
-      db.select({ value: count() }).from(rutinaSnippets).where(where),
+      db.select({ value: count() }).from(reusableBlocks).where(where),
     ]);
     return c.json({ data: rows.map(serialize), total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
 
-snippetsRoute.openapi(
+reusableBlocksRoute.openapi(
   createRoute({
     method: 'post',
     path: '/',
-    tags: ['snippets'],
-    request: { body: { content: { 'application/json': { schema: createSnippetSchema } } } },
+    tags: ['reusable-blocks'],
+    request: { body: { content: { 'application/json': { schema: createReusableBlockSchema } } } },
     responses: {
-      201: { description: 'Bloque creado', content: { 'application/json': { schema: snippetSchema } } },
+      201: { description: 'Bloque creado', content: { 'application/json': { schema: reusableBlockSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
-    const [row] = await db.insert(rutinaSnippets).values(input).returning();
+    const [row] = await db.insert(reusableBlocks).values(input).returning();
     if (!row) throw new Error('No se pudo crear el bloque');
     return c.json(serialize(row), 201);
   },
 );
 
-snippetsRoute.openapi(
+reusableBlocksRoute.openapi(
   createRoute({
     method: 'get',
     path: '/{id}',
-    tags: ['snippets'],
+    tags: ['reusable-blocks'],
     request: { params: idParam },
     responses: {
-      200: { description: 'Bloque', content: { 'application/json': { schema: snippetSchema } } },
+      200: { description: 'Bloque', content: { 'application/json': { schema: reusableBlockSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const { id } = c.req.valid('param');
-    const [row] = await db.select().from(rutinaSnippets).where(eq(rutinaSnippets.id, id));
+    const [row] = await db.select().from(reusableBlocks).where(eq(reusableBlocks.id, id));
     if (!row) return c.json({ error: 'No encontrado' }, 404);
     return c.json(serialize(row), 200);
   },
 );
 
-snippetsRoute.openapi(
+reusableBlocksRoute.openapi(
   createRoute({
     method: 'patch',
     path: '/{id}',
-    tags: ['snippets'],
+    tags: ['reusable-blocks'],
     request: {
       params: idParam,
-      body: { content: { 'application/json': { schema: updateSnippetSchema } } },
+      body: { content: { 'application/json': { schema: updateReusableBlockSchema } } },
     },
     responses: {
-      200: { description: 'Bloque actualizado', content: { 'application/json': { schema: snippetSchema } } },
+      200: { description: 'Bloque actualizado', content: { 'application/json': { schema: reusableBlockSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
@@ -115,23 +115,23 @@ snippetsRoute.openapi(
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
     const [row] = await db
-      .update(rutinaSnippets)
+      .update(reusableBlocks)
       .set({
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.text !== undefined ? { text: input.text } : {}),
       })
-      .where(eq(rutinaSnippets.id, id))
+      .where(eq(reusableBlocks.id, id))
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
     return c.json(serialize(row), 200);
   },
 );
 
-snippetsRoute.openapi(
+reusableBlocksRoute.openapi(
   createRoute({
     method: 'delete',
     path: '/{id}',
-    tags: ['snippets'],
+    tags: ['reusable-blocks'],
     request: { params: idParam },
     responses: {
       204: { description: 'Bloque eliminado' },
@@ -142,9 +142,9 @@ snippetsRoute.openapi(
     const db = c.get('db');
     const { id } = c.req.valid('param');
     const [row] = await db
-      .delete(rutinaSnippets)
-      .where(eq(rutinaSnippets.id, id))
-      .returning({ id: rutinaSnippets.id });
+      .delete(reusableBlocks)
+      .where(eq(reusableBlocks.id, id))
+      .returning({ id: reusableBlocks.id });
     if (!row) return c.json({ error: 'No encontrado' }, 404);
     return c.body(null, 204);
   },

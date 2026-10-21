@@ -1,6 +1,6 @@
-import { EditSnippet } from './edit-client';
+import { EditReusableBlock } from './edit-client';
 
-export default async function EditSnippetPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EditReusableBlockPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  return <EditSnippet id={id} />;
+  return <EditReusableBlock id={id} />;
 }

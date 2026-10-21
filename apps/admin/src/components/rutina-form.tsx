@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, Snippet, Workout, WorkoutFormat } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, ReusableBlock, Workout, WorkoutFormat } from '@dmtx/schemas';
 import {
   Catalog,
   formatDistance,
@@ -288,38 +288,38 @@ function previewFrom(
 
 export function RutinaForm({
   workout,
-  snippet,
+  block,
 }: {
   workout?: Workout;
   /** A saved block: the same editor on one piece of text (null → a new block). */
-  snippet?: Snippet | null;
+  block?: ReusableBlock | null;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
   // A saved block ("bloque reutilizable") is plain rutina text with a name: the
   // same editor and preview, one tab (no warmup/cooldown), no versions,
   // settings or status.
-  const snippetMode = snippet !== undefined;
-  const basePath = snippetMode ? '/bloques' : '/rutinas';
-  const listTitle = snippetMode ? es.snippets.title : es.workouts.title;
-  const newLabel = snippetMode ? 'Nuevo bloque' : es.workouts.new;
-  const isNew = snippetMode ? !snippet : !workout;
+  const blockMode = block !== undefined;
+  const basePath = blockMode ? '/bloques' : '/rutinas';
+  const listTitle = blockMode ? es.reusableBlocks.title : es.workouts.title;
+  const newLabel = blockMode ? 'Nuevo bloque' : es.workouts.new;
+  const isNew = blockMode ? !block : !workout;
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
 
-  const [name, setName] = useState(workout?.name ?? snippet?.name ?? '');
+  const [name, setName] = useState(workout?.name ?? block?.name ?? '');
   const [description, setDescription] = useState(workout?.description ?? '');
   const [difficulty, setDifficulty] = useState(workout?.difficulty ?? 'beginner');
   const [status, setStatus] = useState(workout?.status ?? 'draft');
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   // A new rutina asks for name + type in one dialog, then opens the editor.
-  const [createOpen, setCreateOpen] = useState(!workout && !snippetMode);
+  const [createOpen, setCreateOpen] = useState(!workout && !blockMode);
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideQuery, setGuideQuery] = useState('');
-  const [snippetModal, setSnippetModal] = useState<{ name: string; text: string } | null>(null);
+  const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
   const editorApi = useRef<RutinaEditorApi | null>(null);
   const [newExercise, setNewExercise] = useState<{ name: string; difficulty: Workout['difficulty'] } | null>(null);
   const editorHost = useRef<HTMLDivElement>(null);
@@ -340,9 +340,9 @@ export function RutinaForm({
   const [activeSection, setActiveSection] = useState<BlockSection>('main');
   useEffect(() => {
     if (sections === null && catalogReady && !createOpen) {
-      setSections(snippetMode ? { ...EMPTY_SECTIONS, main: snippet?.text ?? '' } : splitSections(initialText(workout, catalog)));
+      setSections(blockMode ? { ...EMPTY_SECTIONS, main: block?.text ?? '' } : splitSections(initialText(workout, catalog)));
     }
-  }, [sections, catalogReady, createOpen, workout, catalog, snippetMode, snippet]);
+  }, [sections, catalogReady, createOpen, workout, catalog, blockMode, block]);
 
   // Variants (RX / Escalada / …): versions of the whole rutina, switched from
   // the tab bar. Each is a full rutina row linked to this one; loaded once the
@@ -464,9 +464,9 @@ export function RutinaForm({
     .join(' · ');
 
   // ---- Saved blocks + other rutinas as suggestions ---------------------------
-  const snippetsQ = useQuery({
-    queryKey: ['snippets', 'all'],
-    queryFn: () => api.snippets.list({ pageSize: 200 }),
+  const blocksQ = useQuery({
+    queryKey: ['reusable-blocks', 'all'],
+    queryFn: () => api.reusableBlocks.list({ pageSize: 200 }),
   });
   const rutinasQ = useQuery({
     queryKey: ['workouts', 'suggest'],
@@ -475,7 +475,7 @@ export function RutinaForm({
   const extras = useMemo<CompletionExtra[]>(
     () => [
       { kind: 'template', items: TEMPLATES.map((t) => ({ id: t.id, name: t.title })) },
-      { kind: 'snippet', items: (snippetsQ.data?.data ?? []).map((sn) => ({ id: sn.id, name: sn.name })) },
+      { kind: 'snippet', items: (blocksQ.data?.data ?? []).map((sn) => ({ id: sn.id, name: sn.name })) },
       {
         kind: 'rutina',
         items: (rutinasQ.data?.data ?? [])
@@ -483,7 +483,7 @@ export function RutinaForm({
           .map((w) => ({ id: w.id, name: w.name })),
       },
     ],
-    [snippetsQ.data, rutinasQ.data, workout?.id],
+    [blocksQ.data, rutinasQ.data, workout?.id],
   );
   // The "+" menu in the gutter: the same things, grouped and described.
   const inserts = useMemo<InsertGroup[]>(
@@ -492,7 +492,7 @@ export function RutinaForm({
       {
         kind: 'snippet',
         title: 'Bloques reutilizables',
-        items: (snippetsQ.data?.data ?? []).map((sn) => ({ id: sn.id, title: sn.name })),
+        items: (blocksQ.data?.data ?? []).map((sn) => ({ id: sn.id, title: sn.name })),
       },
       {
         kind: 'rutina',
@@ -502,22 +502,22 @@ export function RutinaForm({
           .map((w) => ({ id: w.id, title: w.name })),
       },
     ],
-    [snippetsQ.data, rutinasQ.data, workout?.id],
+    [blocksQ.data, rutinasQ.data, workout?.id],
   );
   const exNames = (exList?.data ?? []).map((e) => e.name);
   const insertBlock = async (kind: InsertKind, id: string): Promise<string | null> => {
     // Templates use real catalog exercises so they do not land full of errors.
     if (kind === 'template') return TEMPLATES.find((t) => t.id === id)?.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio') ?? null;
-    if (kind === 'snippet') return snippetsQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
+    if (kind === 'snippet') return blocksQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
     const src = await api.workouts.get(id);
     // Another rutina's main section, as written (its parts included).
     return serializeRutina({ blocks: src.blocks.filter((b) => b.section === 'main') }, catalog).replace(/\s+$/, '');
   };
-  const createSnippet = useMutation({
-    mutationFn: (args: { name: string; text: string }) => api.snippets.create(args),
+  const createBlock = useMutation({
+    mutationFn: (args: { name: string; text: string }) => api.reusableBlocks.create(args),
     onSuccess: (sn) => {
-      qc.invalidateQueries({ queryKey: ['snippets'] });
-      setSnippetModal(null);
+      qc.invalidateQueries({ queryKey: ['reusable-blocks'] });
+      setBlockModal(null);
       toast(`Bloque reutilizable: ${sn.name}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
@@ -566,17 +566,17 @@ export function RutinaForm({
       blocks: structure?.blocks ?? [],
     };
   };
-  const saveSnippet = useMutation({
+  const saveBlock = useMutation({
     mutationFn: async () => {
       const input = { name: name.trim(), text: (sections ?? EMPTY_SECTIONS).main.replace(/\s+$/, '') + '\n' };
-      return snippet ? api.snippets.update(snippet.id, input) : api.snippets.create(input);
+      return block ? api.reusableBlocks.update(block.id, input) : api.reusableBlocks.create(input);
     },
     onSuccess: (saved) => {
       setBaseline({ ...currentRef.current });
-      qc.setQueryData(['snippet', saved.id], saved);
-      qc.invalidateQueries({ queryKey: ['snippets'] });
+      qc.setQueryData(['reusable-block', saved.id], saved);
+      qc.invalidateQueries({ queryKey: ['reusable-blocks'] });
       toast('Bloque reutilizable');
-      if (!snippet) router.replace(`/bloques/${saved.id}`);
+      if (!block) router.replace(`/bloques/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -736,11 +736,11 @@ export function RutinaForm({
         }
       }
     }
-    if (snippetMode) saveSnippet.mutate();
+    if (blockMode) saveBlock.mutate();
     else save.mutate();
   };
   doSaveRef.current = doSave;
-  const saving = save.isPending || saveSnippet.isPending;
+  const saving = save.isPending || saveBlock.isPending;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -782,7 +782,7 @@ export function RutinaForm({
               {listTitle}
             </button>
             <span>/</span>
-            <span className="text-ink-2">{isNew ? (snippetMode ? 'Nuevo' : 'Nueva') : 'Editar'}</span>
+            <span className="text-ink-2">{isNew ? (blockMode ? 'Nuevo' : 'Nueva') : 'Editar'}</span>
           </div>
           <input
             value={name}
@@ -800,7 +800,7 @@ export function RutinaForm({
             <span className="text-xs font-medium text-accent-dark">{es.app.nameRequired}</span>
           )}
           <div className="flex items-center gap-2">
-            {snippetMode ? (
+            {blockMode ? (
               <span className="font-mono text-xs font-medium text-muted">
                 Bloque reutilizable · aparece como sugerencia al escribir su nombre
               </span>
@@ -821,7 +821,7 @@ export function RutinaForm({
           <Button type="button" variant="outline" onClick={() => setGuideOpen(true)}>
             Guía
           </Button>
-          {!snippetMode && (
+          {!blockMode && (
             <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
               Ajustes
             </Button>
@@ -839,7 +839,7 @@ export function RutinaForm({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
-              {(snippetMode ? (['main'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
+              {(blockMode ? (['main'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
                 const empty = !activeSections[sec].trim();
                 return (
                   <div
@@ -854,7 +854,7 @@ export function RutinaForm({
                           : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
                     )}
                   >
-                    {snippetMode ? 'Bloque' : SECTION_TAB[sec]}
+                    {blockMode ? 'Bloque' : SECTION_TAB[sec]}
                   </div>
                 );
               })}
@@ -887,7 +887,7 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
-              {!snippetMode && (
+              {!blockMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
                     type="button"
@@ -994,11 +994,11 @@ export function RutinaForm({
                   inserts={inserts}
                   onInsertBlock={insertBlock}
                   onSaveBlock={
-                    snippetMode
+                    blockMode
                       ? undefined
                       : (t) => {
                           setServerError(null);
-                          setSnippetModal({ name: '', text: t.trim() });
+                          setBlockModal({ name: '', text: t.trim() });
                         }
                   }
                   apiRef={editorApi}
@@ -1093,10 +1093,10 @@ export function RutinaForm({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim()) setCreateOpen(false);
               }}
-              placeholder={snippetMode ? 'p. ej. Core express' : 'p. ej. Murph'}
+              placeholder={blockMode ? 'p. ej. Core express' : 'p. ej. Murph'}
             />
           </div>
-          {!snippetMode && (
+          {!blockMode && (
             <div>
               <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.type}</div>
               <div className="grid grid-cols-2 gap-2">
@@ -1254,7 +1254,7 @@ export function RutinaForm({
                 </div>
               </div>
 
-              {!snippetMode && (
+              {!blockMode && (
                 <div className="flex flex-col gap-2.5">
                   <MonoLabel>{es.workouts.type}</MonoLabel>
                   <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
@@ -1293,8 +1293,8 @@ export function RutinaForm({
       )}
 
       <Dialog
-        open={snippetModal !== null}
-        onClose={() => setSnippetModal(null)}
+        open={blockModal !== null}
+        onClose={() => setBlockModal(null)}
         title="Guardar bloque reutilizable"
         className="max-w-lg"
       >
@@ -1303,10 +1303,10 @@ export function RutinaForm({
             <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre</div>
             <Input
               autoFocus
-              value={snippetModal?.name ?? ''}
-              onChange={(e) => setSnippetModal((m) => (m ? { ...m, name: e.target.value } : m))}
+              value={blockModal?.name ?? ''}
+              onChange={(e) => setBlockModal((m) => (m ? { ...m, name: e.target.value } : m))}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && snippetModal?.name.trim()) createSnippet.mutate(snippetModal);
+                if (e.key === 'Enter' && blockModal?.name.trim()) createBlock.mutate(blockModal);
               }}
               placeholder="p. ej. Core express"
             />
@@ -1317,21 +1317,21 @@ export function RutinaForm({
           <div>
             <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Contenido</div>
             <textarea
-              value={snippetModal?.text ?? ''}
-              onChange={(e) => setSnippetModal((m) => (m ? { ...m, text: e.target.value } : m))}
+              value={blockModal?.text ?? ''}
+              onChange={(e) => setBlockModal((m) => (m ? { ...m, text: e.target.value } : m))}
               className="min-h-32 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setSnippetModal(null)}>
+            <Button type="button" variant="outline" onClick={() => setBlockModal(null)}>
               {es.app.cancel}
             </Button>
             <Button
               type="button"
-              onClick={() => snippetModal && createSnippet.mutate(snippetModal)}
-              disabled={createSnippet.isPending || !snippetModal?.name.trim() || !snippetModal?.text.trim()}
+              onClick={() => blockModal && createBlock.mutate(blockModal)}
+              disabled={createBlock.isPending || !blockModal?.name.trim() || !blockModal?.text.trim()}
             >
-              {createSnippet.isPending ? es.app.saving : es.app.save}
+              {createBlock.isPending ? es.app.saving : es.app.save}
             </Button>
           </div>
         </div>

@@ -132,7 +132,7 @@ Enter on an empty line only breaks the line.
 
 ## Saved blocks and rutina suggestions
 
-Besides exercises, the editor suggests **saved blocks** (`rutina_snippets`: a
+Besides exercises, the editor suggests **reusable blocks** (`reusable_blocks`: a
 name + rutina text, managed under `/bloques`) and **other rutinas** when a line
 starts with their name (no count before it). Picking one inserts its lines at
 the cursor, re-indented to the current line. A rutina inserts its main section

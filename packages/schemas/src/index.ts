@@ -11,4 +11,4 @@ export * from './dto/workout';
 export * from './dto/program';
 export * from './dto/skill';
 export * from './dto/progress';
-export * from './dto/snippet';
+export * from './dto/reusable-block';
