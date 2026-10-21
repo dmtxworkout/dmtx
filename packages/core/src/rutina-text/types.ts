@@ -13,6 +13,8 @@ export interface CatalogExercise {
   id: string;
   name: string;
   aliases?: string[];
+  /** Archived: still resolves in existing rutinas, never suggested. */
+  archived?: boolean;
 }
 
 export type Severity = 'error' | 'warning' | 'info';

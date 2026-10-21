@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
-import { CONTENT_STATUS, contentStatusSchema, DIFFICULTY, difficultySchema } from '@dmtx/schemas';
+import { DIFFICULTY, difficultySchema } from '@dmtx/schemas';
 import type { CreateExerciseInput, Exercise } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
@@ -26,7 +26,6 @@ const formSchema = z.object({
   description: z.string(),
   difficulty: difficultySchema,
   isUnilateral: z.boolean(),
-  status: contentStatusSchema,
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -35,7 +34,6 @@ const emptyValues: FormValues = {
   description: '',
   difficulty: 'beginner',
   isUnilateral: false,
-  status: 'draft',
 };
 
 function toDefaults(exercise: Exercise): FormValues {
@@ -44,7 +42,6 @@ function toDefaults(exercise: Exercise): FormValues {
     description: exercise.description ?? '',
     difficulty: exercise.difficulty,
     isUnilateral: exercise.isUnilateral,
-    status: exercise.status,
   };
 }
 
@@ -191,7 +188,6 @@ export function ExerciseForm({
         aliases: aliases.map((a) => a.trim()).filter((v) => v.length > 0),
         difficulty: values.difficulty,
         isUnilateral: values.isUnilateral,
-        status: values.status,
         thumbnailAssetId,
         demoVideoAssetId,
       };
@@ -226,6 +222,16 @@ export function ExerciseForm({
       qc.invalidateQueries({ queryKey: ['exercises'] });
       router.push('/ejercicios');
     },
+  });
+  // Archiving hides the exercise from suggestions and the list; rutinas keep it.
+  const archive = useMutation({
+    mutationFn: (archived: boolean) => api.exercises.update(exercise!.id, { archived }),
+    onSuccess: (saved) => {
+      qc.invalidateQueries({ queryKey: ['exercises'] });
+      qc.setQueryData(['exercise', saved.id], saved);
+      toast(saved.archivedAt ? 'Ejercicio archivado' : 'Ejercicio restaurado');
+    },
+    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
 
   const onSubmit = form.handleSubmit((values) => {
@@ -269,13 +275,21 @@ export function ExerciseForm({
             <span className="text-ink-2">{exercise ? 'Editar' : 'Nuevo'}</span>
           </div>
           {exercise && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
-            >
-              {es.app.delete}
-            </Button>
+            <div className="flex items-center gap-2">
+              {exercise.archivedAt && (
+                <span className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Archivado</span>
+              )}
+              <Button type="button" variant="outline" disabled={archive.isPending} onClick={() => archive.mutate(!exercise.archivedAt)}>
+                {exercise.archivedAt ? 'Restaurar' : 'Archivar'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
+              >
+                {es.app.delete}
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -312,16 +326,6 @@ export function ExerciseForm({
                       {DIFFICULTY.map((d) => (
                         <option key={d} value={d}>
                           {es.difficulty[d]}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div>
-                    <Label htmlFor="status">{es.exercises.fields.status}</Label>
-                    <Select id="status" {...form.register('status')}>
-                      {CONTENT_STATUS.map((s) => (
-                        <option key={s} value={s}>
-                          {es.status[s]}
                         </option>
                       ))}
                     </Select>

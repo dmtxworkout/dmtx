@@ -16,15 +16,15 @@ import { MediaThumb } from '@/components/media-thumb';
 
 const COLS =
   'grid-cols-[74px_minmax(0,1.6fr)_minmax(0,1.4fr)_120px_104px_150px] gap-3.5 px-[18px]';
-const FILTERS = ['Todo', 'Principiante', 'Intermedio', 'Avanzado', 'Sin video'];
 
 export default function ExercisesPage() {
   const [search, setSearch] = useState('');
+  const [archived, setArchived] = useState(false);
   const router = useRouter();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['exercises', search],
-    queryFn: () => api.exercises.list({ search: search || undefined, pageSize: 50 }),
+    queryKey: ['exercises', 'list', search, archived],
+    queryFn: () => api.exercises.list({ search: search || undefined, pageSize: 50, archived: archived ? 'true' : 'false' }),
     placeholderData: keepPreviousData,
   });
 
@@ -54,18 +54,19 @@ export default function ExercisesPage() {
               className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
             />
           </div>
-          {FILTERS.map((f, i) => (
-            <Chip key={f} active={i === 0}>
-              {f}
-            </Chip>
-          ))}
+          <Chip active={!archived} onClick={() => setArchived(false)}>
+            Activos
+          </Chip>
+          <Chip active={archived} onClick={() => setArchived(true)}>
+            Archivados
+          </Chip>
         </div>
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
           <div className={`grid min-w-[1060px] ${COLS} border-b border-line-3 bg-surface-2 py-2.5`}>
-            {['', 'Nombre', 'Músculos', 'Dificultad', 'Estado', 'Actualizado'].map((h, i) => (
+            {['', 'Nombre', 'Músculos', 'Dificultad', '', 'Actualizado'].map((h, i) => (
               <span
                 key={i}
                 className={`font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2 ${i === 6 ? 'text-right' : ''}`}
@@ -101,9 +102,7 @@ export default function ExercisesPage() {
                 </div>
                 <div className="min-w-0" />
                 <span className="text-[13px] text-ink-2">{es.difficulty[e.difficulty]}</span>
-                <span>
-                  <Badge tone={e.status}>{es.status[e.status]}</Badge>
-                </span>
+                <span>{e.archivedAt && <Badge tone="archived">Archivado</Badge>}</span>
                 <span className="text-right font-mono text-[12px] text-muted">
                   {formatDateEs(e.updatedAt)}
                 </span>

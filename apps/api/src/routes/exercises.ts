@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, isNull, or, sql, isNotNull } from 'drizzle-orm';
 import { exerciseEquipment, exerciseMuscles, exercises } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import {
@@ -32,7 +32,7 @@ function serializeBase(row: ExerciseRow) {
     defaultTempo: row.defaultTempo ?? null,
     demoVideoAssetId: row.demoVideoAssetId,
     thumbnailAssetId: row.thumbnailAssetId,
-    status: row.status,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -64,7 +64,7 @@ exercisesRoute.openapi(
     method: 'get',
     path: '/',
     tags: ['exercises'],
-    request: { query: paginationQuerySchema },
+    request: { query: paginationQuerySchema.extend({ archived: z.enum(['false', 'true', 'all']).default('false') }) },
     responses: {
       200: {
         description: 'Lista paginada de ejercicios',
@@ -74,9 +74,10 @@ exercisesRoute.openapi(
   }),
   async (c) => {
     const db = c.get('db');
-    const { page, pageSize, search } = c.req.valid('query');
+    const { page, pageSize, search, archived } = c.req.valid('query');
     const where = and(
       isNull(exercises.deletedAt),
+      archived === 'all' ? undefined : archived === 'true' ? isNotNull(exercises.archivedAt) : isNull(exercises.archivedAt),
       search
         ? or(
             ilike(exercises.name, `%${search}%`),
@@ -163,7 +164,6 @@ exercisesRoute.openapi(
         defaultTempo: input.defaultTempo ?? null,
         demoVideoAssetId: input.demoVideoAssetId ?? null,
         thumbnailAssetId: input.thumbnailAssetId ?? null,
-        status: input.status,
       })
       .returning();
     if (!row) throw new Error('No se pudo crear el ejercicio');
@@ -224,7 +224,7 @@ exercisesRoute.openapi(
         ...(input.thumbnailAssetId !== undefined
           ? { thumbnailAssetId: input.thumbnailAssetId ?? null }
           : {}),
-        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(input.archived !== undefined ? { archivedAt: input.archived ? new Date() : null } : {}),
       })
       .where(and(eq(exercises.id, id), isNull(exercises.deletedAt)))
       .returning();

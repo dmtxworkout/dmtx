@@ -18,8 +18,9 @@ export type ExerciseListItem = Omit<Exercise, 'muscles' | 'equipmentIds'>;
 
 export function exercisesApi(http: Http) {
   return {
-    list(query?: Partial<PaginationQuery>): Promise<Paginated<ExerciseListItem>> {
+    list(query?: Partial<PaginationQuery> & { archived?: 'false' | 'true' | 'all' }): Promise<Paginated<ExerciseListItem>> {
       const params = new URLSearchParams();
+      if (query?.archived) params.set('archived', query.archived);
       if (query?.page) params.set('page', String(query.page));
       if (query?.pageSize) params.set('pageSize', String(query.pageSize));
       if (query?.search) params.set('search', query.search);

@@ -329,10 +329,10 @@ export function RutinaForm({
 
   const { data: exList } = useQuery({
     queryKey: ['exercises', 'all'],
-    queryFn: () => api.exercises.list({ pageSize: 500 }),
+    queryFn: () => api.exercises.list({ pageSize: 500, archived: 'all' }),
   });
   const catalog = useMemo(
-    () => new Catalog((exList?.data ?? []).map((e) => ({ id: e.id, name: e.name, aliases: e.aliases }))),
+    () => new Catalog((exList?.data ?? []).map((e) => ({ id: e.id, name: e.name, aliases: e.aliases, archived: !!e.archivedAt }))),
     [exList],
   );
   const catalogReady = !!exList;

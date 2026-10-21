@@ -148,6 +148,13 @@
       "when": 1792592705704,
       "tag": "0020_reusable_blocks",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792594177403,
+      "tag": "0021_exercise_archived",
+      "breakpoints": true
     }
   ]
 }

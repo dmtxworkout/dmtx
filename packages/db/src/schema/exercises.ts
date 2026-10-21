@@ -1,7 +1,6 @@
-import { boolean, jsonb, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, pgTable, primaryKey, text, uuid, timestamp } from 'drizzle-orm/pg-core';
 import type { Tempo } from '@dmtx/schemas';
 import {
-  contentStatusEnum,
   difficultyEnum,
   muscleRoleEnum,
   primaryId,
@@ -24,7 +23,9 @@ export const exercises = pgTable('exercises', {
   defaultTempo: jsonb().$type<Tempo>(),
   demoVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
-  status: contentStatusEnum().notNull().default('draft'),
+  // Archived exercises leave the suggestions and the list; rutinas that use
+  // them keep working (an exercise is a reference, never deleted).
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
   ...publishable,
   ...timestamps,
   ...softDelete,

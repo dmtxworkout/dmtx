@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { contentStatusSchema, difficultySchema, muscleRoleSchema } from '../enums';
+import { difficultySchema, muscleRoleSchema } from '../enums';
 import { tempoSchema } from '../tempo';
 import { slugSchema, uuidSchema } from '../common';
 
@@ -23,13 +23,15 @@ export const createExerciseSchema = z.object({
   defaultTempo: tempoSchema.nullish(),
   demoVideoAssetId: uuidSchema.nullish(),
   thumbnailAssetId: uuidSchema.nullish(),
-  status: contentStatusSchema.default('draft'),
   muscles: z.array(exerciseMuscleInputSchema).default([]),
   equipmentIds: z.array(uuidSchema).default([]),
 });
 export type CreateExerciseInput = z.infer<typeof createExerciseSchema>;
 
-export const updateExerciseSchema = createExerciseSchema.partial();
+export const updateExerciseSchema = createExerciseSchema.partial().extend({
+  // true archives (hidden from suggestions and the default list), false restores.
+  archived: z.boolean().optional(),
+});
 export type UpdateExerciseInput = z.infer<typeof updateExerciseSchema>;
 
 /** Full exercise as returned by the API. */
@@ -45,7 +47,7 @@ export const exerciseSchema = z.object({
   defaultTempo: tempoSchema.nullable(),
   demoVideoAssetId: uuidSchema.nullable(),
   thumbnailAssetId: uuidSchema.nullable(),
-  status: contentStatusSchema,
+  archivedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   muscles: z.array(exerciseMuscleInputSchema),

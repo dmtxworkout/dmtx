@@ -53,8 +53,9 @@ export class Catalog {
   /** Ranked candidates for autocomplete (prefix / token / fuzzy). */
   search(raw: string, limit = 8): CatalogExercise[] {
     const q = fold(raw);
-    if (!q) return this.entries.slice(0, limit).map((e) => e.ex);
-    return this.entries
+    const live = this.entries.filter((e) => !e.ex.archived);
+    if (!q) return live.slice(0, limit).map((e) => e.ex);
+    return live
       .map((e) => ({ e, score: Math.max(...e.keys.map((k) => completionScore(q, k))) }))
       .filter((s) => s.score > 0)
       .sort((a, b) => b.score - a.score || a.e.ex.name.localeCompare(b.e.ex.name))
