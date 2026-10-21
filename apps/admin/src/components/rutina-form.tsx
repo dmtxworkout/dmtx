@@ -39,7 +39,6 @@ import { MediaField } from '@/components/media-field';
 import { ExerciseForm } from '@/components/exercise-form';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { toast } from '@/components/ui/toast';
-import { useTaxonomy } from '@/components/tag-pickers';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import {
   RutinaPreview,
@@ -325,7 +324,6 @@ export function RutinaForm({
     queryFn: () => api.exercises.get(editExerciseId!),
     enabled: !!editExerciseId,
   });
-  const { data: taxonomy } = useTaxonomy();
   const editorHost = useRef<HTMLDivElement>(null);
 
   const { data: exList } = useQuery({
@@ -337,19 +335,6 @@ export function RutinaForm({
     [exList],
   );
   const catalogReady = !!exList;
-  /** What the editor's hover card says about an exercise: its muscles and equipment. */
-  const describeExercise = (id: string) => {
-    const ex = exList?.data.find((e) => e.id === id);
-    if (!ex) return null;
-    const muscleName = (mid: string) => taxonomy?.muscles.find((m) => m.id === mid)?.name;
-    const equipmentName = (eid: string) => taxonomy?.equipment.find((e) => e.id === eid)?.name;
-    return {
-      name: ex.name,
-      muscles: ex.muscleIds.map(muscleName).filter((n): n is string => !!n),
-      equipment: ex.equipmentIds.map(equipmentName).filter((n): n is string => !!n),
-      archived: !!ex.archivedAt,
-    };
-  };
 
   // The rutina text, one piece per section (each section is a tab). Seeded once
   // the catalog is available (names come from it).
@@ -966,7 +951,6 @@ export function RutinaForm({
                   apiRef={editorApi}
                   onCreateExercise={(n) => setNewExercise({ name: titleCase(n) })}
                   onEditExercise={setEditExerciseId}
-                  describeExercise={describeExercise}
                   className="h-full"
                 />
               )}

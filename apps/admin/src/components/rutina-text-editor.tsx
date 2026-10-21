@@ -106,10 +106,8 @@ export interface RutinaTextEditorProps {
   onInsertBlock?: (kind: InsertKind, id: string) => Promise<string | null>;
   /** Shown as a floating action when two or more lines are selected. */
   onSaveBlock?: (text: string) => void;
-  /** "Editar ejercicio" on a recognised exercise (hover card, Cmd/Ctrl+click). */
+  /** "Editar ejercicio": a click on a recognised exercise name, or the action on its diagnostic card. */
   onEditExercise?: (id: string) => void;
-  /** What the hover card says about a recognised exercise. */
-  describeExercise?: (id: string) => ExerciseInfo | null;
   apiRef?: MutableRefObject<RutinaEditorApi | null>;
   placeholder?: string;
   autoFocus?: boolean;
@@ -119,22 +117,15 @@ export interface RutinaTextEditorProps {
 // --- State shared with the extensions ----------------------------------------
 // Props that the (once-created) extensions need live in state fields, updated
 // through effects, so tooltips can be built from `state` alone.
-export interface ExerciseInfo {
-  name: string;
-  muscles: string[];
-  equipment: string[];
-  archived: boolean;
-}
 interface Handlers {
   create: ((name: string) => void) | null;
   save: ((text: string) => void) | null;
   insert: ((kind: InsertKind, id: string) => Promise<string | null>) | null;
   edit: ((id: string) => void) | null;
-  describe: ((id: string) => ExerciseInfo | null) | null;
 }
 const setHandlers = StateEffect.define<Handlers>();
 const handlersField = StateField.define<Handlers>({
-  create: () => ({ create: null, save: null, insert: null, edit: null, describe: null }),
+  create: () => ({ create: null, save: null, insert: null, edit: null }),
   update: (v, tr) => {
     for (const e of tr.effects) if (e.is(setHandlers)) return e.value;
     return v;
@@ -373,49 +364,6 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
   return dom;
 }
 
-/** The card for a recognised exercise: what it works, what it needs, and "Editar". */
-function buildExerciseCard(view: EditorView, ref: ExerciseRef): HTMLElement {
-  const { edit, describe } = view.state.field(handlersField);
-  const info = describe?.(ref.id);
-  const dom = document.createElement('div');
-  dom.className = 'rt-diag';
-  const top = document.createElement('div');
-  top.className = 'rt-diag-top';
-  dom.appendChild(top);
-  const label = document.createElement('div');
-  label.className = 'rt-diag-label';
-  label.textContent = info?.archived ? 'Ejercicio · archivado' : 'Ejercicio';
-  top.appendChild(label);
-  const name = document.createElement('div');
-  name.className = 'rt-diag-name';
-  name.textContent = info?.name ?? ref.name;
-  top.appendChild(name);
-  const facts = [
-    info?.muscles.length ? `Trabaja ${info.muscles.join(', ')}` : null,
-    info?.equipment.length ? `Equipo: ${info.equipment.join(', ')}` : null,
-  ].filter(Boolean);
-  if (facts.length) {
-    const msg = document.createElement('div');
-    msg.className = 'rt-diag-msg';
-    msg.textContent = facts.join(' · ');
-    top.appendChild(msg);
-  }
-  if (edit) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'rt-diag-action';
-    b.innerHTML = `${PENCIL_ICON}<span>Editar ejercicio</span><kbd>⌘ clic</kbd>`;
-    b.addEventListener('mousedown', (e) => e.preventDefault());
-    b.addEventListener('click', () => {
-      // The dialog would otherwise sit on top of a card that never gets a mouseleave.
-      view.dispatch({ effects: closeHoverTooltips });
-      edit(ref.id);
-    });
-    dom.appendChild(b);
-  }
-  return dom;
-}
-
 // Hover: the card for the diagnostic under the pointer.
 const hoverCard = hoverTooltip(
   (view, pos): Tooltip | null => {
@@ -428,14 +376,7 @@ const hoverCard = hoverTooltip(
         create: () => ({ dom: buildCard(view, hit.diags, hit.from, hit.to) }),
       };
     }
-    const ref = exerciseAt(view.state, pos);
-    if (!ref) return null;
-    return {
-      pos: ref.docFrom,
-      end: ref.docTo,
-      above: false,
-      create: () => ({ dom: buildExerciseCard(view, ref) }),
-    };
+    return null;
   },
   { hoverTime: 120, hideOnChange: true },
 );
@@ -622,15 +563,15 @@ const trackHover = (view: EditorView, event: MouseEvent) => {
 };
 const hoverTracker = EditorView.domEventHandlers({
   mousemove: (event, view) => trackHover(view, event),
-  // Cmd/Ctrl+click on a recognised exercise opens it for editing ("go to definition").
-  mousedown: (event, view) => {
-    if (!(event.metaKey || event.ctrlKey) || event.button !== 0) return false;
+  // A click on a recognised exercise opens it for editing. `click` (not
+  // mousedown) so a drag that starts on a name still selects text.
+  click: (event, view) => {
+    if (event.button !== 0 || !view.state.selection.main.empty) return false;
     const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
     if (pos == null) return false;
     const ref = exerciseAt(view.state, pos);
     const { edit } = view.state.field(handlersField);
     if (!ref || !edit) return false;
-    event.preventDefault();
     edit(ref.id);
     return true;
   },
@@ -1132,13 +1073,10 @@ const theme = EditorView.theme({
   '.cm-content': { padding: '10px 16px 40vh 8px', caretColor: 'var(--color-accent)' },
   '.cm-line': { padding: '0 2px' },
   '&.cm-focused': { outline: 'none' },
-  // Recognised exercises read as links: a dotted underline on hover (the card
-  // with "Editar" appears); with Cmd/Ctrl held the underline turns solid and a
-  // click opens the exercise.
-  '.rt-ex': { textDecorationColor: 'var(--color-line-2)', textUnderlineOffset: '3px' },
+  // Recognised exercises read as links: a dotted underline and a pointer on
+  // hover; a click opens the exercise for editing.
+  '.rt-ex': { textUnderlineOffset: '3px' },
   '.rt-ex:hover': { cursor: 'pointer', textDecoration: 'underline dotted', textDecorationColor: 'var(--color-muted)' },
-  '&.rt-mod .rt-ex': { cursor: 'pointer' },
-  '&.rt-mod .rt-ex:hover': { textDecoration: 'underline', textDecorationColor: 'currentColor', color: 'var(--color-accent-dark)' },
   '.cm-activeLine': { backgroundColor: 'rgba(0,0,0,0.03)' },
   '.rt-line-error': { backgroundColor: 'rgba(229, 20, 0, 0.06)' },
   '.rt-line-warn': { backgroundColor: 'rgba(191, 136, 3, 0.07)' },
@@ -1449,7 +1387,6 @@ export function RutinaTextEditor({
   onInsertBlock,
   onSaveBlock,
   onEditExercise,
-  describeExercise,
   apiRef,
   placeholder,
   autoFocus,
@@ -1466,7 +1403,6 @@ export function RutinaTextEditor({
   const onInsertRef = useRef(onInsertBlock);
   const onSaveRef = useRef(onSaveBlock);
   const onEditRef = useRef(onEditExercise);
-  const describeRef = useRef(describeExercise);
   catalogRef.current = catalog;
   parsedRef.current = parsed;
   onChangeRef.current = onChange;
@@ -1475,7 +1411,6 @@ export function RutinaTextEditor({
   onInsertRef.current = onInsertBlock;
   onSaveRef.current = onSaveBlock;
   onEditRef.current = onEditExercise;
-  describeRef.current = describeExercise;
 
   useEffect(() => {
     if (!host.current) return;
@@ -1777,21 +1712,10 @@ export function RutinaTextEditor({
         save: onSaveRef.current ? (t) => onSaveRef.current?.(t) : null,
         insert: (k, id) => onInsertRef.current?.(k, id) ?? Promise.resolve(null),
         edit: onEditRef.current ? (id) => onEditRef.current?.(id) : null,
-        describe: (id) => describeRef.current?.(id) ?? null,
       }),
     });
-    // Cmd/Ctrl held → recognised exercises look clickable (Cmd+click edits them).
-    const setMod = (held: boolean) => view.dom.classList.toggle('rt-mod', held);
-    const onModKey = (e: KeyboardEvent) => setMod(e.metaKey || e.ctrlKey);
-    const onBlur = () => setMod(false);
-    document.addEventListener('keydown', onModKey);
-    document.addEventListener('keyup', onModKey);
-    window.addEventListener('blur', onBlur);
     if (autoFocus) view.focus();
     return () => {
-      document.removeEventListener('keydown', onModKey);
-      document.removeEventListener('keyup', onModKey);
-      window.removeEventListener('blur', onBlur);
       view.destroy();
       viewRef.current = null;
     };
