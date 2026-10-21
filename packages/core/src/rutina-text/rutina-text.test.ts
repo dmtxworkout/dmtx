@@ -346,8 +346,11 @@ describe('completionsAt extras', () => {
     expect(completionsAt('For time\n', 9, catalog)?.options[0]).toMatchObject({ type: 'group' });
     const e = completionsAt('For time\n', 9, catalog, { explicit: true });
     expect(e?.options[0]).toMatchObject({ type: 'group' });
+    // An empty line offers everything: structure first, then formats, exercises, extras.
     const f = completionsAt('', 0, catalog, { explicit: true });
-    expect(f?.options[0]).toMatchObject({ type: 'format', label: 'AMRAP' });
+    expect(f?.options[0]).toMatchObject({ type: 'group' });
+    expect(f?.options.some((o) => o.type === 'format' && o.label === 'AMRAP')).toBe(true);
+    expect(f?.options.some((o) => o.type === 'exercise')).toBe(true);
   });
 });
 

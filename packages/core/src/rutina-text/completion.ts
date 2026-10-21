@@ -247,11 +247,17 @@ export function completionsAt(
   const wordStart = lineStart + before.lastIndexOf(' ') + 1;
   const word = fold(before.slice(before.lastIndexOf(' ') + 1));
 
-  // A. Nothing typed yet: list what can go on this line.
+  // A. Nothing typed yet: everything that can go on this line, grouped by the
+  // editor into sections (formats, structure, exercises, templates, blocks, rutinas).
   if (!typed) {
-    const options: Completion[] = atSectionStart
-      ? [...FORMATS, ...sectionOpts]
-      : [GROUP_LINE, REST_LINE, ...sectionOpts, ...extraOptions(opts, ''), ...exerciseOptions(cat, '')];
+    const options: Completion[] = [
+      GROUP_LINE,
+      REST_LINE,
+      ...FORMATS,
+      ...sectionOpts,
+      ...exerciseOptions(cat, ''),
+      ...extraOptions(opts, ''),
+    ];
     return { from: offset, to: offset, options };
   }
 

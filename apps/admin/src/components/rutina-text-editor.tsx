@@ -1028,8 +1028,8 @@ const theme = EditorView.theme({
   '.cm-tooltip.cm-tooltip-autocomplete > ul': {
     fontFamily: 'var(--font-sans)',
     fontSize: '13px',
-    maxHeight: '260px',
-    minWidth: '280px',
+    maxHeight: '320px',
+    minWidth: '300px',
   },
   '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
     padding: '5px 10px',
@@ -1042,6 +1042,16 @@ const theme = EditorView.theme({
     color: 'var(--color-ink)',
   },
   '.cm-completionLabel': { fontWeight: '600' },
+  '.cm-tooltip.cm-tooltip-autocomplete > ul > completion-section': {
+    display: 'block',
+    padding: '7px 10px 2px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10px',
+    fontWeight: '600',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: 'var(--color-muted)',
+  },
   '.cm-completionDetail': {
     marginLeft: 'auto',
     fontStyle: 'normal',
@@ -1173,6 +1183,18 @@ export function RutinaTextEditor({
       });
     };
 
+    // The popup groups its rows like the "+" menu does, in this order.
+    const SECTION: Partial<Record<string, { name: string; rank: number }>> = {
+      group: { name: 'Estructura', rank: 1 },
+      keyword: { name: 'Estructura', rank: 1 },
+      section: { name: 'Estructura', rank: 1 },
+      format: { name: 'Formatos', rank: 2 },
+      exercise: { name: 'Ejercicios', rank: 3 },
+      template: { name: 'Plantillas', rank: 4 },
+      snippet: { name: 'Bloques guardados', rank: 5 },
+      rutina: { name: 'Rutinas', rank: 6 },
+      create: { name: 'Nuevo', rank: 7 },
+    };
     const source = (ctx: CompletionContext): CompletionResult | null => {
       const r = completionsAt(ctx.state.doc.toString(), ctx.pos, catalogRef.current, {
         explicit: ctx.explicit,
@@ -1189,6 +1211,7 @@ export function RutinaTextEditor({
           label: o.label,
           detail: o.detail,
           type: o.type,
+          section: SECTION[o.type],
           // "Crear ejercicio" opens the create dialog and leaves the text as typed;
           // blocks and rutinas are fetched and inserted whole.
           apply:
@@ -1393,6 +1416,17 @@ export function RutinaTextEditor({
           keymap.of([...historyKeymap, ...lintKeymap, ...defaultKeymap]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+            // A click that lands on a blank line opens the suggestions, like Enter does.
+            if (
+              u.selectionSet &&
+              !u.docChanged &&
+              u.transactions.some((tr) => tr.isUserEvent('select.pointer')) &&
+              u.state.selection.main.empty &&
+              !u.state.doc.lineAt(u.state.selection.main.head).text.trim() &&
+              completionStatus(u.state) !== 'active'
+            ) {
+              window.setTimeout(() => startCompletion(u.view), 0);
+            }
           }),
         ],
       }),
