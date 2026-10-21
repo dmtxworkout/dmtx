@@ -567,6 +567,9 @@ const hoverTracker = EditorView.domEventHandlers({
   // mousedown) so a drag that starts on a name still selects text.
   click: (event, view) => {
     if (event.button !== 0 || !view.state.selection.main.empty) return false;
+    // Only on the name itself: a click elsewhere on the line (or past its end)
+    // would otherwise snap to the nearest position, which may be the name.
+    if (!(event.target as HTMLElement).closest?.('.rt-ex')) return false;
     const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
     if (pos == null) return false;
     const ref = exerciseAt(view.state, pos);
@@ -1076,7 +1079,7 @@ const theme = EditorView.theme({
   // Recognised exercises read as links: a dotted underline and a pointer on
   // hover; a click opens the exercise for editing.
   '.rt-ex': { textUnderlineOffset: '3px' },
-  '.rt-ex:hover': { cursor: 'pointer', textDecoration: 'underline dotted', textDecorationColor: 'var(--color-muted)' },
+  '.rt-ex:hover': { cursor: 'pointer', textDecoration: 'underline', color: 'var(--color-accent-dark)' },
   '.cm-activeLine': { backgroundColor: 'rgba(0,0,0,0.03)' },
   '.rt-line-error': { backgroundColor: 'rgba(229, 20, 0, 0.06)' },
   '.rt-line-warn': { backgroundColor: 'rgba(191, 136, 3, 0.07)' },
