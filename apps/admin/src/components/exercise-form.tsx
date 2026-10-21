@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MediaField } from '@/components/media-field';
 import { toast } from '@/components/ui/toast';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
+import { ActionsMenu } from '@/components/ui/actions-menu';
+import { Dialog } from '@/components/ui/dialog';
 
 const formSchema = z.object({
   name: z.string().min(1, es.app.nameRequired),
@@ -140,6 +142,7 @@ export function ExerciseForm({
   const [demoVideoAssetId, setDemoVideoAssetId] = useState<string | null>(
     exercise?.demoVideoAssetId ?? null,
   );
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [cues, setCues] = useState<string[]>(exercise?.cues ?? []);
   const [aliases, setAliases] = useState<string[]>(exercise?.aliases ?? []);
 
@@ -272,20 +275,20 @@ export function ExerciseForm({
             <span className="text-ink-2">{exercise ? 'Editar' : 'Nuevo'}</span>
           </div>
           {exercise && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {exercise.archivedAt && (
                 <span className="font-mono text-[11px] font-medium uppercase tracking-[0.1em] text-muted">Archivado</span>
               )}
-              <Button type="button" variant="outline" disabled={archive.isPending} onClick={() => archive.mutate(!exercise.archivedAt)}>
-                {exercise.archivedAt ? 'Restaurar' : 'Archivar'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
-              >
-                {es.app.delete}
-              </Button>
+              <ActionsMenu
+                items={[
+                  {
+                    label: exercise.archivedAt ? 'Restaurar' : 'Archivar',
+                    disabled: archive.isPending,
+                    onSelect: () => archive.mutate(!exercise.archivedAt),
+                  },
+                  { label: es.app.delete, danger: true, onSelect: () => setConfirmDelete(true) },
+                ]}
+              />
             </div>
           )}
         </div>
@@ -391,6 +394,30 @@ export function ExerciseForm({
       {embedded && (
         <div className="flex justify-end border-t border-line-3 bg-surface px-5 py-3">{dialogActions}</div>
       )}
+
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Eliminar ejercicio" className="max-w-sm">
+        <div className="flex flex-col gap-4 p-5">
+          <p className="text-[14px] leading-relaxed text-ink-2">
+            ¿Eliminar «{exercise?.name}»? Solo se puede eliminar un ejercicio que ninguna rutina ni ningún resultado de
+            usuario use. Si está en uso, archívalo.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
+              {es.app.cancel}
+            </Button>
+            <Button
+              type="button"
+              disabled={removeExercise.isPending}
+              onClick={() => {
+                setConfirmDelete(false);
+                removeExercise.mutate();
+              }}
+            >
+              {removeExercise.isPending ? es.app.saving : es.app.delete}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </form>
   );
 }
