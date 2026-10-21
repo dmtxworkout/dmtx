@@ -86,7 +86,6 @@ export const es = {
       addAlias: 'Agregar alias',
       difficulty: 'Dificultad',
       measurementType: 'Tipo de medición',
-      isUnilateral: 'Unilateral (por lado)',
       status: 'Estado',
       tempo: 'Tempo',
       media: 'Medios',

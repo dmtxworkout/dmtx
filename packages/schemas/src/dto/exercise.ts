@@ -19,7 +19,6 @@ export const createExerciseSchema = z.object({
   // "Cargada de potencia", or common abbreviations).
   aliases: z.array(z.string().min(1).max(200)).default([]),
   difficulty: difficultySchema,
-  isUnilateral: z.boolean().default(false),
   defaultTempo: tempoSchema.nullish(),
   demoVideoAssetId: uuidSchema.nullish(),
   thumbnailAssetId: uuidSchema.nullish(),
@@ -43,7 +42,6 @@ export const exerciseSchema = z.object({
   cues: z.array(z.string()),
   aliases: z.array(z.string()),
   difficulty: difficultySchema,
-  isUnilateral: z.boolean(),
   defaultTempo: tempoSchema.nullable(),
   demoVideoAssetId: uuidSchema.nullable(),
   thumbnailAssetId: uuidSchema.nullable(),

@@ -25,7 +25,6 @@ const formSchema = z.object({
   name: z.string().min(1, es.app.nameRequired),
   description: z.string(),
   difficulty: difficultySchema,
-  isUnilateral: z.boolean(),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -33,7 +32,6 @@ const emptyValues: FormValues = {
   name: '',
   description: '',
   difficulty: 'beginner',
-  isUnilateral: false,
 };
 
 function toDefaults(exercise: Exercise): FormValues {
@@ -41,7 +39,6 @@ function toDefaults(exercise: Exercise): FormValues {
     name: exercise.name,
     description: exercise.description ?? '',
     difficulty: exercise.difficulty,
-    isUnilateral: exercise.isUnilateral,
   };
 }
 
@@ -187,7 +184,6 @@ export function ExerciseForm({
         cues: cues.map((c) => c.trim()).filter((v) => v.length > 0),
         aliases: aliases.map((a) => a.trim()).filter((v) => v.length > 0),
         difficulty: values.difficulty,
-        isUnilateral: values.isUnilateral,
         thumbnailAssetId,
         demoVideoAssetId,
       };
@@ -222,6 +218,7 @@ export function ExerciseForm({
       qc.invalidateQueries({ queryKey: ['exercises'] });
       router.push('/ejercicios');
     },
+    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
   // Archiving hides the exercise from suggestions and the list; rutinas keep it.
   const archive = useMutation({
@@ -329,12 +326,6 @@ export function ExerciseForm({
                         </option>
                       ))}
                     </Select>
-                  </div>
-                  <div className="flex items-end pb-1.5">
-                    <label className="flex items-center gap-2 text-sm text-ink-2">
-                      <input type="checkbox" className="h-4 w-4" {...form.register('isUnilateral')} />
-                      {es.exercises.fields.isUnilateral}
-                    </label>
                   </div>
                 </div>
               </CardContent>

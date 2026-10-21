@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, isNull, or, sql, isNotNull } from 'drizzle-orm';
-import { exerciseEquipment, exerciseMuscles, exercises } from '@dmtx/db';
+import { exerciseEquipment, exerciseMuscles, exercises, setResults, workoutItems } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import {
   createExerciseSchema,
@@ -28,7 +28,6 @@ function serializeBase(row: ExerciseRow) {
     cues: row.cues,
     aliases: row.aliases,
     difficulty: row.difficulty,
-    isUnilateral: row.isUnilateral,
     defaultTempo: row.defaultTempo ?? null,
     demoVideoAssetId: row.demoVideoAssetId,
     thumbnailAssetId: row.thumbnailAssetId,
@@ -160,7 +159,6 @@ exercisesRoute.openapi(
         cues: input.cues,
         aliases: input.aliases,
         difficulty: input.difficulty,
-        isUnilateral: input.isUnilateral,
         defaultTempo: input.defaultTempo ?? null,
         demoVideoAssetId: input.demoVideoAssetId ?? null,
         thumbnailAssetId: input.thumbnailAssetId ?? null,
@@ -216,7 +214,6 @@ exercisesRoute.openapi(
         ...(input.cues !== undefined ? { cues: input.cues } : {}),
         ...(input.aliases !== undefined ? { aliases: input.aliases } : {}),
         ...(input.difficulty !== undefined ? { difficulty: input.difficulty } : {}),
-        ...(input.isUnilateral !== undefined ? { isUnilateral: input.isUnilateral } : {}),
         ...(input.defaultTempo !== undefined ? { defaultTempo: input.defaultTempo ?? null } : {}),
         ...(input.demoVideoAssetId !== undefined
           ? { demoVideoAssetId: input.demoVideoAssetId ?? null }
@@ -262,11 +259,25 @@ exercisesRoute.openapi(
     responses: {
       204: { description: 'Ejercicio eliminado' },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+      409: { description: 'En uso', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const { id } = c.req.valid('param');
+    // An exercise that rutinas or athletes' results point to is a reference:
+    // archive it instead, so nothing breaks or loses its history.
+    const [[inRutinas], [inResults]] = await Promise.all([
+      db.select({ value: count() }).from(workoutItems).where(eq(workoutItems.exerciseId, id)),
+      db.select({ value: count() }).from(setResults).where(eq(setResults.exerciseId, id)),
+    ]);
+    if ((inRutinas?.value ?? 0) > 0 || (inResults?.value ?? 0) > 0) {
+      const parts = [
+        inRutinas?.value ? `${inRutinas.value} línea${inRutinas.value === 1 ? '' : 's'} de rutina` : null,
+        inResults?.value ? `${inResults.value} resultado${inResults.value === 1 ? '' : 's'} de usuarios` : null,
+      ].filter(Boolean);
+      return c.json({ error: `No se puede eliminar: lo usan ${parts.join(' y ')}. Archívalo en su lugar.` }, 409);
+    }
     const [row] = await db
       .update(exercises)
       .set({ deletedAt: new Date() })

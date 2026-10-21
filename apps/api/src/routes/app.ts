@@ -413,7 +413,6 @@ appRoute.get('/workouts/:id', async (c) => {
                 name: ex.name,
                 description: ex.description,
                 cues: ex.cues,
-                isUnilateral: ex.isUnilateral,
                 defaultTempo: ex.defaultTempo ?? null,
                 demoVideoUrl: url(media, ex.demoVideoAssetId),
                 thumbnailUrl: url(media, ex.thumbnailAssetId),

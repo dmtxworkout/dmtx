@@ -155,6 +155,13 @@
       "when": 1792594177403,
       "tag": "0021_exercise_archived",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1792594481835,
+      "tag": "0022_drop_is_unilateral",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, primaryKey, text, uuid, timestamp } from 'drizzle-orm/pg-core';
+import { jsonb, pgTable, primaryKey, text, uuid, timestamp } from 'drizzle-orm/pg-core';
 import type { Tempo } from '@dmtx/schemas';
 import {
   difficultyEnum,
@@ -19,7 +19,6 @@ export const exercises = pgTable('exercises', {
   cues: jsonb().$type<string[]>().notNull().default([]),
   aliases: jsonb().$type<string[]>().notNull().default([]),
   difficulty: difficultyEnum().notNull(),
-  isUnilateral: boolean().notNull().default(false),
   defaultTempo: jsonb().$type<Tempo>(),
   demoVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
