@@ -725,7 +725,12 @@ function buildInsertMenu(
   lineNo: number,
   origin: MenuOrigin,
 ): { dom: HTMLElement; destroy: () => void } {
-  const groups = [...builtInGroups(view.state.field(catalogField)), ...view.state.field(insertsField)];
+  // Categories in the order the admin reaches for them: whole things first
+  // (plantillas, bloques, rutinas), then structure, then exercises and rests.
+  const ORDER: InsertGroup['kind'][] = ['template', 'block', 'rutina', 'formato', 'rondas', 'ejercicio', 'descanso'];
+  const groups = [...builtInGroups(view.state.field(catalogField)), ...view.state.field(insertsField)].sort(
+    (a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind),
+  );
   const { insert } = view.state.field(handlersField);
   const parent = parentKindOf(view, lineNo);
   const nested = parent === 'format' || parent === 'group';

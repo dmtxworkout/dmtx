@@ -1,5 +1,19 @@
 'use client';
 
+import {
+  formatDistance,
+  formatDuration,
+  formatHeader,
+  goalsFrom,
+  loadText,
+  pluralName,
+  tempoText,
+  type ParsedBlock,
+  type ParsedItem,
+  type ParsedRutina,
+} from '@dmtx/core';
+import type { SkillGoal } from '@dmtx/schemas';
+
 // A read-only, athlete-facing rendering of the whole rutina, driven live by the
 // builder state (plus the fetched warmup/cooldown rutinas). Plain text — each
 // exercise reads "{cantidad} {nombre} @{carga}". Loose exercises list tightly;
@@ -171,7 +185,10 @@ export function RutinaPreview({
       )}
 
       <div>
-        <div className="mb-3 text-[20px] font-extrabold leading-tight tracking-tight text-ink">{name || 'Rutina sin título'}</div>
+        {/* Embedded (the guide's examples) with no name: no title line at all. */}
+        {!(hideHeader && !name) && (
+          <div className="mb-3 text-[20px] font-extrabold leading-tight tracking-tight text-ink">{name || 'Rutina sin título'}</div>
+        )}
 
         {empty ? (
           <div className="py-8 text-center">
@@ -223,3 +240,80 @@ export function RutinaPreview({
     </div>
   );
 }
+
+// ---- From the parse result to the preview model -------------------------------
+
+/** A level's goal as the athlete reads it: "3 Dominadas", "Plancha 60 s", "Sentadilla 5 reps @100 kg". */
+export function skillGoalLabel(g: SkillGoal): string {
+  if (g.metric === 'reps') return `${g.value} ${pluralName(g.exerciseName, g.value)}`;
+  if (g.metric === 'time_seconds') return `${g.exerciseName} ${formatDuration(g.value)}`;
+  if (g.metric === 'distance_meters') return `${formatDistance(g.value)} ${g.exerciseName}`;
+  return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;
+}
+
+// ---- Preview model from the parse result -------------------------------------
+
+function pvItem(it: ParsedItem, inSlot = false): PvItem {
+  if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds };
+  const sets = it.sets && it.sets > 1 ? it.sets : null;
+  let prefix: string | null = null;
+  if (it.measure === 'time' && it.workSeconds != null) prefix = formatDuration(it.workSeconds);
+  else if (it.measure === 'distance' && it.distanceMeters != null)
+    prefix = formatDistance(it.distanceMeters);
+  else if (it.reps != null) prefix = String(it.reps);
+  if (sets && prefix) prefix = `${sets}×${prefix}`;
+  else if (sets) prefix = `${sets} series`;
+  const load = loadText(it.loadPrescription).replace(/^@/, '');
+  const tempo = tempoText(it.tempoOverride).replace(/^tempo /, '');
+  return {
+    kind: 'exercise',
+    prefix,
+    // Counted reps read in plural: "20 Sentadillas" (the catalog keeps the singular).
+    name: pluralName(it.match?.name ?? it.rawName ?? '…', it.measure === 'reps' ? it.reps : null),
+    load: load || null,
+    tempo: tempo ? tempo.replace(/-/g, '·') : null,
+    perSide: it.perSide,
+    note: it.notes,
+    // Items under an "intervalo N:" group already sit under that heading.
+    interval: !inSlot && it.intervalIndex != null ? it.intervalIndex + 1 : null,
+  };
+}
+/** Parsed blocks → preview blocks, nesting kept (parts show their header, groups their box). */
+const pvBlock = (b: ParsedBlock): PvBlock => ({
+  title: b.label,
+  rounds: b.rounds,
+  note: b.notes,
+  loose: b.loose,
+  part: b.kind === 'part' ? (b.format ? formatHeader(b.format.format, b.format) : 'Parte') : null,
+  // An exercise that did not resolve (typo, half-written) is an error in the
+  // editor; the preview shows the rutina as the athlete would get it, without it.
+  items: b.items.filter((it) => it.kind !== 'exercise' || it.match).map((it) => pvItem(it, b.type === 'emom')),
+  blocks: (b.children ?? []).map(pvBlock),
+});
+const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
+
+export function previewFrom(
+  parsed: ParsedRutina,
+  type: 'structured' | 'video',
+  hasVideo: boolean,
+  /** A reusable block is one piece of text: no "Rutina" section label over it. */
+  blockMode = false,
+): PvModel {
+  // Parts carry the format headers inside the list, so the section labels are plain.
+  const section = (s: 'warmup' | 'cooldown'): PvSection | null => {
+    const blocks = parsed.blocks.filter((b) => b.section === s);
+    if (!blocks.length) return null;
+    return { name: null, formatLabel: null, blocks: pvBlocks(blocks) };
+  };
+  return {
+    type,
+    hasVideo,
+    formatLabel: blockMode ? '' : type === 'structured' ? 'Rutina' : 'Video',
+    headline: '',
+    warmup: section('warmup'),
+    main: pvBlocks(parsed.blocks.filter((b) => b.section === 'main')),
+    cooldown: section('cooldown'),
+    goals: goalsFrom(parsed).map(skillGoalLabel),
+  };
+}
+

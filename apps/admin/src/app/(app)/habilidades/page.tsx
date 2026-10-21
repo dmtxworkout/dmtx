@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { Thumb } from '@/components/ui/thumb';
 import { MediaThumb } from '@/components/media-thumb';
-import { skillGoalLabel } from '@/components/rutina-form';
+import { skillGoalLabel } from '@/components/rutina-preview';
 
 const COLS = 'grid-cols-[74px_minmax(0,1.4fr)_90px_minmax(0,1.6fr)_120px_104px_150px] gap-3.5 px-[18px]';
 

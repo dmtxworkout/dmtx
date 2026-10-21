@@ -7,23 +7,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, ReusableBlock, Skill, SkillGoal, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, ReusableBlock, Skill, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
 import {
   Catalog,
-  formatDistance,
-  formatDuration,
-  formatHeader,
   goalsFrom,
-  loadText,
   parseRutina,
-  pluralName,
   serializeRutina,
-  tempoText,
   toWorkoutInput,
   type CompletionExtra,
-  type ParsedBlock,
-  type ParsedItem,
-  type ParsedRutina,
   estimateDurationSeconds,
   joinSections,
   splitSections,
@@ -42,13 +33,8 @@ import { ExerciseForm } from '@/components/exercise-form';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { toast } from '@/components/ui/toast';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
-import {
-  RutinaPreview,
-  type PvBlock,
-  type PvItem,
-  type PvModel,
-  type PvSection,
-} from '@/components/rutina-preview';
+import { RutinaPreview, previewFrom } from '@/components/rutina-preview';
+import { RutinaGuide } from '@/components/rutina-guide';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   amrap: 'AMRAP',
@@ -65,100 +51,7 @@ const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Cal
 const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '', goal: '' };
 const GOAL_PLACEHOLDER = 'Las marcas que desbloquean el siguiente nivel, una por línea:\n3 Dominadas\nPlancha 60s\nSentadilla 5x5 @100 kg';
 
-/** A level's goal as the athlete reads it: "3 Dominadas", "Plancha 60 s", "Sentadilla 5 reps @100 kg". */
-export function skillGoalLabel(g: SkillGoal): string {
-  if (g.metric === 'reps') return `${g.value} ${pluralName(g.exerciseName, g.value)}`;
-  if (g.metric === 'time_seconds') return `${g.exerciseName} ${formatDuration(g.value)}`;
-  if (g.metric === 'distance_meters') return `${formatDistance(g.value)} ${g.exerciseName}`;
-  return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;
-}
 const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque reutilizable…';
-
-// Complete reference shown in the right column.
-type GuideRow = { k: string; v: string };
-const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
-  {
-    title: 'Estructura',
-    rows: [
-      { k: 'AMRAP 12 min', v: 'una parte: su formato y, indentado debajo, su contenido. Puede haber varias partes seguidas' },
-      { k: '41 burpees', v: 'un ejercicio por línea: cantidad + nombre' },
-      { k: '3 rondas', v: 'bloque; sus ejercicios van indentados debajo (los dos puntos son opcionales)' },
-      { k: 'Superserie', v: 'bloque tipo superserie (admite "Superserie 3 rondas")' },
-      { k: '3 rondas, descanso 1 min:', v: 'descanso al final de cada ronda' },
-      { k: 'descanso 90s', v: 'descanso suelto entre ejercicios' },
-      { k: 'Calentamiento · Enfriamiento', v: 'cada uno tiene su pestaña arriba; se escriben igual que la rutina' },
-      { k: 'Sangría', v: 'como en Python: lo indentado va dentro de la línea de arriba (sección, formato o bloque)' },
-      { k: '// nota', v: 'comentario de línea completa' },
-    ],
-  },
-  {
-    title: 'Formatos',
-    rows: [
-      { k: 'AMRAP 12 min', v: 'máximas rondas en el tiempo' },
-      { k: 'EMOM 10 min · EMOM 10 x 90s · E2MOM 10', v: 'cada intervalo un ejercicio o un grupo "intervalo N:"; rotan hasta acabar' },
-      { k: 'Tabata 8 x 20/10', v: 'rondas × trabajo/descanso (los ejercicios no llevan cantidad)' },
-      { k: 'For time · For time cap 20 min', v: 'lo más rápido posible, con tope opcional' },
-      { k: 'For time 5 rondas', v: 'rondas del total' },
-      { k: 'Chipper cap 25 min', v: 'lista completada una vez' },
-      { k: 'Fuerza', v: 'series × reps con carga y descanso' },
-      { k: 'Circuito 3 rondas descanso 1 min', v: 'vueltas al circuito' },
-    ],
-  },
-  {
-    title: 'Cantidades',
-    rows: [
-      { k: '41 burpees · burpees x41', v: 'repeticiones' },
-      { k: 'flexiones 3x5 · 3 series de 5', v: 'series × repeticiones' },
-      { k: "plancha 30s · 1 min · 1:30 · 30'' · 12'", v: 'tiempo (\' minutos, \'\' segundos)' },
-      { k: '3x45s plancha', v: 'series × tiempo' },
-      { k: '400 m carrera · remo 1 km', v: 'distancia' },
-      { k: '4x400 m carrera', v: 'series × distancia' },
-      { k: 'plancha max · al fallo', v: 'sin cantidad fija' },
-    ],
-  },
-  {
-    title: 'Carga',
-    rows: [
-      { k: '@60 kg · 60 kg', v: 'carga absoluta (kg por defecto)' },
-      { k: '@135/95 lb', v: 'hombres / mujeres' },
-      { k: '@80%', v: '% del 1RM' },
-      { k: '@RPE 8', v: 'esfuerzo percibido' },
-      { k: '+20 kg', v: 'añadido al peso corporal' },
-      { k: '@corporal', v: 'solo peso corporal' },
-    ],
-  },
-  {
-    title: 'Tempo',
-    rows: [
-      { k: 'tempo 0-3-1-1', v: 'hold arriba · negativa · hold abajo · positiva' },
-      { k: 'tempo 0-3-0-X', v: 'X = explosivo' },
-      { k: '@0311', v: 'forma corta' },
-    ],
-  },
-  {
-    title: 'Modificadores',
-    rows: [
-      { k: 'c/lado · por lado', v: 'cantidad por cada lado' },
-      { k: 'desc 90s', v: 'descanso entre series (Fuerza)' },
-      { k: '10 burpees // sin saltar', v: 'nota que ve el usuario; sola en una línea pertenece a lo que tiene encima' },
-      { k: '# revisar carga', v: 'comentario interno: no se guarda en la estructura ni lo ve el usuario' },
-      { k: 'intervalo 2: 10 burpees', v: 'fija el intervalo de un ejercicio en un EMOM' },
-      { k: 'intervalo 2:', v: 'en un EMOM, abre el grupo de ejercicios de ese intervalo (indentados debajo); los intervalos rotan' },
-      { k: '// despacio', v: 'nota que ve el usuario' },
-    ],
-  },
-  {
-    title: 'Editor',
-    rows: [
-      { k: 'Sugerencias', v: 'al escribir un ejercicio aparecen nombres y modificadores; Tab acepta, Esc cierra' },
-      { k: 'Menú +', v: 'formatos, rondas, descansos, plantillas y bloques; lo insertado trae huecos ⟨así⟩ que se rellenan con Tab' },
-      { k: 'Enter', v: 'tras una cabecera indenta; en una línea vacía indentada sube un nivel por pulsación' },
-      { k: 'Nombre de bloque o rutina', v: 'al inicio de línea inserta su contenido completo' },
-      { k: 'Guardar bloque', v: 'selecciona dos líneas o más y pulsa la acción que aparece junto a la selección' },
-      { k: 'Ejercicio desconocido', v: 'subrayado en rojo; "Crear ejercicio" lo añade al catálogo' },
-    ],
-  },
-];
 
 // ---- Text helpers ----------------------------------------------------------
 
@@ -229,72 +122,6 @@ function initialText(workout: Workout | undefined, catalog: Catalog): string {
   return workout.sourceText ?? serializeRutina(workout, catalog);
 }
 
-// ---- Preview model from the parse result -------------------------------------
-
-function pvItem(it: ParsedItem, inSlot = false): PvItem {
-  if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds };
-  const sets = it.sets && it.sets > 1 ? it.sets : null;
-  let prefix: string | null = null;
-  if (it.measure === 'time' && it.workSeconds != null) prefix = formatDuration(it.workSeconds);
-  else if (it.measure === 'distance' && it.distanceMeters != null)
-    prefix = formatDistance(it.distanceMeters);
-  else if (it.reps != null) prefix = String(it.reps);
-  if (sets && prefix) prefix = `${sets}×${prefix}`;
-  else if (sets) prefix = `${sets} series`;
-  const load = loadText(it.loadPrescription).replace(/^@/, '');
-  const tempo = tempoText(it.tempoOverride).replace(/^tempo /, '');
-  return {
-    kind: 'exercise',
-    prefix,
-    // Counted reps read in plural: "20 Sentadillas" (the catalog keeps the singular).
-    name: pluralName(it.match?.name ?? it.rawName ?? '…', it.measure === 'reps' ? it.reps : null),
-    load: load || null,
-    tempo: tempo ? tempo.replace(/-/g, '·') : null,
-    perSide: it.perSide,
-    note: it.notes,
-    // Items under an "intervalo N:" group already sit under that heading.
-    interval: !inSlot && it.intervalIndex != null ? it.intervalIndex + 1 : null,
-  };
-}
-/** Parsed blocks → preview blocks, nesting kept (parts show their header, groups their box). */
-const pvBlock = (b: ParsedBlock): PvBlock => ({
-  title: b.label,
-  rounds: b.rounds,
-  note: b.notes,
-  loose: b.loose,
-  part: b.kind === 'part' ? (b.format ? formatHeader(b.format.format, b.format) : 'Parte') : null,
-  // An exercise that did not resolve (typo, half-written) is an error in the
-  // editor; the preview shows the rutina as the athlete would get it, without it.
-  items: b.items.filter((it) => it.kind !== 'exercise' || it.match).map((it) => pvItem(it, b.type === 'emom')),
-  blocks: (b.children ?? []).map(pvBlock),
-});
-const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
-
-function previewFrom(
-  parsed: ParsedRutina,
-  type: 'structured' | 'video',
-  hasVideo: boolean,
-  /** A reusable block is one piece of text: no "Rutina" section label over it. */
-  blockMode = false,
-): PvModel {
-  // Parts carry the format headers inside the list, so the section labels are plain.
-  const section = (s: 'warmup' | 'cooldown'): PvSection | null => {
-    const blocks = parsed.blocks.filter((b) => b.section === s);
-    if (!blocks.length) return null;
-    return { name: null, formatLabel: null, blocks: pvBlocks(blocks) };
-  };
-  return {
-    type,
-    hasVideo,
-    formatLabel: blockMode ? '' : type === 'structured' ? 'Rutina' : 'Video',
-    headline: '',
-    warmup: section('warmup'),
-    main: pvBlocks(parsed.blocks.filter((b) => b.section === 'main')),
-    cooldown: section('cooldown'),
-    goals: goalsFrom(parsed).map(skillGoalLabel),
-  };
-}
-
 // ---- Component --------------------------------------------------------------
 
 export function RutinaForm({
@@ -336,7 +163,6 @@ export function RutinaForm({
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
-  const [guideQuery, setGuideQuery] = useState('');
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
   const editorApi = useRef<RutinaEditorApi | null>(null);
   // A missing exercise is created from the editor with the full exercise form;
@@ -562,14 +388,6 @@ export function RutinaForm({
     [parsed, type, videoAssetId, blockMode],
   );
 
-  const guideSections = useMemo(() => {
-    const q = fold(guideQuery.trim());
-    if (!q) return GUIDE_SECTIONS;
-    return GUIDE_SECTIONS.map((sec) => ({
-      ...sec,
-      rows: sec.rows.filter((r) => fold(r.k).includes(q) || fold(r.v).includes(q) || fold(sec.title).includes(q)),
-    })).filter((sec) => sec.rows.length > 0);
-  }, [guideQuery]);
 
   const mainFormats = parsed.blocks
     .filter((b) => b.section === 'main' && b.kind === 'part' && b.format)
@@ -1294,59 +1112,7 @@ export function RutinaForm({
       </Dialog>
 
       {/* Guide drawer */}
-      {guideOpen && (
-        <>
-          <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setGuideOpen(false)} />
-          <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[420px] flex-col border-l border-line bg-surface shadow-[0_0_40px_-10px_rgba(0,0,0,0.35)]">
-            <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
-              <h3 className="text-[15px] font-bold">Guía de la notación</h3>
-              <button
-                type="button"
-                onClick={() => setGuideOpen(false)}
-                aria-label="Cerrar"
-                className="rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="shrink-0 px-5 pt-4">
-              <div className="flex h-9 items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
-                <span className="text-muted-2">⌕</span>
-                <input
-                  autoFocus
-                  value={guideQuery}
-                  onChange={(e) => setGuideQuery(e.target.value)}
-                  placeholder="Buscar (tempo, carga, EMOM…)"
-                  className="h-full flex-1 bg-transparent text-[13px] text-ink placeholder:text-muted-2 focus:outline-none"
-                />
-                {guideQuery && (
-                  <button type="button" onClick={() => setGuideQuery('')} className="text-faint-2 hover:text-ink">
-                    ✕
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-6 pt-3">
-              {guideSections.length === 0 && (
-                <p className="text-[12px] text-muted">Nada coincide con «{guideQuery}».</p>
-              )}
-              {guideSections.map((sec) => (
-                <section key={sec.title} className="flex flex-col gap-1.5">
-                  <h4 className="mt-2 text-[12px] font-bold uppercase tracking-[0.06em] text-ink-3">{sec.title}</h4>
-                  <dl className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface-2/40 p-3">
-                    {sec.rows.map((g) => (
-                      <div key={g.k} className="flex flex-col gap-0.5">
-                        <dt className="font-mono text-[11.5px] font-medium text-ink">{g.k}</dt>
-                        <dd className="text-[11px] leading-snug text-muted">{g.v}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </section>
-              ))}
-            </div>
-          </aside>
-        </>
-      )}
+      <RutinaGuide open={guideOpen} onClose={() => setGuideOpen(false)} skillMode={skillMode} />
 
       {/* Settings drawer */}
       {settingsOpen && (
