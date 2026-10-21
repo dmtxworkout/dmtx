@@ -37,6 +37,7 @@ import { Select } from '@/components/ui/select';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
 import { ExerciseForm } from '@/components/exercise-form';
+import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { toast } from '@/components/ui/toast';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import {
@@ -640,58 +641,15 @@ export function RutinaForm({
     setActiveTab((t) => Math.min(t, baseline.variants.length));
     setServerError(null);
   };
-  // Navigating away with unsaved changes is blocked: the bar shakes instead
-  // (save or discard first). Covers the app's links and this page's own
-  // "back" actions; reload/close still get the browser prompt below.
-  const [shake, setShake] = useState(0);
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
-  const guardNav = (go: () => void) => {
-    if (dirtyRef.current) setShake((n) => n + 1);
-    else go();
-  };
-  useEffect(() => {
-    if (!dirty) return;
-    const onClick = (e: MouseEvent) => {
-      const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-      if (!a || a.target === '_blank' || e.metaKey || e.ctrlKey) return;
-      const url = new URL(a.href, window.location.href);
-      if (url.origin !== window.location.origin) return;
-      if (url.pathname === window.location.pathname) return;
-      e.preventDefault();
-      e.stopPropagation();
-      setShake((n) => n + 1);
-    };
-    document.addEventListener('click', onClick, true);
-    return () => document.removeEventListener('click', onClick, true);
-  }, [dirty]);
-  useEffect(() => {
-    if (!shake) return;
-    const t = window.setTimeout(() => setShake(0), 600);
-    return () => window.clearTimeout(t);
-  }, [shake]);
-
-  // ⌘S / Ctrl+S saves when there is something to save.
+  // Save / discard bar, ⌘S, navigation guard (shared with the exercise form).
   const doSaveRef = useRef<() => void>(() => {});
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        if (dirty) doSaveRef.current();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [dirty]);
-  // Leaving the page with unsaved changes asks first (the browser's own prompt).
-  useEffect(() => {
-    if (!dirty) return;
-    const onUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', onUnload);
-    return () => window.removeEventListener('beforeunload', onUnload);
-  }, [dirty]);
+  const { bar: unsavedBar, guardNav } = useUnsavedChanges({
+    dirty,
+    saving: save.isPending || saveBlock.isPending,
+    onSave: () => doSaveRef.current(),
+    onDiscard: discard,
+    canSave: type !== 'structured' || editorReady,
+  });
 
   const doSave = () => {
     setServerError(null);
@@ -722,40 +680,10 @@ export function RutinaForm({
     else save.mutate();
   };
   doSaveRef.current = doSave;
-  const saving = save.isPending || saveBlock.isPending;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {/* Unsaved-changes bar: only while there is something to save */}
-      {dirty && (
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
-          <div
-            key={shake}
-            className={cn(
-              'pointer-events-auto flex items-center gap-1 rounded-full bg-ink p-1 pl-4 text-white shadow-[0_12px_32px_-8px_rgba(0,0,0,0.45)]',
-              shake > 0 && 'animate-shake',
-            )}
-          >
-            <span className="mr-2 text-[13px] font-semibold">Cambios sin guardar</span>
-            <button
-              type="button"
-              onClick={discard}
-              disabled={saving}
-              className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-white/85 hover:bg-white/15 hover:text-white disabled:opacity-50"
-            >
-              Descartar
-            </button>
-            <button
-              type="button"
-              onClick={doSave}
-              disabled={saving || (type === 'structured' && !editorReady)}
-              className="rounded-full bg-white px-3.5 py-1.5 text-[13px] font-bold text-ink hover:bg-white/90 disabled:opacity-60"
-            >
-              {saving ? es.app.saving : es.app.save}
-            </button>
-          </div>
-        </div>
-      )}
+      {unsavedBar}
       {/* Header */}
       <header className="flex items-start justify-between gap-6 border-b border-line bg-surface px-7 pb-4 pt-5">
         <div className="flex min-w-0 flex-col gap-1.5">

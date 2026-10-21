@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -18,6 +18,8 @@ import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { MediaField } from '@/components/media-field';
+import { toast } from '@/components/ui/toast';
+import { useUnsavedChanges } from '@/components/unsaved-changes';
 
 const formSchema = z.object({
   name: z.string().min(1, es.app.nameRequired),
@@ -66,6 +68,19 @@ function GrowingList({
   removeLabel: string;
 }) {
   const rows = [...values, ''];
+  const list = useRef<HTMLDivElement>(null);
+  // Enter moves to the next row (the empty one at the end, once this row has a
+  // value) instead of submitting the whole form. The next row may have just
+  // been rendered, so it is looked up in the DOM after the commit.
+  const next = (k: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (!e.currentTarget.value.trim()) return;
+    window.setTimeout(() => {
+      const inputs = list.current?.querySelectorAll<HTMLInputElement>('input') ?? [];
+      inputs[k + 1]?.focus();
+    }, 0);
+  };
   const write = (k: number, value: string) => {
     if (k === values.length) {
       if (value === '') return;
@@ -75,7 +90,7 @@ function GrowingList({
     onChange(values.map((v, j) => (j === k ? value : v)));
   };
   return (
-    <div className="flex flex-col gap-2">
+    <div ref={list} className="flex flex-col gap-2">
       {rows.map((v, k) => {
         const last = k === rows.length - 1;
         return (
@@ -83,6 +98,7 @@ function GrowingList({
             <Input
               value={v}
               onChange={(e) => write(k, e.target.value)}
+              onKeyDown={(e) => next(k, e)}
               placeholder={last ? (values.length ? addPlaceholder : (placeholder ?? addPlaceholder)) : undefined}
             />
             {/* The empty last row has nothing to remove; a spacer keeps the inputs from jumping. */}
@@ -140,6 +156,32 @@ export function ExerciseForm({
 
   const leave = () => (onCancel ? onCancel() : router.push('/ejercicios'));
 
+  // Page mode: everything the form sends, as one comparable snapshot; the
+  // baseline is the loaded exercise (or the empty form) and the last save.
+  type Snapshot = { values: FormValues; cues: string[]; aliases: string[]; thumbnailAssetId: string | null; demoVideoAssetId: string | null };
+  const watched = form.watch();
+  const current: Snapshot = { values: watched, cues, aliases, thumbnailAssetId, demoVideoAssetId };
+  const [baseline, setBaseline] = useState<Snapshot>(() => ({
+    values: exercise ? toDefaults(exercise) : { ...emptyValues, name: initialName ?? '' },
+    cues: exercise?.cues ?? [],
+    aliases: exercise?.aliases ?? [],
+    thumbnailAssetId: exercise?.thumbnailAssetId ?? null,
+    demoVideoAssetId: exercise?.demoVideoAssetId ?? null,
+  }));
+  const dirty = JSON.stringify(current) !== JSON.stringify(baseline);
+  const discard = () => {
+    if (!exercise) {
+      router.push('/ejercicios');
+      return;
+    }
+    form.reset(baseline.values);
+    setCues(baseline.cues);
+    setAliases(baseline.aliases);
+    setThumbnailAssetId(baseline.thumbnailAssetId);
+    setDemoVideoAssetId(baseline.demoVideoAssetId);
+    setServerError(null);
+  };
+
   const save = useMutation({
     mutationFn: (values: FormValues) => {
       const base = {
@@ -159,8 +201,21 @@ export function ExerciseForm({
     },
     onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['exercises'] });
-      if (onSaved) onSaved(saved);
-      else router.push('/ejercicios');
+      qc.setQueryData(['exercise', saved.id], saved);
+      if (onSaved) {
+        onSaved(saved);
+        return;
+      }
+      // Stay on the page, like the rutina editor: the saved state is the new baseline.
+      setBaseline({
+        values: toDefaults(saved),
+        cues: saved.cues,
+        aliases: saved.aliases,
+        thumbnailAssetId: saved.thumbnailAssetId,
+        demoVideoAssetId: saved.demoVideoAssetId,
+      });
+      toast('Ejercicio guardado');
+      if (!exercise) router.replace(`/ejercicios/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -177,18 +232,21 @@ export function ExerciseForm({
     setServerError(null);
     save.mutate(values);
   });
+  const { bar: unsavedBar, guardNav } = useUnsavedChanges({
+    dirty: !embedded && dirty,
+    saving: save.isPending,
+    onSave: () => void onSubmit(),
+    onDiscard: discard,
+  });
+  // A page opened from the rutina editor's "create" link starts dirty only if typed into.
+  useEffect(() => {
+    if (!exercise && initialName) setBaseline((b) => ({ ...b, values: { ...b.values, name: initialName } }));
+  }, [exercise, initialName]);
 
-  const actions = (
+  // In a dialog the actions sit at the bottom; on the page the floating bar
+  // (save / discard) takes over and the header keeps only Eliminar.
+  const dialogActions = (
     <div className="flex gap-2">
-      {exercise && !embedded && (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
-        >
-          {es.app.delete}
-        </Button>
-      )}
       <Button type="button" variant="outline" onClick={leave}>
         {es.app.cancel}
       </Button>
@@ -199,13 +257,26 @@ export function ExerciseForm({
   );
 
   return (
-    <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <form onSubmit={onSubmit} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {unsavedBar}
       {!embedded && (
         <div className="flex items-center justify-between gap-4 border-b border-line bg-surface px-8 py-4">
-          <h1 className="text-xl font-semibold tracking-[-0.01em]">
-            {exercise ? es.exercises.edit : es.exercises.new}
-          </h1>
-          {actions}
+          <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
+            <button type="button" onClick={() => guardNav(() => router.push('/ejercicios'))} className="hover:text-ink-2">
+              {es.exercises.title}
+            </button>
+            <span>/</span>
+            <span className="text-ink-2">{exercise ? 'Editar' : 'Nuevo'}</span>
+          </div>
+          {exercise && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
+            >
+              {es.app.delete}
+            </Button>
+          )}
         </div>
       )}
 
@@ -323,7 +394,7 @@ export function ExerciseForm({
       </div>
 
       {embedded && (
-        <div className="flex justify-end border-t border-line-3 bg-surface px-5 py-3">{actions}</div>
+        <div className="flex justify-end border-t border-line-3 bg-surface px-5 py-3">{dialogActions}</div>
       )}
     </form>
   );
