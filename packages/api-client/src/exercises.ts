@@ -13,8 +13,8 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
-/** List rows omit the joined relations (loaded only on detail). */
-export type ExerciseListItem = Omit<Exercise, 'muscles' | 'equipmentIds'>;
+/** List rows carry their muscles and equipment too (the list shows them). */
+export type ExerciseListItem = Exercise;
 
 export function exercisesApi(http: Http) {
   return {

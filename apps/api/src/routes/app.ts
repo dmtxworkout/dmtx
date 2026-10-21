@@ -1,6 +1,11 @@
-import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import {
+  equipment,
+  exerciseEquipment,
+  exerciseMuscles,
   exercises,
+  muscleGroups,
+  muscles,
   programDays,
   programItems,
   programVideoItems,
@@ -17,6 +22,7 @@ import type { Database } from '@dmtx/db';
 import { createWorkoutLogSchema } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { nestBlocks, type Nested } from './workouts';
+import { tagsForExercises } from './taxonomy';
 import { resolveMediaUrls } from '../lib/media';
 import { resolveEntitlement } from '../lib/entitlement';
 import { requireAccess, requireUser } from '../middleware/auth';
@@ -114,6 +120,73 @@ interface CatalogFilter {
   q?: string;
   types: Array<'workout' | 'program' | 'skill'>;
   limit: number;
+  /** Slugs: only rutinas whose exercises work that group / need that equipment. */
+  muscleGroup?: string;
+  equipment?: string;
+}
+
+type Tags = { muscleGroups: string[]; equipment: string[] };
+
+/**
+ * The tags of each rutina, derived from its exercises: the muscle groups its
+ * primary muscles belong to, and the equipment they need. One query each for
+ * a whole page of rutinas.
+ */
+async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<string, Tags>> {
+  const out = new Map<string, Tags>();
+  if (!workoutIds.length) return out;
+  const [g, e] = await Promise.all([
+    db
+      .selectDistinct({ workoutId: workoutBlocks.workoutId, name: muscleGroups.name, position: muscleGroups.position })
+      .from(workoutItems)
+      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
+      .innerJoin(exerciseMuscles, and(eq(exerciseMuscles.exerciseId, workoutItems.exerciseId), eq(exerciseMuscles.role, 'primary')))
+      .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
+      .innerJoin(muscleGroups, eq(muscleGroups.id, muscles.muscleGroupId))
+      .where(inArray(workoutBlocks.workoutId, workoutIds)),
+    db
+      .selectDistinct({ workoutId: workoutBlocks.workoutId, name: equipment.name, position: equipment.position })
+      .from(workoutItems)
+      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
+      .innerJoin(exerciseEquipment, eq(exerciseEquipment.exerciseId, workoutItems.exerciseId))
+      .innerJoin(equipment, eq(equipment.id, exerciseEquipment.equipmentId))
+      .where(inArray(workoutBlocks.workoutId, workoutIds)),
+  ]);
+  const tags = (id: string) => out.get(id) ?? (out.set(id, { muscleGroups: [], equipment: [] }), out.get(id)!);
+  const sorted = <T extends { position: number; name: string }>(xs: T[]) =>
+    [...xs].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
+  for (const r of sorted(g)) tags(r.workoutId).muscleGroups.push(r.name);
+  for (const r of sorted(e)) tags(r.workoutId).equipment.push(r.name);
+  return out;
+}
+
+/** Ids of rutinas matching a muscle-group slug / equipment slug / free text over the tag names. */
+async function workoutIdsByTags(db: Database, f: { muscleGroup?: string; equipment?: string; q?: string }): Promise<string[] | null> {
+  const sets: string[][] = [];
+  if (f.muscleGroup || f.q) {
+    const rows = await db
+      .selectDistinct({ workoutId: workoutBlocks.workoutId })
+      .from(workoutItems)
+      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
+      .innerJoin(exerciseMuscles, and(eq(exerciseMuscles.exerciseId, workoutItems.exerciseId), eq(exerciseMuscles.role, 'primary')))
+      .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
+      .innerJoin(muscleGroups, eq(muscleGroups.id, muscles.muscleGroupId))
+      .where(f.muscleGroup ? eq(muscleGroups.slug, f.muscleGroup) : ilike(muscleGroups.name, `%${f.q}%`));
+    if (f.muscleGroup) sets.push(rows.map((r) => r.workoutId));
+    else return rows.map((r) => r.workoutId); // free text: a hint, merged with the name match by the caller
+  }
+  if (f.equipment) {
+    const rows = await db
+      .selectDistinct({ workoutId: workoutBlocks.workoutId })
+      .from(workoutItems)
+      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
+      .innerJoin(exerciseEquipment, eq(exerciseEquipment.exerciseId, workoutItems.exerciseId))
+      .innerJoin(equipment, eq(equipment.id, exerciseEquipment.equipmentId))
+      .where(eq(equipment.slug, f.equipment));
+    sets.push(rows.map((r) => r.workoutId));
+  }
+  if (!sets.length) return null;
+  return sets.reduce((acc, ids) => acc.filter((id) => ids.includes(id)));
 }
 
 /** Load published content of the requested types as display cards. */
@@ -122,9 +195,14 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   const wantPrograms = f.types.includes('program');
   const wantSkills = f.types.includes('skill');
   const like = f.q ? `%${f.q}%` : undefined;
+  // Tag filters narrow rutinas to a set of ids; free text also matches the
+  // tag names ("pierna" finds every rutina that works legs).
+  const byTags = wantWorkouts ? await workoutIdsByTags(db, { muscleGroup: f.muscleGroup, equipment: f.equipment }) : null;
+  const byText = wantWorkouts && f.q ? await workoutIdsByTags(db, { q: f.q }) : null;
+  const noneByTags = byTags !== null && byTags.length === 0;
 
   const [wRows, pRows, sRows] = await Promise.all([
-    wantWorkouts
+    wantWorkouts && !noneByTags
       ? db
           .select()
           .from(workouts)
@@ -133,7 +211,12 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               eq(workouts.status, 'published'),
               isNull(workouts.deletedAt),
               isNull(workouts.variantOfId),
-              like ? ilike(workouts.name, like) : undefined,
+              byTags ? inArray(workouts.id, byTags) : undefined,
+              like
+                ? byText?.length
+                  ? or(ilike(workouts.name, like), inArray(workouts.id, byText))
+                  : ilike(workouts.name, like)
+                : undefined,
             ),
           )
           .orderBy(desc(workouts.createdAt))
@@ -169,6 +252,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
       : Promise.resolve([] as SkillRow[]),
   ]);
 
+  const wTags = await workoutTags(db, wRows.map((w) => w.id));
   const skillIds = sRows.map((s) => s.id);
   const levelCounts = skillIds.length
     ? await db
@@ -186,7 +270,10 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   ]);
 
   return {
-    workouts: wRows.map((w) => workoutCard(w, url(media, w.thumbnailAssetId))),
+    workouts: wRows.map((w) => ({
+      ...workoutCard(w, url(media, w.thumbnailAssetId)),
+      ...(wTags.get(w.id) ?? { muscleGroups: [], equipment: [] }),
+    })),
     programs: pRows.map((p) => programCard(p, url(media, p.thumbnailAssetId))),
     skills: sRows.map((s) => skillCard(s, url(media, s.thumbnailAssetId), levelCountBy.get(s.id) ?? 0)),
   };
@@ -231,16 +318,50 @@ appRoute.get('/home', async (c) => {
   return c.json({ hero, rows });
 });
 
-// GET /api/app/browse?q=&type= — search / browse published content.
+// GET /api/app/filters — the tags the app can filter rutinas by: only groups
+// and equipment that at least one published rutina actually carries.
+appRoute.get('/filters', async (c) => {
+  const db = c.get('db');
+  const live = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId));
+  const [g, e] = await Promise.all([
+    db
+      .selectDistinct({ slug: muscleGroups.slug, name: muscleGroups.name, position: muscleGroups.position })
+      .from(workoutItems)
+      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
+      .innerJoin(workouts, eq(workouts.id, workoutBlocks.workoutId))
+      .innerJoin(exerciseMuscles, and(eq(exerciseMuscles.exerciseId, workoutItems.exerciseId), eq(exerciseMuscles.role, 'primary')))
+      .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
+      .innerJoin(muscleGroups, eq(muscleGroups.id, muscles.muscleGroupId))
+      .where(live),
+    db
+      .selectDistinct({ slug: equipment.slug, name: equipment.name, position: equipment.position })
+      .from(workoutItems)
+      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
+      .innerJoin(workouts, eq(workouts.id, workoutBlocks.workoutId))
+      .innerJoin(exerciseEquipment, eq(exerciseEquipment.exerciseId, workoutItems.exerciseId))
+      .innerJoin(equipment, eq(equipment.id, exerciseEquipment.equipmentId))
+      .where(live),
+  ]);
+  const sorted = (xs: { slug: string; name: string; position: number }[]) =>
+    [...xs].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)).map(({ slug, name }) => ({ slug, name }));
+  return c.json({ muscleGroups: sorted(g), equipment: sorted(e) });
+});
+
+// GET /api/app/browse?q=&type=&muscleGroup=&equipment= — search / browse published content.
+// `muscleGroup` / `equipment` are taxonomy slugs; they only apply to rutinas.
 appRoute.get('/browse', async (c) => {
   const q = c.req.query('q')?.trim() || undefined;
   const type = c.req.query('type');
+  const muscleGroup = c.req.query('muscleGroup')?.trim() || undefined;
+  const equipmentSlug = c.req.query('equipment')?.trim() || undefined;
   const types: Array<'workout' | 'program' | 'skill'> =
     type === 'workout' || type === 'program' || type === 'skill'
       ? [type]
-      : ['workout', 'program', 'skill'];
+      : muscleGroup || equipmentSlug
+        ? ['workout']
+        : ['workout', 'program', 'skill'];
 
-  const cat = await loadCatalog(c.get('db'), c.env, { q, types, limit: 30 });
+  const cat = await loadCatalog(c.get('db'), c.env, { q, types, limit: 30, muscleGroup, equipment: equipmentSlug });
   const rows = [
     { title: 'Rutinas', layout: 'row', items: cat.workouts },
     { title: 'Programas', layout: 'poster', items: cat.programs },
@@ -286,6 +407,7 @@ appRoute.get('/workouts/:id', async (c) => {
     : [];
 
   const exIds = [...new Set(items.map((it) => it.exerciseId).filter((id): id is string => Boolean(id)))];
+  const tags = await tagsForExercises(db, exIds);
   const exRows = exIds.length
     ? await db.select().from(exercises).where(inArray(exercises.id, exIds))
     : [];
@@ -364,6 +486,8 @@ appRoute.get('/workouts/:id', async (c) => {
     variantOfId: w.variantOfId,
     variantLabel: w.variantLabel,
     variants: variantRows.map((v) => ({ id: v.id, label: v.label ?? '' })),
+    muscleGroups: tags.muscleGroups.map((t) => t.name),
+    equipment: tags.equipment.map((t) => t.name),
     lastLog: lastLog
       ? {
           roundsCompleted: lastLog.roundsCompleted,

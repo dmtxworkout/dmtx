@@ -14,7 +14,7 @@
 ## Next (build order)
 
 1. **Apply the migration** — provision a Neon branch, set `DATABASE_URL`, `pnpm db:migrate`; create the first admin user. (Blocks running anything end-to-end.)
-2. **Taxonomy** — muscles / equipment CRUD (API + admin), then wire muscle/equipment pickers into the exercise form (schema + API already support them).
+2. ~~**Taxonomy**~~ — built (2026-10-21): `/api/taxonomy` CRUD, the **Músculos y equipo** screen, muscle/equipment pickers in the exercise form, and the app derives each rutina's tags ("Trabaja" / "Equipo") from its exercises and filters Explorar by them (`/app/filters`, `/app/browse?muscleGroup=&equipment=`).
 3. **Add DB indexes** — FKs, `subscriptions.next_charge_date`, `status`, `deleted_at` on hot paths (none defined yet).
 4. **Workouts (rutinas)** — format picker + per-format config forms + block/item builder. Add `@dmtx/core` for the format/goal engines (`meetsGoal`, timer configs) shared with mobile.
 5. **Programs, Skills, Collections** — same golden-path pattern.
@@ -38,7 +38,6 @@ The block/item builder was replaced (2026-10-20) by the **text editor**: `/core`
 
 ## Known shortcuts to revisit
 
-- Exercise form omits muscle/equipment pickers (needs the taxonomy screens first).
 - No DB indexes yet.
 - `neon-http` has no interactive transactions — multi-step writes (e.g. exercise + joins) are sequential; use Neon WebSocket pool if a path needs atomicity.
 - Admin route guard is client-side (fine for dev; add Next middleware once prod subdomain cookies are set up).

@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, isNull, or, sql, isNotNull } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, isNull, or, sql, isNotNull } from 'drizzle-orm';
 import { exerciseEquipment, exerciseMuscles, exercises, reusableBlocks, setResults, workoutItems } from '@dmtx/db';
 import { Catalog, parseRutina } from '@dmtx/core';
 import type { Database } from '@dmtx/db';
@@ -16,7 +16,7 @@ import { requireAdmin } from '../middleware/auth';
 
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
-const listItemSchema = exerciseSchema.omit({ muscles: true, equipmentIds: true });
+const listItemSchema = exerciseSchema;
 
 type ExerciseRow = typeof exercises.$inferSelect;
 
@@ -96,10 +96,26 @@ exercisesRoute.openapi(
         .offset((page - 1) * pageSize),
       db.select({ value: count() }).from(exercises).where(where),
     ]);
-    return c.json(
-      { data: rows.map(serializeBase), total: totals?.value ?? 0, page, pageSize },
-      200,
-    );
+    // Relations for the page in two queries, not two per row.
+    const ids = rows.map((r) => r.id);
+    const [ms, eqs] = ids.length
+      ? await Promise.all([
+          db
+            .select({ exerciseId: exerciseMuscles.exerciseId, muscleId: exerciseMuscles.muscleId, role: exerciseMuscles.role })
+            .from(exerciseMuscles)
+            .where(inArray(exerciseMuscles.exerciseId, ids)),
+          db
+            .select({ exerciseId: exerciseEquipment.exerciseId, equipmentId: exerciseEquipment.equipmentId })
+            .from(exerciseEquipment)
+            .where(inArray(exerciseEquipment.exerciseId, ids)),
+        ])
+      : [[], []];
+    const data = rows.map((r) => ({
+      ...serializeBase(r),
+      muscles: ms.filter((m) => m.exerciseId === r.id).map((m) => ({ muscleId: m.muscleId, role: m.role })),
+      equipmentIds: eqs.filter((e) => e.exerciseId === r.id).map((e) => e.equipmentId),
+    }));
+    return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
 
@@ -237,6 +253,9 @@ exercisesRoute.openapi(
     const [row] = await db
       .update(exercises)
       .set({
+        // Always touch updatedAt: a tag-only change (muscles / equipment) still
+        // edits the exercise, and Drizzle refuses an update with no columns.
+        updatedAt: new Date(),
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.slug !== undefined ? { slug: input.slug } : {}),
         ...(input.description !== undefined ? { description: input.description ?? null } : {}),

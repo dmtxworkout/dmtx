@@ -29,6 +29,8 @@ export default function ExercisesPage() {
   });
 
   const rows = data?.data ?? [];
+  const { data: taxonomy } = useQuery({ queryKey: ['taxonomy'], queryFn: () => api.taxonomy.get(), staleTime: 60_000 });
+  const muscleName = (id: string) => taxonomy?.muscles.find((m) => m.id === id)?.name ?? '';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -100,7 +102,13 @@ export default function ExercisesPage() {
                     <div className="truncate font-mono text-[11px] text-muted">{e.description}</div>
                   )}
                 </div>
-                <div className="min-w-0" />
+                <div className="min-w-0 truncate text-[13px] text-ink-2">
+                  {e.muscles
+                    .filter((m) => m.role === 'primary')
+                    .map((m) => muscleName(m.muscleId))
+                    .filter(Boolean)
+                    .join(', ') || <span className="text-faint-2">—</span>}
+                </div>
                 <span className="text-[13px] text-ink-2">{es.difficulty[e.difficulty]}</span>
                 <span>{e.archivedAt && <Badge tone="archived">Archivado</Badge>}</span>
                 <span className="text-right font-mono text-[12px] text-muted">

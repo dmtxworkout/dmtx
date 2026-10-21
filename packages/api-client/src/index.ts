@@ -6,6 +6,7 @@ import { reusableBlocksApi } from './reusable-blocks';
 import { programsApi } from './programs';
 import { skillsApi } from './skills';
 import { subscriptionsApi } from './subscriptions';
+import { taxonomyApi } from './taxonomy';
 
 /**
  * Typed client for the DMTX API. Types come from `@dmtx/schemas` (the single
@@ -22,6 +23,7 @@ export function createApiClient(options: HttpClientOptions) {
     programs: programsApi(http),
     skills: skillsApi(http),
     subscriptions: subscriptionsApi(http),
+    taxonomy: taxonomyApi(http),
   };
 }
 

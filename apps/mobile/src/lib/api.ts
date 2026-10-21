@@ -1,6 +1,6 @@
 import type { CreateWorkoutLogInput } from '@dmtx/schemas';
 import { API_URL, getSessionCookie } from './auth';
-import type { Browse, Home, Me, ProgramDetail, SkillDetail, WorkoutDetail } from './types';
+import type { Browse, BrowseFilters, Home, Me, ProgramDetail, SkillDetail, WorkoutDetail } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -42,10 +42,13 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   me: () => req<Me>('/app/me'),
   home: () => req<Home>('/app/home'),
-  browse: (opts?: { q?: string; type?: string }) => {
+  filters: () => req<BrowseFilters>('/app/filters'),
+  browse: (opts?: { q?: string; type?: string; muscleGroup?: string; equipment?: string }) => {
     const p = new URLSearchParams();
     if (opts?.q) p.set('q', opts.q);
     if (opts?.type && opts.type !== 'all') p.set('type', opts.type);
+    if (opts?.muscleGroup) p.set('muscleGroup', opts.muscleGroup);
+    if (opts?.equipment) p.set('equipment', opts.equipment);
     const qs = p.toString();
     return req<Browse>(`/app/browse${qs ? `?${qs}` : ''}`);
   },

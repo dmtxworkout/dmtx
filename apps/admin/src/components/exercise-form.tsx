@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { DIFFICULTY, difficultySchema } from '@dmtx/schemas';
-import type { CreateExerciseInput, Exercise } from '@dmtx/schemas';
+import type { CreateExerciseInput, Exercise, ExerciseMuscleInput } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,7 @@ import { MediaField } from '@/components/media-field';
 import { toast } from '@/components/ui/toast';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { ActionsMenu } from '@/components/ui/actions-menu';
+import { EquipmentPicker, MusclePicker } from '@/components/tag-pickers';
 import { Dialog } from '@/components/ui/dialog';
 
 const formSchema = z.object({
@@ -145,6 +146,8 @@ export function ExerciseForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [cues, setCues] = useState<string[]>(exercise?.cues ?? []);
   const [aliases, setAliases] = useState<string[]>(exercise?.aliases ?? []);
+  const [muscles, setMuscles] = useState<ExerciseMuscleInput[]>(exercise?.muscles ?? []);
+  const [equipmentIds, setEquipmentIds] = useState<string[]>(exercise?.equipmentIds ?? []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -155,13 +158,23 @@ export function ExerciseForm({
 
   // Page mode: everything the form sends, as one comparable snapshot; the
   // baseline is the loaded exercise (or the empty form) and the last save.
-  type Snapshot = { values: FormValues; cues: string[]; aliases: string[]; thumbnailAssetId: string | null; demoVideoAssetId: string | null };
+  type Snapshot = {
+    values: FormValues;
+    cues: string[];
+    aliases: string[];
+    muscles: ExerciseMuscleInput[];
+    equipmentIds: string[];
+    thumbnailAssetId: string | null;
+    demoVideoAssetId: string | null;
+  };
   const watched = form.watch();
-  const current: Snapshot = { values: watched, cues, aliases, thumbnailAssetId, demoVideoAssetId };
+  const current: Snapshot = { values: watched, cues, aliases, muscles, equipmentIds, thumbnailAssetId, demoVideoAssetId };
   const [baseline, setBaseline] = useState<Snapshot>(() => ({
     values: exercise ? toDefaults(exercise) : { ...emptyValues, name: initialName ?? '' },
     cues: exercise?.cues ?? [],
     aliases: exercise?.aliases ?? [],
+    muscles: exercise?.muscles ?? [],
+    equipmentIds: exercise?.equipmentIds ?? [],
     thumbnailAssetId: exercise?.thumbnailAssetId ?? null,
     demoVideoAssetId: exercise?.demoVideoAssetId ?? null,
   }));
@@ -174,6 +187,8 @@ export function ExerciseForm({
     form.reset(baseline.values);
     setCues(baseline.cues);
     setAliases(baseline.aliases);
+    setMuscles(baseline.muscles);
+    setEquipmentIds(baseline.equipmentIds);
     setThumbnailAssetId(baseline.thumbnailAssetId);
     setDemoVideoAssetId(baseline.demoVideoAssetId);
     setServerError(null);
@@ -189,9 +204,11 @@ export function ExerciseForm({
         difficulty: values.difficulty,
         thumbnailAssetId,
         demoVideoAssetId,
+        muscles,
+        equipmentIds,
       };
       if (exercise) return api.exercises.update(exercise.id, base);
-      const payload: CreateExerciseInput = { ...base, muscles: [], equipmentIds: [] };
+      const payload: CreateExerciseInput = base;
       return api.exercises.create(payload);
     },
     onSuccess: (saved) => {
@@ -206,6 +223,8 @@ export function ExerciseForm({
         values: toDefaults(saved),
         cues: saved.cues,
         aliases: saved.aliases,
+        muscles: saved.muscles,
+        equipmentIds: saved.equipmentIds,
         thumbnailAssetId: saved.thumbnailAssetId,
         demoVideoAssetId: saved.demoVideoAssetId,
       });
@@ -366,6 +385,22 @@ export function ExerciseForm({
                     </option>
                   ))}
                 </Select>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Músculos</CardTitle>
+              </CardHeader>
+              <CardContent className="py-4">
+                <MusclePicker value={muscles} onChange={setMuscles} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Equipo</CardTitle>
+              </CardHeader>
+              <CardContent className="py-4">
+                <EquipmentPicker value={equipmentIds} onChange={setEquipmentIds} />
               </CardContent>
             </Card>
             <Card>
