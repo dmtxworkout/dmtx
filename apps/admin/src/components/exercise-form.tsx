@@ -3,13 +3,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { CONTENT_STATUS, contentStatusSchema, DIFFICULTY, difficultySchema } from '@dmtx/schemas';
 import type { CreateExerciseInput, Exercise } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,8 +22,6 @@ import { MediaField } from '@/components/media-field';
 const formSchema = z.object({
   name: z.string().min(1, es.app.nameRequired),
   description: z.string(),
-  cues: z.array(z.object({ value: z.string() })),
-  aliases: z.array(z.object({ value: z.string() })),
   difficulty: difficultySchema,
   isUnilateral: z.boolean(),
   status: contentStatusSchema,
@@ -32,8 +31,6 @@ type FormValues = z.infer<typeof formSchema>;
 const emptyValues: FormValues = {
   name: '',
   description: '',
-  cues: [],
-  aliases: [],
   difficulty: 'beginner',
   isUnilateral: false,
   status: 'draft',
@@ -43,15 +40,87 @@ function toDefaults(exercise: Exercise): FormValues {
   return {
     name: exercise.name,
     description: exercise.description ?? '',
-    cues: exercise.cues.map((value) => ({ value })),
-    aliases: exercise.aliases.map((value) => ({ value })),
     difficulty: exercise.difficulty,
     isUnilateral: exercise.isUnilateral,
     status: exercise.status,
   };
 }
 
-export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
+/**
+ * A list of short texts that grows as you type: the last row is always an
+ * empty one; writing in it turns it into a value and a fresh empty row appears
+ * below. Blank values are dropped on save, never while editing (a row you are
+ * clearing to rewrite must not vanish under the cursor).
+ */
+function GrowingList({
+  values,
+  onChange,
+  placeholder,
+  addPlaceholder,
+  removeLabel,
+}: {
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder?: string;
+  addPlaceholder: string;
+  removeLabel: string;
+}) {
+  const rows = [...values, ''];
+  const write = (k: number, value: string) => {
+    if (k === values.length) {
+      if (value === '') return;
+      onChange([...values, value]);
+      return;
+    }
+    onChange(values.map((v, j) => (j === k ? value : v)));
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      {rows.map((v, k) => {
+        const last = k === rows.length - 1;
+        return (
+          <div key={k} className="flex items-center gap-1.5">
+            <Input
+              value={v}
+              onChange={(e) => write(k, e.target.value)}
+              placeholder={last ? (values.length ? addPlaceholder : (placeholder ?? addPlaceholder)) : undefined}
+            />
+            {/* The empty last row has nothing to remove; a spacer keeps the inputs from jumping. */}
+            {last ? (
+              <span className="h-9 w-9 flex-none" />
+            ) : (
+              <button
+                type="button"
+                aria-label={`${removeLabel} ${v}`}
+                onClick={() => onChange(values.filter((_, j) => j !== k))}
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-md text-faint-2 hover:bg-surface-2 hover:text-accent-dark"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export function ExerciseForm({
+  exercise,
+  initialName,
+  embedded = false,
+  onSaved,
+  onCancel,
+}: {
+  exercise?: Exercise;
+  /** Name to start with (a new exercise created from the rutina editor). */
+  initialName?: string;
+  /** Inside a dialog: one column, actions at the bottom, no page header. */
+  embedded?: boolean;
+  /** Called with the saved exercise instead of navigating to the list. */
+  onSaved?: (exercise: Exercise) => void;
+  onCancel?: () => void;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -61,21 +130,23 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
   const [demoVideoAssetId, setDemoVideoAssetId] = useState<string | null>(
     exercise?.demoVideoAssetId ?? null,
   );
+  const [cues, setCues] = useState<string[]>(exercise?.cues ?? []);
+  const [aliases, setAliases] = useState<string[]>(exercise?.aliases ?? []);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: exercise ? toDefaults(exercise) : emptyValues,
+    defaultValues: exercise ? toDefaults(exercise) : { ...emptyValues, name: initialName ?? '' },
   });
-  const cues = useFieldArray({ control: form.control, name: 'cues' });
-  const aliases = useFieldArray({ control: form.control, name: 'aliases' });
+
+  const leave = () => (onCancel ? onCancel() : router.push('/ejercicios'));
 
   const save = useMutation({
     mutationFn: (values: FormValues) => {
       const base = {
         name: values.name,
         description: values.description || null,
-        cues: values.cues.map((c) => c.value).filter((v) => v.trim().length > 0),
-        aliases: values.aliases.map((a) => a.value.trim()).filter((v) => v.length > 0),
+        cues: cues.map((c) => c.trim()).filter((v) => v.length > 0),
+        aliases: aliases.map((a) => a.trim()).filter((v) => v.length > 0),
         difficulty: values.difficulty,
         isUnilateral: values.isUnilateral,
         status: values.status,
@@ -86,9 +157,10 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
       const payload: CreateExerciseInput = { ...base, muscles: [], equipmentIds: [] };
       return api.exercises.create(payload);
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
       qc.invalidateQueries({ queryKey: ['exercises'] });
-      router.push('/ejercicios');
+      if (onSaved) onSaved(saved);
+      else router.push('/ejercicios');
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -106,46 +178,52 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
     save.mutate(values);
   });
 
+  const actions = (
+    <div className="flex gap-2">
+      {exercise && !embedded && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
+        >
+          {es.app.delete}
+        </Button>
+      )}
+      <Button type="button" variant="outline" onClick={leave}>
+        {es.app.cancel}
+      </Button>
+      <Button type="submit" disabled={save.isPending}>
+        {save.isPending ? es.app.saving : exercise ? es.app.save : 'Crear'}
+      </Button>
+    </div>
+  );
+
   return (
     <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between gap-4 border-b border-line bg-surface px-8 py-4">
-        <h1 className="text-xl font-semibold tracking-[-0.01em]">
-          {exercise ? es.exercises.edit : es.exercises.new}
-        </h1>
-        <div className="flex gap-2">
-          {exercise && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => confirm(es.app.confirmDelete) && removeExercise.mutate()}
-            >
-              {es.app.delete}
-            </Button>
-          )}
-          <Button type="button" variant="outline" onClick={() => router.push('/ejercicios')}>
-            {es.app.cancel}
-          </Button>
-          <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? es.app.saving : es.app.save}
-          </Button>
+      {!embedded && (
+        <div className="flex items-center justify-between gap-4 border-b border-line bg-surface px-8 py-4">
+          <h1 className="text-xl font-semibold tracking-[-0.01em]">
+            {exercise ? es.exercises.edit : es.exercises.new}
+          </h1>
+          {actions}
         </div>
-      </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {serverError && (
-          <p className="mx-8 mt-5 rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark">
+          <p className={cn('mt-5 rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark', embedded ? 'mx-5' : 'mx-8')}>
             {serverError}
           </p>
         )}
 
-        <div className="grid gap-5 px-8 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          {/* Left: details, cues */}
+        <div className={cn('grid gap-5', embedded ? 'px-5 py-5' : 'px-8 py-6 lg:grid-cols-[minmax(0,1fr)_360px]')}>
+          {/* Left: details, cues, aliases */}
           <div className="flex min-w-0 flex-col gap-5">
             <Card>
               <CardContent className="space-y-4 py-5">
                 <div>
                   <Label htmlFor="name">{es.exercises.fields.name}</Label>
-                  <Input id="name" {...form.register('name')} />
+                  <Input id="name" autoFocus={!exercise} {...form.register('name')} />
                   {form.formState.errors.name && (
                     <p className="mt-1 text-xs text-accent-dark">
                       {form.formState.errors.name.message}
@@ -191,23 +269,14 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
               <CardHeader>
                 <CardTitle>{es.exercises.fields.cues}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 py-4">
-                {cues.fields.map((field, i) => (
-                  <div key={field.id} className="flex gap-2">
-                    <Input {...form.register(`cues.${i}.value` as const)} />
-                    <Button type="button" variant="ghost" size="sm" onClick={() => cues.remove(i)}>
-                      ✕
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => cues.append({ value: '' })}
-                >
-                  {es.exercises.fields.addCue}
-                </Button>
+              <CardContent className="py-4">
+                <GrowingList
+                  values={cues}
+                  onChange={setCues}
+                  placeholder="p. ej. Espalda recta, mirada al frente"
+                  addPlaceholder={es.exercises.fields.addCue}
+                  removeLabel="Quitar indicación"
+                />
               </CardContent>
             </Card>
 
@@ -215,40 +284,26 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
               <CardHeader>
                 <CardTitle>{es.exercises.fields.aliases}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2 py-4">
+              <CardContent className="space-y-3 py-4">
                 <p className="text-xs text-zinc-500">{es.exercises.fields.aliasesHelp}</p>
-                {aliases.fields.map((field, i) => (
-                  <div key={field.id} className="flex gap-2">
-                    <Input {...form.register(`aliases.${i}.value` as const)} />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => aliases.remove(i)}
-                    >
-                      ✕
-                    </Button>
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => aliases.append({ value: '' })}
-                >
-                  {es.exercises.fields.addAlias}
-                </Button>
+                <GrowingList
+                  values={aliases}
+                  onChange={setAliases}
+                  placeholder="p. ej. push up"
+                  addPlaceholder={es.exercises.fields.addAlias}
+                  removeLabel="Quitar alias"
+                />
               </CardContent>
             </Card>
           </div>
 
           {/* Right: media */}
           <div>
-            <Card className="lg:sticky lg:top-6">
+            <Card className={cn(!embedded && 'lg:sticky lg:top-6')}>
               <CardHeader>
                 <CardTitle>{es.exercises.fields.media}</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-6 py-5">
+              <CardContent className={cn('flex flex-col gap-6 py-5', embedded && 'sm:grid sm:grid-cols-2')}>
                 <MediaField
                   kind="image"
                   label={es.exercises.fields.thumbnail}
@@ -266,6 +321,10 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
           </div>
         </div>
       </div>
+
+      {embedded && (
+        <div className="flex justify-end border-t border-line-3 bg-surface px-5 py-3">{actions}</div>
+      )}
     </form>
   );
 }

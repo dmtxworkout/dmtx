@@ -36,6 +36,7 @@ import { Dialog } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/select';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
+import { ExerciseForm } from '@/components/exercise-form';
 import { toast } from '@/components/ui/toast';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import {
@@ -321,7 +322,8 @@ export function RutinaForm({
   const [guideQuery, setGuideQuery] = useState('');
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
   const editorApi = useRef<RutinaEditorApi | null>(null);
-  const [newExercise, setNewExercise] = useState<{ name: string; difficulty: Workout['difficulty'] } | null>(null);
+  // A missing exercise is created from the editor with the full exercise form.
+  const [newExercise, setNewExercise] = useState<{ name: string } | null>(null);
   const editorHost = useRef<HTMLDivElement>(null);
 
   const { data: exList } = useQuery({
@@ -523,26 +525,6 @@ export function RutinaForm({
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
 
-  // ---- Create a missing exercise straight from a diagnostic -----------------
-  const createExercise = useMutation({
-    mutationFn: (args: { name: string; difficulty: Workout['difficulty'] }) =>
-      api.exercises.create({
-        name: args.name,
-        difficulty: args.difficulty,
-        status: 'draft',
-        cues: [],
-        aliases: [],
-        isUnilateral: false,
-        muscles: [],
-        equipmentIds: [],
-      }),
-    onSuccess: (ex) => {
-      qc.invalidateQueries({ queryKey: ['exercises'] });
-      setNewExercise(null);
-      toast(`Ejercicio creado: ${ex.name}`);
-    },
-    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
-  });
   const titleCase = (s: string) => s.trim().replace(/^\p{L}/u, (c) => c.toUpperCase());
 
   // ---- Save -----------------------------------------------------------------
@@ -1002,7 +984,7 @@ export function RutinaForm({
                         }
                   }
                   apiRef={editorApi}
-                  onCreateExercise={(n) => setNewExercise({ name: titleCase(n), difficulty: 'beginner' })}
+                  onCreateExercise={(n) => setNewExercise({ name: titleCase(n) })}
                   className="h-full"
                 />
               )}
@@ -1341,51 +1323,19 @@ export function RutinaForm({
         open={newExercise !== null}
         onClose={() => setNewExercise(null)}
         title="Crear ejercicio"
-        className="max-w-md"
+        className="max-w-3xl"
       >
-        <div className="flex flex-col gap-4 p-5">
-          <div>
-            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.exercises.fields.name}</div>
-            <Input
-              autoFocus
-              value={newExercise?.name ?? ''}
-              onChange={(e) => setNewExercise((m) => (m ? { ...m, name: e.target.value } : m))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newExercise?.name.trim()) createExercise.mutate(newExercise);
-              }}
-            />
-          </div>
-          <div>
-            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.difficulty}</div>
-            <Select
-              value={newExercise?.difficulty ?? 'beginner'}
-              onChange={(e) =>
-                setNewExercise((m) => (m ? { ...m, difficulty: e.target.value as Workout['difficulty'] } : m))
-              }
-            >
-              {DIFFICULTY.map((d) => (
-                <option key={d} value={d}>
-                  {es.difficulty[d]}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <p className="text-[12px] leading-snug text-muted">
-            Se crea como borrador; completa músculos, equipo y video desde Ejercicios cuando quieras.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setNewExercise(null)}>
-              {es.app.cancel}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => newExercise && createExercise.mutate(newExercise)}
-              disabled={createExercise.isPending || !newExercise?.name.trim()}
-            >
-              {createExercise.isPending ? es.app.saving : 'Crear'}
-            </Button>
-          </div>
-        </div>
+        {newExercise && (
+          <ExerciseForm
+            embedded
+            initialName={newExercise.name}
+            onCancel={() => setNewExercise(null)}
+            onSaved={(ex) => {
+              setNewExercise(null);
+              toast(`Ejercicio creado: ${ex.name}`);
+            }}
+          />
+        )}
       </Dialog>
     </div>
   );

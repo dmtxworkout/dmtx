@@ -271,7 +271,11 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
       for (const name of names) button('rt-diag-sugg', escape(name), replaceWith(name), top);
       if (!names.length) el('div', 'rt-diag-msg', `"${raw}" no está en el catálogo.`, top);
       if (create) {
-        button('rt-diag-action', `${PLUS_ICON}<span>Crear ejercicio "${escape(raw)}"</span>`, () => create(raw));
+        button('rt-diag-action', `${PLUS_ICON}<span>Crear ejercicio "${escape(raw)}"</span>`, () => {
+          // The card would otherwise stay open under the create dialog.
+          view.dispatch({ effects: setGutterTip.of(null) });
+          create(raw);
+        });
       }
     } else if (d.code === 'unknown_keyword') {
       const top = el('div', 'rt-diag-top');
