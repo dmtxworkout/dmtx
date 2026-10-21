@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { completionsAt } from './completion';
 import { goalsFrom, parseRutina, toWorkoutInput, hasErrors } from './parse';
 import { splitSections } from './sections';
+import { pluralName } from './normalize';
 import { serializeRutina } from './serialize';
 import type { CatalogExercise } from './types';
 
@@ -717,5 +718,17 @@ Objetivo
       [3, 'goal_needs_amount'],
     ]);
     expect(goalsFrom(p)).toEqual([]);
+  });
+});
+
+describe('pluralName', () => {
+  it('pluralises the first word for counts above one, only when the Spanish rule is safe', () => {
+    expect(pluralName('Sentadilla', 20)).toBe('Sentadillas');
+    expect(pluralName('Flexión de pecho', 10)).toBe('Flexiones de pecho');
+    expect(pluralName('Burpee', 2)).toBe('Burpees');
+    expect(pluralName('Sentadilla', 1)).toBe('Sentadilla');
+    expect(pluralName('Curl de bíceps', 10)).toBe('Curl de bíceps');
+    expect(pluralName('Leg raises', 10)).toBe('Leg raises');
+    expect(pluralName('Handstand', 5)).toBe('Handstand');
   });
 });

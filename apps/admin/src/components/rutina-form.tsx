@@ -16,6 +16,7 @@ import {
   goalsFrom,
   loadText,
   parseRutina,
+  pluralName,
   serializeRutina,
   tempoText,
   toWorkoutInput,
@@ -66,7 +67,7 @@ const GOAL_PLACEHOLDER = 'Las marcas que desbloquean el siguiente nivel, una por
 
 /** A level's goal as the athlete reads it: "3 Dominadas", "Plancha 60 s", "Sentadilla 5 reps @100 kg". */
 export function skillGoalLabel(g: SkillGoal): string {
-  if (g.metric === 'reps') return `${g.value} ${g.exerciseName}`;
+  if (g.metric === 'reps') return `${g.value} ${pluralName(g.exerciseName, g.value)}`;
   if (g.metric === 'time_seconds') return `${g.exerciseName} ${formatDuration(g.value)}`;
   if (g.metric === 'distance_meters') return `${formatDistance(g.value)} ${g.exerciseName}`;
   return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;
@@ -245,7 +246,8 @@ function pvItem(it: ParsedItem, inSlot = false): PvItem {
   return {
     kind: 'exercise',
     prefix,
-    name: it.match?.name ?? it.rawName ?? '…',
+    // Counted reps read in plural: "20 Sentadillas" (the catalog keeps the singular).
+    name: pluralName(it.match?.name ?? it.rawName ?? '…', it.measure === 'reps' ? it.reps : null),
     load: load || null,
     tempo: tempo ? tempo.replace(/-/g, '·') : null,
     perSide: it.perSide,
@@ -813,15 +815,15 @@ export function RutinaForm({
         }
       }
     }
-    if (skillMode && status === 'published') {
-      // Published: every level but the last needs a way to unlock the next one.
+    if (skillMode) {
+      // Every level but the last needs a way to unlock the next one.
       const all = [{ label: baseLabel, sections: sections ?? EMPTY_SECTIONS }, ...tabs];
       for (let i = 0; i < all.length - 1; i += 1) {
         const goals = goalsFrom(parseRutina(joinSections(all[i]!.sections), { catalog }));
         if (!goals.length) {
           setActiveTab(i);
           setActiveSection('goal');
-          toast(`El nivel «${all[i]!.label || `Nivel ${i + 1}`}» no tiene objetivo: nadie podría pasar al siguiente. Escríbelo en su pestaña Objetivo o guarda como borrador.`, 'error');
+          toast(`El nivel «${all[i]!.label || `Nivel ${i + 1}`}» no tiene objetivo: nadie podría pasar al siguiente. Escríbelo en su pestaña Objetivo.`, 'error');
           shakeBar();
           return;
         }

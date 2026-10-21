@@ -84,3 +84,19 @@ export function cut(s: string, re: RegExp): { match: RegExpMatchArray | null; re
   const rest = COLLAPSE(s.slice(0, match.index) + ' ' + s.slice(match.index + match[0].length));
   return { match, rest };
 }
+
+/**
+ * An exercise name for a count above one: "20 Sentadillas", "Flexiones de
+ * pecho", "Burpees". Only the first word changes, and only when Spanish rules
+ * are safe: a vowel ending takes "s", "-ón" becomes "-ones"; anything else
+ * (s, x, English names like "Curl", "Handstand") is left alone.
+ */
+export function pluralName(name: string, count: number | null | undefined): string {
+  if (!count || count <= 1) return name;
+  const [head, ...rest] = name.trim().split(/\s+/);
+  if (!head) return name;
+  let plural = head;
+  if (/ón$/i.test(head)) plural = head.slice(0, -2) + 'ones';
+  else if (/[aeiouAEIOU]$/.test(head) && !/[áéíóú]$/i.test(head)) plural = head + 's';
+  return [plural, ...rest].join(' ');
+}

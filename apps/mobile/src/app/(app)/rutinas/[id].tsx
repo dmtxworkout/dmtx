@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Loading, Thumb } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { difficultyLabel, es, formatLabel } from '../../../i18n';
-import { durationLabel, loadLabel, mmss, targetLabel, tempoDash } from '../../../lib/format';
+import { durationLabel, loadLabel, mmss, pluralName, targetLabel, tempoDash } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
 import type { Units } from '../../../lib/units';
 import type { WorkoutBlock, WorkoutItem } from '../../../lib/types';
@@ -249,7 +249,7 @@ export default function RutinaDetalle() {
                           <Thumb uri={it.exercise?.thumbnailUrl} className="h-9 w-[58px]" radius={7} />
                           <View className="min-w-0 flex-1">
                             <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
-                              {it.exercise?.name ?? 'Ejercicio'}
+                              {pluralName(it.exercise?.name ?? 'Ejercicio', it.measure === 'reps' ? it.reps : null)}
                             </Text>
                             {itemSub(it, units) ? (
                               <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">

@@ -1,6 +1,6 @@
 export * from './types';
 export { Catalog, similarity, damerauLevenshtein } from './catalog';
-export { fold, parseDuration, parseDistance, formatDuration, formatDistance } from './normalize';
+export { fold, parseDuration, parseDistance, formatDuration, formatDistance, pluralName } from './normalize';
 export { parseRutina, parseItemLine, toWorkoutInput, goalsFrom, hasErrors } from './parse';
 export type { ParseOptions, RutinaStructureInput } from './parse';
 export {

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { flattenBlocks } from '../lib/blocks';
 import { Text, View } from 'react-native';
-import { mmss } from '../lib/format';
+import { mmss, pluralName } from '../lib/format';
 import { useUnits } from '../lib/units-context';
 import { formatDistance, formatWeight, weightToKg } from '../lib/units';
 import type { DistanceUnit, WeightUnit } from '../lib/units';
@@ -97,7 +97,7 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
               </Text>
               <View className="min-w-0 flex-1">
                 <Text numberOfLines={1} className="font-semibold text-[15px] text-ink">
-                  {it.exercise?.name}
+                  {pluralName(it.exercise?.name ?? '', it.measure === 'reps' ? it.reps : null)}
                 </Text>
                 {it.notes ? (
                   <Text className="font-sans text-[12px] italic leading-4 text-ink-3">{it.notes}</Text>

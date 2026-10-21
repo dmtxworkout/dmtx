@@ -6,13 +6,14 @@ import { Loading, Thumb } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { difficultyLabel, es } from '../../../i18n';
 import type { SkillGoal } from '@dmtx/schemas';
+import { pluralName } from '../../../lib/format';
 
 const seconds = (s: number) => (s % 60 === 0 ? `${s / 60} min` : s > 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`);
 const meters = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(m % 1000 === 0 ? 0 : 1)} km` : `${m} m`);
 
 /** "3 Dominadas", "Plancha 60 s", "Sentadilla 5 reps @100 kg". */
 function goalLabel(g: SkillGoal): string {
-  if (g.metric === 'reps') return `${g.value} ${g.exerciseName}`;
+  if (g.metric === 'reps') return `${g.value} ${pluralName(g.exerciseName, g.value)}`;
   if (g.metric === 'time_seconds') return `${g.exerciseName} ${seconds(g.value)}`;
   if (g.metric === 'distance_meters') return `${meters(g.value)} ${g.exerciseName}`;
   return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;

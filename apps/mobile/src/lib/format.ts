@@ -87,3 +87,16 @@ export function targetLabel(item: WorkoutItem, distanceUnit?: DistanceUnit): str
   if (item.workSeconds != null) return `${item.workSeconds} s`;
   return sets ? `${sets} series` : '';
 }
+
+/**
+ * An exercise name for a count above one: "20 Sentadillas", "Flexiones de
+ * pecho". Only the first word changes, and only when the Spanish rule is safe
+ * (vowel ending → "s", "-ón" → "-ones"); English names stay as they are.
+ */
+export function pluralName(name: string, count: number | null | undefined): string {
+  if (!count || count <= 1) return name;
+  const [head, ...rest] = name.trim().split(/\s+/);
+  if (!head) return name;
+  const p = /ón$/i.test(head) ? head.slice(0, -2) + 'ones' : /[aeiou]$/i.test(head) && !/[áéíóú]$/i.test(head) ? head + 's' : head;
+  return [p, ...rest].join(' ');
+}
