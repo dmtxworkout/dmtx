@@ -17,10 +17,13 @@ export function toast(message: string, variant: Variant = 'success') {
   const id = (counter += 1);
   toasts = [...toasts, { id, message, variant }];
   emit();
-  setTimeout(() => {
-    toasts = toasts.filter((t) => t.id !== id);
-    emit();
-  }, 3200);
+  setTimeout(
+    () => {
+      toasts = toasts.filter((t) => t.id !== id);
+      emit();
+    },
+    variant === 'error' ? 6000 : 3200,
+  );
 }
 
 export function Toaster() {
@@ -33,22 +36,23 @@ export function Toaster() {
     };
   }, []);
 
+  // Top centre, solid colour: green for success, red for errors. Hard to miss,
+  // out of the way of the save bar and the editor.
   return (
-    <div className="pointer-events-none fixed bottom-5 right-5 z-[100] flex flex-col items-end gap-2">
+    <div className="pointer-events-none fixed inset-x-0 top-5 z-[100] flex flex-col items-center gap-2 px-4">
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="pointer-events-auto flex items-center gap-2.5 rounded-xl border border-line-2 bg-surface px-4 py-3 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.3)]"
+          role={t.variant === 'error' ? 'alert' : 'status'}
+          className={cn(
+            'pointer-events-auto flex max-w-[640px] items-center gap-3 rounded-xl px-5 py-3.5 text-white shadow-[0_16px_40px_-12px_rgba(0,0,0,0.45)]',
+            t.variant === 'success' ? 'bg-green-600' : 'bg-red-600',
+          )}
         >
-          <span
-            className={cn(
-              'flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white',
-              t.variant === 'success' ? 'bg-green-600' : 'bg-red-500',
-            )}
-          >
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/20 text-[13px] font-bold">
             {t.variant === 'success' ? '✓' : '!'}
           </span>
-          <span className="text-[13px] font-medium text-ink">{t.message}</span>
+          <span className="text-[14px] font-semibold leading-snug">{t.message}</span>
         </div>
       ))}
     </div>
