@@ -641,6 +641,37 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     setActiveTab((t) => Math.min(t, baseline.variants.length));
     setServerError(null);
   };
+  // Navigating away with unsaved changes is blocked: the bar shakes instead
+  // (save or discard first). Covers the app's links and this page's own
+  // "back" actions; reload/close still get the browser prompt below.
+  const [shake, setShake] = useState(0);
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const guardNav = (go: () => void) => {
+    if (dirtyRef.current) setShake((n) => n + 1);
+    else go();
+  };
+  useEffect(() => {
+    if (!dirty) return;
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!a || a.target === '_blank' || e.metaKey || e.ctrlKey) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      if (url.pathname === window.location.pathname) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setShake((n) => n + 1);
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, [dirty]);
+  useEffect(() => {
+    if (!shake) return;
+    const t = window.setTimeout(() => setShake(0), 600);
+    return () => window.clearTimeout(t);
+  }, [shake]);
+
   // ⌘S / Ctrl+S saves when there is something to save.
   const doSaveRef = useRef<() => void>(() => {});
   useEffect(() => {
@@ -697,7 +728,13 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       {/* Unsaved-changes bar: only while there is something to save */}
       {dirty && (
         <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
-          <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink p-1 pl-4 text-white shadow-[0_12px_32px_-8px_rgba(0,0,0,0.45)]">
+          <div
+            key={shake}
+            className={cn(
+              'pointer-events-auto flex items-center gap-1 rounded-full bg-ink p-1 pl-4 text-white shadow-[0_12px_32px_-8px_rgba(0,0,0,0.45)]',
+              shake > 0 && 'animate-shake',
+            )}
+          >
             <span className="mr-2 text-[13px] font-semibold">Cambios sin guardar</span>
             <button
               type="button"
@@ -722,7 +759,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       <header className="flex items-start justify-between gap-6 border-b border-line bg-surface px-7 pb-4 pt-5">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
-            <button type="button" onClick={() => router.push(basePath)} className="hover:text-ink-2">
+            <button type="button" onClick={() => guardNav(() => router.push(basePath))} className="hover:text-ink-2">
               {listTitle}
             </button>
             <span>/</span>
