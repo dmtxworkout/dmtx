@@ -29,7 +29,7 @@ export const es = {
     dashboard: 'Panel',
     exercises: 'Ejercicios',
     workouts: 'Rutinas',
-    snippets: 'Bloques guardados',
+    snippets: 'Bloques reutilizables',
     programs: 'Programas',
     skills: 'Habilidades',
     collections: 'Colecciones',
@@ -155,9 +155,9 @@ export const es = {
     video: 'Video',
   },
   snippets: {
-    title: 'Bloques guardados',
+    title: 'Bloques reutilizables',
     subtitle: 'Bloques de rutina reutilizables; aparecen como sugerencia al escribir',
-    empty: 'Aún no hay bloques guardados. Selecciona líneas en una rutina y pulsa "Guardar bloque".',
+    empty: 'Aún no hay bloques reutilizables. Selecciona líneas en una rutina y pulsa "Guardar bloque".',
     count: (n: number) => `${n} bloque${n === 1 ? '' : 's'}`,
   },
   programs: {

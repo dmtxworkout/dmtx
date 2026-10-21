@@ -59,7 +59,7 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
 
 const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Calentamiento', cooldown: 'Enfriamiento' };
 const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '' };
-const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque guardado…';
+const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque reutilizable…';
 
 // Complete reference shown in the right column.
 type GuideRow = { k: string; v: string };
@@ -296,7 +296,7 @@ export function RutinaForm({
 }) {
   const router = useRouter();
   const qc = useQueryClient();
-  // A saved block ("bloque guardado") is plain rutina text with a name: the
+  // A saved block ("bloque reutilizable") is plain rutina text with a name: the
   // same editor and preview, one tab (no warmup/cooldown), no versions,
   // settings or status.
   const snippetMode = snippet !== undefined;
@@ -491,7 +491,7 @@ export function RutinaForm({
       { kind: 'template', title: 'Plantillas', items: TEMPLATES.map((t) => ({ id: t.id, title: t.title, desc: t.desc })) },
       {
         kind: 'snippet',
-        title: 'Bloques guardados',
+        title: 'Bloques reutilizables',
         items: (snippetsQ.data?.data ?? []).map((sn) => ({ id: sn.id, title: sn.name })),
       },
       {
@@ -518,7 +518,7 @@ export function RutinaForm({
     onSuccess: (sn) => {
       qc.invalidateQueries({ queryKey: ['snippets'] });
       setSnippetModal(null);
-      toast(`Bloque guardado: ${sn.name}`);
+      toast(`Bloque reutilizable: ${sn.name}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
@@ -575,7 +575,7 @@ export function RutinaForm({
       setBaseline({ ...currentRef.current });
       qc.setQueryData(['snippet', saved.id], saved);
       qc.invalidateQueries({ queryKey: ['snippets'] });
-      toast('Bloque guardado');
+      toast('Bloque reutilizable');
       if (!snippet) router.replace(`/bloques/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
@@ -802,7 +802,7 @@ export function RutinaForm({
           <div className="flex items-center gap-2">
             {snippetMode ? (
               <span className="font-mono text-xs font-medium text-muted">
-                Bloque guardado · aparece como sugerencia al escribir su nombre
+                Bloque reutilizable · aparece como sugerencia al escribir su nombre
               </span>
             ) : (
               <>

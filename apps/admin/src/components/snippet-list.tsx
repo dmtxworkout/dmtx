@@ -1,6 +1,6 @@
 'use client';
 
-// Saved blocks ("bloques guardados"): reusable rutina text the editor suggests
+// Saved blocks ("bloques reutilizables"): reusable rutina text the editor suggests
 // by name. Created from the rutina editor ("Guardar bloque") or here; each
 // opens in the full rutina editor at /bloques/[id].
 import { useState } from 'react';

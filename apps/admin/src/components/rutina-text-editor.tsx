@@ -468,7 +468,7 @@ class AddMarker extends GutterMarker {
     const el = document.createElement('div');
     el.className = `rt-add${this.hot ? ' hot' : ''}`;
     el.textContent = '+';
-    el.title = 'Insertar plantilla, bloque guardado o rutina';
+    el.title = 'Insertar plantilla, bloque reutilizable o rutina';
     return el;
   }
 }
@@ -1305,7 +1305,7 @@ export function RutinaTextEditor({
       format: { name: 'Formatos', rank: 2 },
       exercise: { name: 'Ejercicios', rank: 3 },
       template: { name: 'Plantillas', rank: 4 },
-      snippet: { name: 'Bloques guardados', rank: 5 },
+      snippet: { name: 'Bloques reutilizables', rank: 5 },
       rutina: { name: 'Rutinas', rank: 6 },
       create: { name: 'Nuevo', rank: 7 },
     };
