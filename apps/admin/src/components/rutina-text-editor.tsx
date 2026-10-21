@@ -726,15 +726,25 @@ function buildInsertMenu(
         rows.push(b);
       }
       el('div', 'rt-insert-hint', 'o escribe directamente', list);
+      // Nothing highlighted until the arrows choose: Enter picks a category only
+      // then; otherwise it breaks the line as usual (the menu reopens below).
+      active = -1;
       paint();
+      let navigated = false;
       menuKeys.set(view, (key) => {
         if (key === 'ArrowDown' || key === 'ArrowUp') {
           if (!rows.length) return true;
-          active = (active + (key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+          if (active < 0) active = key === 'ArrowDown' ? 0 : rows.length - 1;
+          else active = (active + (key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+          navigated = true;
           paint();
           return true;
         }
         if (key === 'Enter') {
+          if (!navigated) {
+            close();
+            return false;
+          }
           rows[active]?.click();
           return true;
         }

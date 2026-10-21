@@ -233,7 +233,7 @@ export function TagTable({ kind }: { kind: Kind }) {
                       type="button"
                       onClick={() => setEditing({ id: r.id, name: r.name })}
                       title="Clic para renombrar"
-                      className="min-w-0 truncate text-left text-sm font-semibold text-ink hover:underline decoration-line-2 underline-offset-4"
+                      className="min-w-0 truncate text-left text-sm font-semibold text-ink"
                     >
                       {r.name}
                     </button>
