@@ -76,7 +76,7 @@ export interface ParsedBlock {
   type: BlockType;
   rounds: number | null;
   label: string | null;
-  /** A note the athlete sees, written as "(texto)" on its own line under the header. */
+  /** A note the athlete sees, written as "// texto" on its own line under the header. */
   notes: string | null;
   items: ParsedItem[];
   /** A loose exercise/rest line (no group header). */

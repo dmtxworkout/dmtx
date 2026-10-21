@@ -304,9 +304,10 @@ const LEAD_COUNT_RE = /^\s*(\d+)\s+(?=\S)/;
 const TRAIL_COUNT_RE = /\s+[x×]?\s*(\d+)\s*$/;
 const MAX_RE = /\b(?:max|maximas?|maximo|al fallo|failure|amrap)\b/;
 const INTERVAL_RE = /^\s*(?:(?:min(?:uto)?|intervalo)\.?\s*)?(\d+)\s*[:).\]]\s+/;
-// "// texto" is an internal comment (dropped); "(texto)" at the end is a note the athlete sees.
-const COMMENT_RE = /\/\/.*$/;
-const NOTE_RE = /\(([^()]*)\)\s*$/;
+// Trailing markers: "# texto" is an internal comment (dropped, always to the end
+// of the line); "// texto" before it is a note the athlete sees.
+const COMMENT_RE = /#.*$/;
+const NOTE_RE = /\/\/(.*)$/;
 
 export function parseItemLine(
   original: string,
@@ -323,7 +324,7 @@ export function parseItemLine(
   r = mask(s, NOTE_RE);
   s = r.s;
   // Keep the note as written (accents, case): slice the original, not the fold.
-  if (r.m) it.notes = original.slice(r.m.index! + 1, r.m.index! + 1 + r.m[1]!.length).trim() || null;
+  if (r.m) it.notes = original.slice(r.m.index! + 2).split('#')[0]!.trim() || null;
 
   r = mask(s, INTERVAL_RE);
   s = r.s;
@@ -628,7 +629,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       closeGroup();
       return info('blank');
     }
-    if (/^\s*(#|\/\/)/.test(f)) return info('comment');
+    if (/^\s*#/.test(f)) return info('comment');
 
     const sec = trimmed.match(SECTION_RE);
     if (sec) {
@@ -660,11 +661,11 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       closeGroup();
     }
 
-    // "(texto)" alone on a line: a note the athlete sees, attached to what is
+    // "// texto" alone on a line: a note the athlete sees, attached to what is
     // right above it — the last exercise of the open group (or the group itself
     // when it has none yet), else the last block of the open part/section (or
     // the part itself when it is still empty).
-    const noteLine = raw.trim().match(/^\((.*)\)$/);
+    const noteLine = raw.trim().match(/^\/\/([^#]*)/);
     if (noteLine) {
       const text = noteLine[1]!.trim();
       const container = part ? (part.children ?? []) : blocks;

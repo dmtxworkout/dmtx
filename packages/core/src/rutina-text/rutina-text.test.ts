@@ -196,20 +196,22 @@ Enfriamiento
     expect(errors('AMRAP\n10 burpees')[0]).toMatchObject({ code: 'format_needs_config' });
   });
 
-  it('keeps "(notas)" for the athlete and drops "// comentarios"', () => {
-    const w = toWorkoutInput(parse('10 burpees (despacio, con control) // revisar con el coach'));
+  it('keeps "// notas" for the athlete and drops "# comentarios"', () => {
+    const w = toWorkoutInput(parse('10 burpees // despacio, con control # revisar con el coach'));
     expect(w.blocks[0]!.items[0]!.notes).toBe('despacio, con control');
-    const p = parse(`(huérfana)
+    expect(toWorkoutInput(parse('10 burpees # interno // no es nota')).blocks[0]!.items[0]!.notes).toBeNull();
+    const p = parse(`// huérfana
 AMRAP 12 min
-  (Mantén el ritmo toda la ronda)
+  // Mantén el ritmo toda la ronda
   10 burpees
-  (sin saltar)
+  // sin saltar
+  # solo para el coach
   3 rondas:
-    (descansa poco)
+    // descansa poco
     5 flexiones
-    (hasta el pecho)
+    // hasta el pecho
 
-(buen trabajo)
+// buen trabajo
 `);
     expect(p.diagnostics.map((d) => [d.line, d.code])).toEqual([[0, 'orphan_note']]);
     const part = toWorkoutInput(p).blocks[0]!;
@@ -217,7 +219,7 @@ AMRAP 12 min
     expect(part.blocks[0]!.items[0]!.notes).toBe('sin saltar');
     expect(part.blocks[1]!.notes).toBe('descansa poco');
     expect(part.blocks[1]!.items[0]!.notes).toBe('hasta el pecho');
-    expect(p.lines[2]!.kind).toBe('note');
+    expect(p.lines.map((l) => l.kind).slice(2, 6)).toEqual(['note', 'item', 'note', 'comment']);
   });
 
   it('accepts trailing counts and Spanish time words', () => {
@@ -264,7 +266,7 @@ describe('serializeRutina', () => {
     descanso 30s
 
 Fuerza
-  sentadilla 5x5 @80% tempo 0-3-1-1 desc 2 min (profundo)
+  sentadilla 5x5 @80% tempo 0-3-1-1 desc 2 min // profundo
   Superserie 3 rondas - Empuje:
     10 flexiones
     8 dominadas +10 kg

@@ -521,8 +521,8 @@ function insertAtLine(view: EditorView, lineNo: number, text: string) {
   const blank = !line.text.trim();
   const indent = ' '.repeat(indentOf(line.text));
   const body = text.replace(/\s+$/, '').split('\n');
-  // A template's explanatory "// …" header only helps in an empty editor.
-  if (doc.toString().trim()) while (body.length && /^\s*\/\//.test(body[0]!)) body.shift();
+  // A template's explanatory "# …" header only helps in an empty editor.
+  if (doc.toString().trim()) while (body.length && /^\s*#/.test(body[0]!)) body.shift();
   const insert = body.map((l) => (l.trim() ? indent + l : '')).join('\n');
   const from = blank ? line.from : line.to;
   const to = blank ? line.to : line.to;
@@ -659,9 +659,10 @@ const insertMenuField = StateField.define<Tooltip | null>({
 });
 
 // --- Token colouring (numbers, loads, tempo, modifiers, notes) ---------------
+// "# comentario" runs to the end of the line; "// nota" (athlete) runs up to it.
 const TOKENS: { re: RegExp; cls: string }[] = [
-  { re: /\/\/.*$/g, cls: 'rt-note' },
-  { re: /\([^()]*\)\s*$/g, cls: 'rt-usernote' },
+  { re: /#.*$/g, cls: 'rt-tail-comment' },
+  { re: /\/\/[^#]*/g, cls: 'rt-tail' },
   { re: /\btempo\s*:?\s*[0-9xX][-/. ]?[0-9xX][-/. ]?[0-9xX][-/. ]?[0-9xX]\b/gi, cls: 'rt-tempo' },
   { re: /[@+]\s*(?:\d+(?:[.,]\d+)?(?:\s*\/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lb|lbs|%)?|rpe\s*\d+(?:\.\d+)?|corporal|bw)/gi, cls: 'rt-load' },
   { re: /\b(?:c\/(?:lado|u|l)|por lado|cada lado|desc(?:anso)?\s+\S+|rest\s+\S+)/gi, cls: 'rt-mod' },
@@ -753,8 +754,9 @@ const theme = EditorView.theme({
   '.rt-load': { color: '#a31515' },
   '.rt-tempo': { color: '#267f99' },
   '.rt-mod': { color: '#001080' },
-  '.rt-note': { color: '#008000', fontStyle: 'italic' },
-  '.rt-usernote': { color: '#0b7285', fontStyle: 'italic' },
+  // "// nota" (athlete) is teal, "# comentario" (internal) green; a line's kind wins over the token.
+  '.rt-tail': { color: '#0b7285', fontStyle: 'italic' },
+  '.rt-tail-comment': { color: '#008000', fontStyle: 'italic' },
   '.rt-notes': { color: '#0b7285', fontStyle: 'italic' },
   // "+" gutter
   '.rt-gutter-add': { width: '16px' },

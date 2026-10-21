@@ -136,7 +136,7 @@ export function itemLine(it: SerializableItem, name: string, format: WorkoutForm
   if (tempo) parts.push(tempo);
   if (it.perSide) parts.push('c/lado');
   if (it.restBetweenSeconds) parts.push(`desc ${dur(it.restBetweenSeconds)}`);
-  if (it.notes) parts.push(`(${it.notes})`);
+  if (it.notes) parts.push(`// ${it.notes}`);
   return parts.join(' ');
 }
 
@@ -177,7 +177,7 @@ export function serializeRutina(
     const slot = b.items.find((it) => it.kind === 'exercise')?.intervalIndex;
     if (fmt === 'emom' && slot != null && !b.rounds && b.type === 'emom') {
       out.push(`${pad}intervalo ${slot + 1}:`);
-      if (b.notes) out.push(`${pad}  (${b.notes})`);
+      if (b.notes) out.push(`${pad}  // ${b.notes}`);
       b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), null)}`));
       out.push('');
       return;
@@ -189,7 +189,7 @@ export function serializeRutina(
     let line = head.join(' ');
     if (b.label) line += ` - ${b.label}`;
     out.push(`${pad}${line}:`);
-    if (b.notes) out.push(`${pad}  (${b.notes})`);
+    if (b.notes) out.push(`${pad}  // ${b.notes}`);
     b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), fmt)}`));
     out.push('');
   };
@@ -210,7 +210,7 @@ export function serializeRutina(
       if (b.kind === 'part') {
         const fmt = b.format ?? 'for_time';
         out.push(pad + formatHeader(fmt, b.formatConfig));
-        if (b.notes) out.push(`${pad}  (${b.notes})`);
+        if (b.notes) out.push(`${pad}  // ${b.notes}`);
         afterHeader = true;
         (b.blocks ?? []).forEach((c) => writeBlock(c, pad + '  ', fmt));
         out.push('');

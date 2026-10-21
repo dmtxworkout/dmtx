@@ -122,8 +122,8 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     rows: [
       { k: 'c/lado · por lado', v: 'cantidad por cada lado' },
       { k: 'desc 90s', v: 'descanso entre series (Fuerza)' },
-      { k: '10 burpees (sin saltar)', v: 'nota que ve el usuario; sola en una línea pertenece a lo que tiene encima' },
-      { k: '// revisar carga', v: 'comentario interno: no se guarda en la estructura ni lo ve el usuario' },
+      { k: '10 burpees // sin saltar', v: 'nota que ve el usuario; sola en una línea pertenece a lo que tiene encima' },
+      { k: '# revisar carga', v: 'comentario interno: no se guarda en la estructura ni lo ve el usuario' },
       { k: 'intervalo 2: 10 burpees', v: 'fija el intervalo de un ejercicio en un EMOM' },
       { k: 'intervalo 2:', v: 'en un EMOM, abre el grupo de ejercicios de ese intervalo (indentados debajo); los intervalos rotan' },
       { k: '// despacio', v: 'nota que ve el usuario' },
@@ -150,7 +150,7 @@ const TEMPLATES: Template[] = [
     id: 'amrap',
     title: 'AMRAP clásico',
     desc: 'Máximas rondas de un circuito en un tiempo.',
-    text: (ex) => `// Cambia los ejercicios por los tuyos y borra esta línea
+    text: (ex) => `# Cambia los ejercicios por los tuyos y borra esta línea
 AMRAP 12 min
   10 ${ex(0)}
   15 ${ex(1)}
@@ -161,7 +161,7 @@ AMRAP 12 min
     id: 'emom',
     title: 'EMOM por intervalos',
     desc: 'Cada intervalo un grupo de trabajo distinto, rotando.',
-    text: (ex) => `// Cada "intervalo N:" es el trabajo de ese intervalo; luego rotan
+    text: (ex) => `# Cada "intervalo N:" es el trabajo de ese intervalo; luego rotan
 EMOM 10 x 90s
   intervalo 1:
     10 ${ex(0)}
@@ -174,7 +174,7 @@ EMOM 10 x 90s
     id: 'fuerza',
     title: 'Fuerza 5x5',
     desc: 'Series × reps con carga, tempo y descanso.',
-    text: (ex) => `// series x reps · @carga · tempo · desc = descanso entre series
+    text: (ex) => `# series x reps · @carga · tempo · desc = descanso entre series
 Fuerza
   ${ex(0)} 5x5 @80% tempo 0-3-1-1 desc 2 min
   ${ex(1)} 3x8 @60 kg desc 90s
@@ -185,7 +185,7 @@ Fuerza
     id: 'partes',
     title: 'For time con partes',
     desc: 'Calentamiento, varias partes y enfriamiento.',
-    text: (ex) => `// Lo indentado pertenece a la línea de arriba (sección, formato o bloque)
+    text: (ex) => `# Lo indentado pertenece a la línea de arriba (sección, formato o bloque)
 Calentamiento
   AMRAP 5 min
     10 ${ex(0)}
