@@ -340,6 +340,25 @@ export function ExerciseForm({
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{es.exercises.fields.media}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-6 py-5 sm:grid sm:grid-cols-2">
+                <MediaField
+                  kind="image"
+                  label={es.exercises.fields.thumbnail}
+                  value={thumbnailAssetId}
+                  onChange={setThumbnailAssetId}
+                />
+                <MediaField
+                  kind="video"
+                  label={es.exercises.fields.demoVideo}
+                  value={demoVideoAssetId}
+                  onChange={setDemoVideoAssetId}
+                />
+              </CardContent>
+            </Card>
 
             <Card>
               <CardHeader>
@@ -387,8 +406,9 @@ export function ExerciseForm({
                 </Select>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader>
+            {/* overflow-visible: the muscle dropdown hangs below the card. */}
+            <Card className="overflow-visible">
+              <CardHeader className="rounded-t-[11px]">
                 <CardTitle>Músculos</CardTitle>
               </CardHeader>
               <CardContent className="py-4">
@@ -401,25 +421,6 @@ export function ExerciseForm({
               </CardHeader>
               <CardContent className="py-4">
                 <EquipmentPicker value={equipmentIds} onChange={setEquipmentIds} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>{es.exercises.fields.media}</CardTitle>
-              </CardHeader>
-              <CardContent className={cn('flex flex-col gap-6 py-5', embedded && 'sm:grid sm:grid-cols-2')}>
-                <MediaField
-                  kind="image"
-                  label={es.exercises.fields.thumbnail}
-                  value={thumbnailAssetId}
-                  onChange={setThumbnailAssetId}
-                />
-                <MediaField
-                  kind="video"
-                  label={es.exercises.fields.demoVideo}
-                  value={demoVideoAssetId}
-                  onChange={setDemoVideoAssetId}
-                />
               </CardContent>
             </Card>
           </div>
