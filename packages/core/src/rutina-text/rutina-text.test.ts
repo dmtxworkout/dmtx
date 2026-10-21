@@ -505,3 +505,14 @@ describe('keyword typos and quote units', () => {
     expect(items.map((i) => i.workSeconds)).toEqual([30, 45, 90]);
   });
 });
+
+describe('intervals outside an EMOM', () => {
+  it('warns and ignores "intervalo N:" under an AMRAP, inline or as a group', () => {
+    const p = parse('AMRAP 12 min\n  intervalo 1: 20 burpees\n  intervalo 2:\n    10 burpees');
+    expect(p.diagnostics.map((d) => [d.line, d.severity, d.code])).toEqual([
+      [1, 'warning', 'interval_outside_emom'],
+      [2, 'warning', 'interval_outside_emom'],
+    ]);
+    expect(flat(toWorkoutInput(p).blocks)[0]!.items[0]).toMatchObject({ reps: 20, intervalIndex: null });
+  });
+});

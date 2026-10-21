@@ -14,6 +14,8 @@ export type PvItem =
       tempo: string | null;
       perSide?: boolean;
       note?: string | null;
+      /** 1-based EMOM interval the item is fixed to, when written as "intervalo N:". */
+      interval?: number | null;
     };
 export type PvBlock = {
   title: string | null;
@@ -43,6 +45,11 @@ function Line({ item }: { item: PvItem }) {
   }
   return (
     <div className="text-[13px] leading-6 text-ink">
+      {item.interval != null && (
+        <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
+          Int. {item.interval}
+        </span>
+      )}
       {item.prefix && <span className="tabular-nums">{item.prefix} </span>}
       {item.name}
       {item.load && <span className="text-ink-3"> @{item.load}</span>}

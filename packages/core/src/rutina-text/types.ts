@@ -25,7 +25,8 @@ export type DiagnosticCode =
   | 'missing_count'
   | 'format_needs_config'
   | 'unsupported'
-  | 'orphan_rest';
+  | 'orphan_rest'
+  | 'interval_outside_emom';
 
 /** A problem on one line. `from`/`to` are column offsets within that line. */
 export interface Diagnostic {

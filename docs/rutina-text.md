@@ -86,6 +86,7 @@ the fix as its suggestion. Real exercise names are never flagged.
 | `desc 90s` · `descanso 1 min` (inline) | `restBetweenSeconds` |
 | `intervalo 1:` · `min 1:` · `1)` prefix | `intervalIndex` (EMOM only; stripped elsewhere) |
 | `intervalo 2:` on its own line (EMOM) | A group holding that interval's work (the lines indented under it); the player rotates over such slots. `min 2:` is accepted too |
+| `intervalo N:` outside an EMOM | Ignored, with an `interval_outside_emom` warning |
 | `// nota` (trailing) | `notes` |
 | `max` · `al fallo` | no count, noted |
 

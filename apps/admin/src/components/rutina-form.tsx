@@ -232,7 +232,7 @@ function initialText(workout: Workout | undefined, catalog: Catalog): string {
 
 // ---- Preview model from the parse result -------------------------------------
 
-function pvItem(it: ParsedItem): PvItem {
+function pvItem(it: ParsedItem, inSlot = false): PvItem {
   if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds };
   const sets = it.sets && it.sets > 1 ? it.sets : null;
   let prefix: string | null = null;
@@ -252,12 +252,14 @@ function pvItem(it: ParsedItem): PvItem {
     tempo: tempo ? tempo.replace(/-/g, '·') : null,
     perSide: it.perSide,
     note: it.notes,
+    // Items under an "intervalo N:" group already sit under that heading.
+    interval: !inSlot && it.intervalIndex != null ? it.intervalIndex + 1 : null,
   };
 }
 const pvBlock = (b: ParsedBlock): PvBlock => ({
   title: b.label,
   rounds: b.rounds,
-  items: b.items.map(pvItem),
+  items: b.items.map((it) => pvItem(it, b.type === 'emom')),
 });
 /** Parts become a header entry followed by their blocks. */
 const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] =>

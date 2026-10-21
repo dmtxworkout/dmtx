@@ -141,6 +141,19 @@ function diag(ctx: Ctx, d: Diagnostic) {
   ctx.diagnostics.push(d);
 }
 
+/** "intervalo N:" only means something under an EMOM header; elsewhere it is ignored. */
+function intervalOutsideEmom(ctx: Ctx, line: number, raw: string, matched: string) {
+  const from = Math.max(0, raw.search(/\S/));
+  diag(ctx, {
+    line,
+    from,
+    to: from + matched.trim().length,
+    severity: 'warning',
+    code: 'interval_outside_emom',
+    message: 'Los intervalos solo aplican dentro de un EMOM; aquí se ignora.',
+  });
+}
+
 // --- Format headers ----------------------------------------------------------
 
 function parseFormat(
@@ -309,7 +322,10 @@ export function parseItemLine(
 
   r = mask(s, INTERVAL_RE);
   s = r.s;
-  if (r.m && opts.format === 'emom') it.intervalIndex = Math.max(0, Number(r.m[1]) - 1);
+  if (r.m) {
+    if (opts.format === 'emom') it.intervalIndex = Math.max(0, Number(r.m[1]) - 1);
+    else intervalOutsideEmom(ctx, line, original, r.m[0]);
+  }
 
   r = mask(s, TEMPO_WORD_RE);
   if (!r.m) r = mask(s, TEMPO_AT_RE);
@@ -700,6 +716,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     const slot = trimmed.match(SLOT_RE);
     if (slot) {
       flushGroupRest();
+      if (part?.format?.format !== 'emom') intervalOutsideEmom(ctx, i, raw, trimmed);
       const n = Number(slot[1]);
       const { block } = openGroup(i, undefined, null, `intervalo ${n}`);
       groupSlot = Math.max(0, n - 1);
