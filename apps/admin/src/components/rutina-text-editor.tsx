@@ -202,6 +202,10 @@ const lineKindPlugin = ViewPlugin.fromClass(
 
 // --- Diagnostic card ---------------------------------------------------------
 const escape = (s: string) => s.replace(/[<>&]/g, '');
+const BACK_ICON =
+  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
+const CHEVRON_ICON =
+  '<svg class="c" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
 const PLUS_ICON =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 const BOOKMARK_ICON =
@@ -543,84 +547,156 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   const { insert } = view.state.field(handlersField);
   const parent = parentKindOf(view, lineNo);
   const nested = parent === 'format' || parent === 'group';
+  // Inside a format or a group only saved blocks fit.
+  const allowed = groups.filter((g) => !nested || g.kind === 'snippet');
   const dom = document.createElement('div');
   dom.className = 'rt-insert';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = nested ? 'Buscar bloque guardado…' : 'Buscar plantilla, bloque o rutina…';
-  input.className = 'rt-insert-search';
-  dom.appendChild(input);
-  const list = document.createElement('div');
-  list.className = 'rt-insert-list';
-  dom.appendChild(list);
   const close = () => view.dispatch({ effects: openInsertMenu.of(null) });
+
+  // A small three-level navigation: categories → items (searchable) → preview + insert.
+  type Screen =
+    | { level: 'root' }
+    | { level: 'list'; group: InsertGroup; query: string }
+    | { level: 'preview'; group: InsertGroup; item: InsertItem; text: string | null };
+  let screen: Screen = allowed.length === 1 ? { level: 'list', group: allowed[0]!, query: '' } : { level: 'root' };
   let rows: HTMLButtonElement[] = [];
   let active = 0;
   const paint = () => rows.forEach((r, i) => r.classList.toggle('active', i === active));
-  const pick = (kind: InsertKind, id: string) => {
-    close();
-    insert?.(kind, id).then((text) => {
-      if (text) insertAtLine(view, lineNo, text);
-    });
+
+  const el = (tag: string, cls: string, text?: string, parent: HTMLElement = dom) => {
+    const e = document.createElement(tag);
+    e.className = cls;
+    if (text != null) e.textContent = text;
+    parent.appendChild(e);
+    return e;
   };
-  const render = () => {
-    const q = foldText(input.value.trim());
-    list.textContent = '';
-    rows = [];
-    for (const g of groups) {
-      if (nested && g.kind !== 'snippet') continue;
-      const items = g.items.filter((it) => !q || foldText(`${it.title} ${it.desc ?? ''}`).includes(q));
-      if (!items.length) continue;
-      const head = document.createElement('div');
-      head.className = 'rt-insert-group';
-      head.textContent = g.title;
-      list.appendChild(head);
-      for (const it of items) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'rt-insert-item';
-        const t = document.createElement('span');
-        t.className = 't';
-        t.textContent = it.title;
-        b.appendChild(t);
-        if (it.desc) {
-          const d = document.createElement('span');
-          d.className = 'd';
-          d.textContent = it.desc;
-          b.appendChild(d);
-        }
-        b.addEventListener('mousedown', (e) => e.preventDefault());
-        b.addEventListener('click', () => pick(g.kind, it.id));
-        list.appendChild(b);
-        rows.push(b);
-      }
-    }
-    if (!rows.length) {
-      const empty = document.createElement('div');
-      empty.className = 'rt-insert-empty';
-      empty.textContent = nested
-        ? 'Dentro de un formato o un bloque solo caben bloques guardados.'
-        : 'Nada que insertar con ese nombre.';
-      list.appendChild(empty);
-    }
-    active = 0;
-    paint();
+  const button = (cls: string, parent: HTMLElement, onClick: () => void) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', onClick);
+    parent.appendChild(b);
+    return b;
   };
-  input.addEventListener('input', render);
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
+  const header = (title: string, onBack: (() => void) | null) => {
+    const h = el('div', 'rt-insert-head');
+    if (onBack) {
+      const back = button('rt-insert-back', h, onBack);
+      back.innerHTML = `${BACK_ICON}<span>Atrás</span>`;
+      back.title = 'Atrás (Esc)';
+    }
+    el('div', 'rt-insert-title', title, h);
+  };
+  const go = (next: Screen) => {
+    screen = next;
+    render();
+  };
+  const back = () => {
+    if (screen.level === 'preview') go({ level: 'list', group: screen.group, query: '' });
+    else if (screen.level === 'list' && allowed.length > 1) go({ level: 'root' });
+    else {
       close();
       view.focus();
-    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    }
+  };
+  const doInsert = (text: string | null) => {
+    close();
+    if (text) insertAtLine(view, lineNo, text);
+    else view.focus();
+  };
+  const openPreview = (group: InsertGroup, item: InsertItem) => {
+    go({ level: 'preview', group, item, text: null });
+    insert?.(group.kind, item.id).then((text) => {
+      if (screen.level === 'preview' && screen.item.id === item.id) go({ ...screen, text: text ?? '' });
+    });
+  };
+
+  const render = () => {
+    dom.textContent = '';
+    rows = [];
+    active = 0;
+    if (screen.level === 'root') {
+      header('Insertar aquí', null);
+      const list = el('div', 'rt-insert-list');
+      for (const g of allowed) {
+        const b = button('rt-insert-item rt-insert-cat', list, () => go({ level: 'list', group: g, query: '' }));
+        b.innerHTML = `<span class="t">${escape(g.title)}</span><span class="n">${g.items.length}</span>${CHEVRON_ICON}`;
+        rows.push(b);
+      }
+      if (!allowed.length) el('div', 'rt-insert-empty', 'Nada que insertar aquí.', list);
+      paint();
+      window.setTimeout(() => rows[0]?.focus(), 0);
+      return;
+    }
+    if (screen.level === 'list') {
+      const { group } = screen;
+      header(group.title, back);
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = `Buscar en ${group.title.toLowerCase()}…`;
+      input.className = 'rt-insert-search';
+      input.value = screen.query;
+      dom.appendChild(input);
+      const list = el('div', 'rt-insert-list');
+      const fill = () => {
+        const q = foldText(input.value.trim());
+        list.textContent = '';
+        rows = [];
+        const items = group.items.filter((it) => !q || foldText(`${it.title} ${it.desc ?? ''}`).includes(q));
+        for (const it of items) {
+          const b = button('rt-insert-item', list, () => openPreview(group, it));
+          b.innerHTML = `<span class="t">${escape(it.title)}</span>${it.desc ? `<span class="d">${escape(it.desc)}</span>` : ''}`;
+          rows.push(b);
+        }
+        if (!rows.length) el('div', 'rt-insert-empty', group.items.length ? 'Nada con ese nombre.' : 'Todavía no hay nada aquí.', list);
+        active = 0;
+        paint();
+      };
+      input.addEventListener('input', () => {
+        if (screen.level === 'list') screen.query = input.value;
+        fill();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!rows.length) return;
+          active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+          paint();
+          rows[active]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          rows[active]?.click();
+        }
+      });
+      fill();
+      window.setTimeout(() => input.focus(), 0);
+      return;
+    }
+    // preview
+    const { item, text } = screen;
+    header(item.title, back);
+    if (item.desc) el('div', 'rt-insert-desc', item.desc);
+    const pre = el('pre', 'rt-insert-preview', text == null ? 'Cargando…' : text.replace(/\s+$/, '') || '(vacío)');
+    if (text == null) pre.classList.add('loading');
+    const actions = el('div', 'rt-insert-actions');
+    const ok = button('rt-insert-go', actions, () => doInsert(text));
+    ok.textContent = nested ? 'Insertar aquí' : 'Insertar';
+    ok.disabled = text == null;
+    window.setTimeout(() => ok.focus(), 0);
+  };
+
+  dom.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      back();
+    } else if (screen.level !== 'list' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       if (!rows.length) return;
       active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
       paint();
-      rows[active]?.scrollIntoView({ block: 'nearest' });
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      rows[active]?.click();
+      rows[active]?.focus();
     }
   });
   const onDocDown = (e: MouseEvent) => {
@@ -628,7 +704,6 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   };
   window.setTimeout(() => document.addEventListener('mousedown', onDocDown), 0);
   render();
-  window.setTimeout(() => input.focus(), 0);
   return { dom, destroy: () => document.removeEventListener('mousedown', onDocDown) };
 }
 
@@ -778,7 +853,7 @@ const theme = EditorView.theme({
   '.rt-add.hot': { opacity: '1' },
   '.rt-add:hover': { backgroundColor: 'var(--color-accent-tint)', color: 'var(--color-accent-dark)' },
   // Insert menu
-  '.rt-insert': { width: '320px', padding: '6px', fontFamily: 'var(--font-sans)' },
+  '.rt-insert': { width: '340px', padding: '6px', fontFamily: 'var(--font-sans)' },
   '.rt-insert-search': {
     width: '100%',
     boxSizing: 'border-box',
@@ -820,6 +895,71 @@ const theme = EditorView.theme({
   '.rt-insert-item .d': { fontSize: '12px', color: 'var(--color-muted)', lineHeight: '1.3' },
   '.rt-insert-item:hover, .rt-insert-item.active': { background: 'var(--color-accent-tint)' },
   '.rt-insert-empty': { padding: '10px 8px', fontSize: '12px', color: 'var(--color-muted)' },
+  '.rt-insert-head': { display: 'flex', alignItems: 'center', gap: '6px', padding: '2px 4px 6px' },
+  '.rt-insert-back': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '3px',
+    padding: '3px 7px 3px 4px',
+    border: 'none',
+    borderRadius: '6px',
+    background: 'transparent',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '12px',
+    fontWeight: '600',
+    color: 'var(--color-accent-dark)',
+    cursor: 'pointer',
+  },
+  '.rt-insert-back:hover': { background: 'var(--color-accent-tint)' },
+  '.rt-insert-title': {
+    flex: '1',
+    minWidth: '0',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    padding: '0 4px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10px',
+    fontWeight: '600',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: 'var(--color-muted)',
+  },
+  '.rt-insert-cat': { flexDirection: 'row', alignItems: 'center', gap: '8px', padding: '8px 10px' },
+  '.rt-insert-cat .t': { flex: '1' },
+  '.rt-insert-cat .n': { fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-muted)' },
+  '.rt-insert-cat .c': { color: 'var(--color-faint-2)' },
+  '.rt-insert-item:focus': { outline: 'none', background: 'var(--color-accent-tint)' },
+  '.rt-insert-desc': { padding: '0 8px 8px', fontSize: '12px', lineHeight: '1.4', color: 'var(--color-muted)' },
+  '.rt-insert-preview': {
+    margin: '0 4px',
+    maxHeight: '260px',
+    overflow: 'auto',
+    padding: '8px 10px',
+    borderRadius: '8px',
+    background: 'var(--color-surface-2)',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '12px',
+    lineHeight: '1.6',
+    color: 'var(--color-ink-2)',
+    whiteSpace: 'pre',
+  },
+  '.rt-insert-preview.loading': { color: 'var(--color-muted)', fontStyle: 'italic' },
+  '.rt-insert-actions': { display: 'flex', justifyContent: 'flex-end', padding: '8px 4px 2px' },
+  '.rt-insert-go': {
+    padding: '7px 14px',
+    border: 'none',
+    borderRadius: '8px',
+    background: 'var(--color-accent)',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '13px',
+    fontWeight: '700',
+    color: '#fff',
+    cursor: 'pointer',
+  },
+  '.rt-insert-go:hover': { filter: 'brightness(0.95)' },
+  '.rt-insert-go:disabled': { opacity: '0.5', cursor: 'default' },
+  '.rt-insert-go:focus': { outline: '2px solid var(--color-accent-tint)' },
   '.cm-lintRange-error': {
     backgroundImage: 'none',
     textDecoration: 'underline wavy #e51400',
