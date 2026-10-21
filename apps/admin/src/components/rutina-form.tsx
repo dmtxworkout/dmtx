@@ -393,12 +393,23 @@ export function RutinaForm({
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState(0); // 0 = base, n = variants[n-1]
   const [tabDialog, setTabDialog] = useState<{ mode: 'add' | 'rename'; index: number; label: string } | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState<{ index: number; label: string } | null>(null);
+  // Renaming and deleting happen in the row itself: Enter / ✓ saves, Escape / ✕ cancels.
+  const [renaming, setRenaming] = useState<{ index: number; label: string } | null>(null);
+  const [confirmingRemove, setConfirmingRemove] = useState<number | null>(null);
+  const commitRename = () => {
+    if (!renaming) return;
+    renameTab(renaming.index, renaming.label.trim());
+    setRenaming(null);
+  };
   // The "Versión" dropdown in the tab bar: closes on an outside click or Escape.
   const [versionOpen, setVersionOpen] = useState(false);
   const versionRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!versionOpen) return;
+    if (!versionOpen) {
+      setRenaming(null);
+      setConfirmingRemove(null);
+      return;
+    }
     const onDown = (e: MouseEvent) => {
       if (!versionRef.current?.contains(e.target as Node)) setVersionOpen(false);
     };
@@ -975,11 +986,11 @@ export function RutinaForm({
                     </svg>
                   </button>
                   {versionOpen && (
-                    <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+                    <div className="absolute right-0 top-full z-20 mt-1 w-80 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
                       {versionList.map((t, i) => (
                         <div
                           key={t.id}
-                          draggable={skillMode && versionList.length > 1}
+                          draggable={skillMode && versionList.length > 1 && renaming?.index !== i}
                           onDragStart={(e) => {
                             setDragFrom(i);
                             e.dataTransfer.effectAllowed = 'move';
@@ -1011,47 +1022,87 @@ export function RutinaForm({
                               ⋮⋮
                             </span>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTab(i);
-                              setVersionOpen(false);
-                            }}
-                            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
-                          >
-                            {!skillMode && <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>}
-                            <span className="truncate font-semibold">{t.label || 'Sin nombre'}</span>
-                            {i === 0 && !skillMode && <span className="font-mono text-[10px] text-muted">base</span>}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setVersionOpen(false);
-                              setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label });
-                            }}
-                            className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink group-hover:opacity-100"
-                            title={i === 0 && !skillMode ? 'Nombrar el nivel de la versión principal' : 'Renombrar'}
-                            aria-label="Renombrar"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                            </svg>
-                          </button>
-                          {(i > 0 || (skillMode && versionList.length > 1)) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setVersionOpen(false);
-                                setConfirmRemove({ index: i, label: t.label });
-                              }}
-                              className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
-                              title={`Eliminar ${levelWord}`}
-                              aria-label={`Eliminar ${levelWord}`}
-                            >
-                              ✕
-                            </button>
+                          {renaming?.index === i ? (
+                            <>
+                              <input
+                                autoFocus
+                                value={renaming.label}
+                                onChange={(e) => setRenaming({ index: i, label: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    commitRename();
+                                  } else if (e.key === 'Escape') {
+                                    e.stopPropagation();
+                                    setRenaming(null);
+                                  }
+                                }}
+                                placeholder={skillMode ? 'Nombre del nivel' : i === 0 ? 'Principal' : 'Nombre'}
+                                className="my-1 h-7 min-w-0 flex-1 rounded-md border border-accent bg-surface px-2 text-[13px] font-semibold text-ink focus:outline-none"
+                              />
+                              <button type="button" onClick={commitRename} className="rounded px-1.5 py-1 text-[13px] font-bold text-accent-dark hover:bg-accent-tint" title="Guardar (Enter)" aria-label="Guardar nombre">
+                                ✓
+                              </button>
+                              <button type="button" onClick={() => setRenaming(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" title="Cancelar (Esc)" aria-label="Cancelar">
+                                ✕
+                              </button>
+                            </>
+                          ) : confirmingRemove === i ? (
+                            <>
+                              <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">¿Eliminar «{t.label || 'Sin nombre'}»?</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmingRemove(null);
+                                  removeTab(i);
+                                }}
+                                className="rounded-md bg-accent-dark px-2 py-1 text-[12px] font-semibold text-white hover:opacity-90"
+                              >
+                                Eliminar
+                              </button>
+                              <button type="button" onClick={() => setConfirmingRemove(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" title="Cancelar" aria-label="Cancelar">
+                                ✕
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab(i);
+                                  setVersionOpen(false);
+                                }}
+                                onDoubleClick={() => setRenaming({ index: i, label: i === 0 ? baseLabel : t.label })}
+                                className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+                              >
+                                {!skillMode && <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>}
+                                <span className="truncate font-semibold">{t.label || 'Sin nombre'}</span>
+                                {i === 0 && !skillMode && <span className="font-mono text-[10px] text-muted">base</span>}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRenaming({ index: i, label: i === 0 ? baseLabel : t.label })}
+                                className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink group-hover:opacity-100"
+                                title={i === 0 && !skillMode ? 'Nombrar el nivel de la versión principal' : 'Renombrar'}
+                                aria-label="Renombrar"
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
+                              </button>
+                              {(i > 0 || (skillMode && versionList.length > 1)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingRemove(i)}
+                                  className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
+                                  title={`Eliminar ${levelWord}`}
+                                  aria-label={`Eliminar ${levelWord}`}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       ))}
@@ -1237,33 +1288,6 @@ export function RutinaForm({
             </Button>
             <Button type="button" disabled={!name.trim()} onClick={() => setCreateOpen(false)}>
               Crear
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-
-      <Dialog
-        open={confirmRemove !== null}
-        onClose={() => setConfirmRemove(null)}
-        title={`Eliminar ${levelWord}`}
-        className="max-w-sm"
-      >
-        <div className="flex flex-col gap-4 p-5">
-          <p className="text-[14px] leading-relaxed text-ink-2">
-            ¿Eliminar {skillMode ? 'el nivel' : 'la variante'} «{confirmRemove?.label}»? Se borrará al guardar{skillMode ? ', con su rutina' : ' la rutina'}.
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmRemove(null)}>
-              {es.app.cancel}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (confirmRemove) removeTab(confirmRemove.index);
-                setConfirmRemove(null);
-              }}
-            >
-              Eliminar
             </Button>
           </div>
         </div>
