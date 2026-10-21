@@ -11,7 +11,7 @@ export function fold(s: string): string {
 export const NUM = String.raw`\d+(?:[.,]\d+)?`;
 
 const SEC_UNIT = String.raw`(?:segundos?|segs?|seconds?|secs?|s|''|")`;
-const MIN_UNIT = String.raw`(?:minutos?|mins?|')`;
+const MIN_UNIT = String.raw`(?:minutos?|mins?|'(?!'))`;
 const HOUR_UNIT = String.raw`(?:horas?|hrs?|h)`;
 
 /**

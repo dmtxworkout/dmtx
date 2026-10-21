@@ -43,12 +43,6 @@ export interface SerializableBlock {
   blocks?: SerializableBlock[];
 }
 export interface SerializableWorkout {
-  format?: WorkoutFormat | null;
-  formatConfig?: FormatConfig | null;
-  warmupFormat?: WorkoutFormat | null;
-  warmupFormatConfig?: FormatConfig | null;
-  cooldownFormat?: WorkoutFormat | null;
-  cooldownFormatConfig?: FormatConfig | null;
   blocks: SerializableBlock[];
 }
 
@@ -191,8 +185,7 @@ export function serializeRutina(
     if (b.rounds) head.push(`${b.rounds} rondas`);
     if (!head.length) head.push('Bloque');
     let line = head.join(' ');
-    // "Bloque N" was the old block builder's default name: not worth writing.
-    if (b.label && !/^bloque\s*\d+$/i.test(b.label.trim())) line += ` - ${b.label}`;
+    if (b.label) line += ` - ${b.label}`;
     out.push(`${pad}${line}:`);
     b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), fmt)}`));
     out.push('');
@@ -201,47 +194,31 @@ export function serializeRutina(
   // Warmup/cooldown are written Python-style: a title line, then everything
   // indented under it. Main sits at column 0 and needs no title. Inside a
   // section, each PART is its format header with its blocks indented under
-  // it; blocks outside any part sit at the section's own column. Legacy
-  // data (no part blocks, a section-level format) is written as one part.
-  const writeSection = (
-    section: BlockSection,
-    format: WorkoutFormat | null | undefined,
-    config: FormatConfig | null | undefined,
-  ) => {
+  // it; blocks outside any part sit at the section's own column.
+  const writeSection = (section: BlockSection) => {
     const blocks = bySection(section);
-    if (section !== 'main' && blocks.length === 0 && !format) return;
+    if (section !== 'main' && blocks.length === 0) return;
     const pad = section === 'main' ? '' : '  ';
     if (out.length) out.push('');
     if (section !== 'main') out.push(SECTION_TITLE[section]);
-    const hasParts = blocks.some((b) => b.kind === 'part');
-    if (!hasParts) {
-      const fmt = section === 'main' ? (format ?? 'for_time') : (format ?? null);
-      if (fmt) {
-        out.push(pad + formatHeader(fmt, config));
+    blocks.forEach((b, i) => {
+      // Blank line between top-level parts/blocks, not after the section title.
+      if (i > 0 && out[out.length - 1] !== '') out.push('');
+      if (b.kind === 'part') {
+        const fmt = b.format ?? 'for_time';
+        out.push(pad + formatHeader(fmt, b.formatConfig));
         afterHeader = true;
+        (b.blocks ?? []).forEach((c) => writeBlock(c, pad + '  ', fmt));
+        out.push('');
+      } else {
+        writeBlock(b, pad, null);
       }
-      const inner = fmt ? pad + '  ' : pad;
-      blocks.forEach((b) => writeBlock(b, inner, fmt));
-    } else {
-      blocks.forEach((b, i) => {
-        // Blank line between top-level parts/blocks, not after the section title.
-        if (i > 0 && out[out.length - 1] !== '') out.push('');
-        if (b.kind === 'part') {
-          const fmt = b.format ?? 'for_time';
-          out.push(pad + formatHeader(fmt, b.formatConfig));
-          afterHeader = true;
-          (b.blocks ?? []).forEach((c) => writeBlock(c, pad + '  ', fmt));
-          out.push('');
-        } else {
-          writeBlock(b, pad, null);
-        }
-      });
-    }
+    });
     while (out[out.length - 1] === '') out.pop();
   };
 
-  writeSection('warmup', w.warmupFormat, w.warmupFormatConfig);
-  writeSection('main', w.format, w.formatConfig);
-  writeSection('cooldown', w.cooldownFormat, w.cooldownFormatConfig);
+  writeSection('warmup');
+  writeSection('main');
+  writeSection('cooldown');
   return out.join('\n') + '\n';
 }

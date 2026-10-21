@@ -130,12 +130,8 @@ export interface WorkoutDetail {
   thumbnailUrl: string | null;
   videoUrl: string | null;
   videoDurationSeconds: number | null;
+  /** Timing of the part being played; null on the rutina itself (parts carry it). */
   formatConfig: unknown;
-  /** Referenced warmup/cooldown segments carry their own format (null if inline). */
-  warmupFormat: WorkoutFormat | null;
-  warmupFormatConfig: unknown;
-  cooldownFormat: WorkoutFormat | null;
-  cooldownFormatConfig: unknown;
   scoringGoal: Goal | null;
   /** Variants (RX / Escalada / …) of a base rutina; a variant points back via variantOfId. */
   variantOfId: string | null;

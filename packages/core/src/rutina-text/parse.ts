@@ -9,7 +9,7 @@ import type {
   TempoPhase,
   WorkoutFormat,
 } from '@dmtx/schemas';
-import { Catalog } from './catalog';
+import { Catalog, damerauLevenshtein } from './catalog';
 import { DIST, DUR, NUM, parseDistance, parseDuration } from './normalize';
 import type {
   CatalogExercise,
@@ -81,6 +81,41 @@ const GROUP_KW_RE = new RegExp(
 );
 
 const REST_KW = String.raw`(?:descanso|desc|rest|pausa|recuperacion)`;
+// Keywords a misspelled first word is checked against ("Intervalor 2:" → intervalo).
+const KEYWORDS = [
+  'intervalo',
+  'descanso',
+  'rondas',
+  'superserie',
+  'calentamiento',
+  'enfriamiento',
+  'rutina',
+  'amrap',
+  'emom',
+  'tabata',
+  'chipper',
+  'fuerza',
+  'circuito',
+  'bloque',
+];
+/** The keyword the first word of `line` was probably meant to be, if any. */
+function keywordTypo(line: string, catalog: Catalog): { word: string; from: number; keyword: string } | null {
+  const m = line.match(/^(\s*(?:\d+\s+)?)([a-z]{4,})/);
+  if (!m) return null;
+  const word = m[2]!;
+  if (KEYWORDS.includes(word)) return null;
+  // A real exercise name ("remo", "rondas de box") is never a keyword typo.
+  if (catalog.resolve(word).match) return null;
+  // Short words need a closer match: "remo" is not a typo of "emom".
+  const maxD = word.length >= 6 ? 2 : 1;
+  let best: { keyword: string; d: number } | null = null;
+  for (const kw of KEYWORDS) {
+    const d = damerauLevenshtein(word, kw);
+    if (d <= maxD && (!best || d < best.d)) best = { keyword: kw, d };
+  }
+  return best ? { word, from: m[1]!.length, keyword: best.keyword } : null;
+}
+
 // "intervalo 2:" (or "min 2:") on its own line: the work for that EMOM interval.
 const SLOT_RE = /^\s*(?:min(?:uto)?|intervalo)\.?\s*(\d+)\s*:?\s*$/;
 const REST_LINE_RE = new RegExp(
@@ -487,21 +522,15 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   let section: BlockSection = 'main';
   // Python-style scoping: content indented under a section header belongs to
   // it; dedenting back to the header's column returns to the main section.
-  // A section whose first content line is NOT indented runs in "flat" mode
-  // (until the next header), which keeps the older colon style working.
   let sectionHeaderIndent = -1;
-  let sectionMode: 'indent' | 'flat' | null = null;
   let group: ParsedBlock | null = null;
   let groupIndent: number | null = null;
   let groupHeaderIndent = 0;
   // Interval slot of the open "intervalo N:" group (0-based), stamped on its items.
   let groupSlot: number | null = null;
-  // The open part (a format header + what is indented under it). A part whose
-  // first content line is not indented runs "flat" until the next format line
-  // or section header (the older style). Parts never nest.
+  // The open part (a format header + what is indented under it). Parts never nest.
   let part: ParsedBlock | null = null;
   let partIndent = -1;
-  let partMode: 'indent' | 'flat' | null = null;
 
   const closeGroup = () => {
     group = null;
@@ -511,7 +540,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   const closePart = () => {
     part = null;
     partIndent = -1;
-    partMode = null;
   };
   /** Append a block to the open part, or to the section. */
   const pushBlock = (b: ParsedBlock) => {
@@ -587,30 +615,22 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       closePart();
       section = SECTION_OF[sec[1]!.replace(/\s+/g, ' ')] ?? 'main';
       sectionHeaderIndent = indent;
-      sectionMode = null;
       return info('section');
     }
 
-    // Content line: resolve the section's mode, or leave it on dedent.
-    if (section !== 'main') {
-      if (sectionMode === null) sectionMode = indent > sectionHeaderIndent ? 'indent' : 'flat';
-      else if (sectionMode === 'indent' && indent <= sectionHeaderIndent) {
-        flushGroupRest();
-        closeGroup();
-        closePart();
-        section = 'main';
-        sectionMode = null;
-        sectionHeaderIndent = -1;
-      }
+    // Content line: dedenting to the section header's column returns to main.
+    if (section !== 'main' && indent <= sectionHeaderIndent) {
+      flushGroupRest();
+      closeGroup();
+      closePart();
+      section = 'main';
+      sectionHeaderIndent = -1;
     }
     // A part scopes by indentation too: dedenting to its header's column leaves it.
-    if (part) {
-      if (partMode === null) partMode = indent > partIndent ? 'indent' : 'flat';
-      else if (partMode === 'indent' && indent <= partIndent) {
-        flushGroupRest();
-        closeGroup();
-        closePart();
-      }
+    if (part && indent <= partIndent) {
+      flushGroupRest();
+      closeGroup();
+      closePart();
     }
     // A group whose items are indented past its header closes on dedent.
     if (group && groupIndent != null && groupIndent > groupHeaderIndent && indent <= groupHeaderIndent) {
@@ -645,7 +665,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
           blocks.push(b);
           part = b;
           partIndent = indent;
-          partMode = null;
         }
         seen[section] = true;
         return info('format');
@@ -702,6 +721,34 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       return info('group');
     }
 
+    // A misspelled keyword ("Intervalor 2:", "3 rondsa:", "Calentamineto")? Flag
+    // just that word, with the fix, when the corrected line would be structural.
+    const typo = keywordTypo(f, ctx.catalog);
+    if (typo) {
+      const fixed = f.slice(0, typo.from) + typo.keyword + f.slice(typo.from + typo.word.length);
+      const ft = fixed.trim();
+      const structural =
+        SECTION_RE.test(ft) ||
+        FORMAT_RE.test(fixed) ||
+        REST_LINE_RE.test(ft) ||
+        GROUP_RE.test(fixed) ||
+        GROUP_KW_RE.test(fixed) ||
+        SLOT_RE.test(ft) ||
+        INTERVAL_RE.test(fixed);
+      if (structural) {
+        diag(ctx, {
+          line: i,
+          from: typo.from,
+          to: typo.from + typo.word.length,
+          severity: 'error',
+          code: 'unknown_keyword',
+          message: `"${raw.slice(typo.from, typo.from + typo.word.length)}" no es una palabra de la notación.`,
+          suggestions: [typo.keyword],
+        });
+        return info('item');
+      }
+    }
+
     // Exercise line.
     const item = parseItemLine(raw, i, ctx, { format: part?.format?.format ?? null });
     if (group) {
@@ -737,16 +784,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
 
 export const hasErrors = (p: ParsedRutina) => p.diagnostics.some((d) => d.severity === 'error');
 
-export type RutinaStructureInput = Pick<
-  CreateWorkoutInput,
-  | 'format'
-  | 'formatConfig'
-  | 'warmupFormat'
-  | 'warmupFormatConfig'
-  | 'cooldownFormat'
-  | 'cooldownFormatConfig'
-  | 'blocks'
->;
+export type RutinaStructureInput = Pick<CreateWorkoutInput, 'format' | 'blocks'>;
 
 type BlockInput = CreateWorkoutInput['blocks'][number];
 
@@ -784,21 +822,13 @@ function blockInput(b: ParsedBlock): BlockInput {
 
 /**
  * The API payload fields for the parsed structure. Unresolved exercises get
- * `exerciseId: null`. The workout-level format is the first part's (for lists
- * and filters); each part carries its own on its block.
+ * `exerciseId: null`. Each part carries its own format; the workout-level
+ * `format` is the main section's first part (for lists and filters), or null
+ * when the main section has no part (a plain sequential rutina).
  */
 export function toWorkoutInput(p: ParsedRutina): RutinaStructureInput {
-  const main = p.main ?? {
-    format: 'for_time' as const,
-    config: { format: 'for_time' as const, configVersion: 1 },
-  };
   return {
-    format: main.format,
-    formatConfig: main.config,
-    warmupFormat: p.warmup?.format ?? null,
-    warmupFormatConfig: p.warmup?.config ?? null,
-    cooldownFormat: p.cooldown?.format ?? null,
-    cooldownFormatConfig: p.cooldown?.config ?? null,
+    format: p.main?.format ?? null,
     blocks: p.blocks.map(blockInput),
   };
 }

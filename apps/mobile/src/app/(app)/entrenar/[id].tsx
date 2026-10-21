@@ -60,21 +60,10 @@ export default function Entrenar() {
 /**
  * A section as a list of PARTS, each a workout-shaped slice with its own format:
  * part blocks (AMRAP/EMOM/… holding blocks) become one part each; blocks outside
- * any part are grouped into format-less parts (a plain sequential walk). Legacy
- * data without part blocks is one part on the section's format.
+ * any part are grouped into format-less parts (a plain sequential walk).
  */
 const sectionParts = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail[] => {
   const blocks = w.blocks.filter((b) => (b.section ?? 'main') === section);
-  const hasParts = blocks.some((b) => b.kind === 'part');
-  if (!hasParts) {
-    const format =
-      section === 'main'
-        ? w.format
-        : ((section === 'warmup' ? w.warmupFormat : w.cooldownFormat) ?? 'circuit');
-    const formatConfig =
-      section === 'main' ? w.formatConfig : section === 'warmup' ? w.warmupFormatConfig : w.cooldownFormatConfig;
-    return blocks.length ? [{ ...w, format, formatConfig, blocks }] : [];
-  }
   const parts: WorkoutDetail[] = [];
   let loose: WorkoutDetail['blocks'] = [];
   const flushLoose = () => {

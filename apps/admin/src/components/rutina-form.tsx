@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
+import type { CreateWorkoutInput, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
 import {
   Catalog,
   formatDistance,
@@ -22,6 +22,7 @@ import {
   type ParsedBlock,
   type ParsedItem,
   type ParsedRutina,
+  estimateDurationSeconds,
 } from '@dmtx/core';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
@@ -52,12 +53,6 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   circuit: 'Circuito',
 };
 
-
-const SECTION_TITLE: Record<'warmup' | 'cooldown', string> = {
-  warmup: 'Calentamiento',
-  cooldown: 'Enfriamiento',
-};
-const indentOf = (l: string) => l.length - l.trimStart().length;
 
 const PLACEHOLDER = `Calentamiento
   5 min remo suave
@@ -106,7 +101,7 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     rows: [
       { k: '41 burpees · burpees x41', v: 'repeticiones' },
       { k: 'flexiones 3x5 · 3 series de 5', v: 'series × repeticiones' },
-      { k: 'plancha 30s · 1 min · 1:30', v: 'tiempo' },
+      { k: "plancha 30s · 1 min · 1:30 · 30'' · 12'", v: 'tiempo (\' minutos, \'\' segundos)' },
       { k: '3x45s plancha', v: 'series × tiempo' },
       { k: '400 m carrera · remo 1 km', v: 'distancia' },
       { k: '4x400 m carrera', v: 'series × distancia' },
@@ -156,67 +151,7 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
 
 // ---- Text helpers ----------------------------------------------------------
 
-const SECTION_LINE =
-  /^\s*(calentamiento|warm ?-?up|enfriamiento|cool ?-?down|vuelta a la calma|principal|main|rutina|wod)\s*:?\s*$/i;
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-const sectionOf = (line: string): BlockSection | null => {
-  const m = fold(line).match(SECTION_LINE);
-  if (!m) return null;
-  const k = m[1]!.replace(/\s+/g, ' ');
-  if (k.startsWith('calent') || k.startsWith('warm')) return 'warmup';
-  if (k.startsWith('enfri') || k.startsWith('cool') || k.startsWith('vuelta')) return 'cooldown';
-  return 'main';
-};
-
-/**
- * Replace (or append) a warmup/cooldown section with `body` lines, written
- * Python-style: the title, then the body indented under it.
- */
-function replaceSection(text: string, section: 'warmup' | 'cooldown', body: string[]): string {
-  const lines = text.replace(/\s+$/, '').split('\n');
-  const start = lines.findIndex((l) => sectionOf(l) === section);
-  // The existing section's end: an indented section ends on dedent, a flat
-  // (legacy, colon style) one at the next header.
-  let end = lines.length;
-  if (start >= 0) {
-    const headIndent = indentOf(lines[start]!);
-    const firstContent = lines.slice(start + 1).find((l) => l.trim());
-    const indentMode = firstContent != null && indentOf(firstContent) > headIndent;
-    for (let k = start + 1; k < lines.length; k += 1) {
-      const l = lines[k]!;
-      if (!l.trim()) continue;
-      const shallow = indentOf(l) <= headIndent;
-      if ((sectionOf(l) !== null && shallow) || (indentMode && shallow)) {
-        end = k;
-        break;
-      }
-    }
-  }
-  const block = [SECTION_TITLE[section], ...body.map((l) => (l.trim() ? `  ${l}` : l))];
-  if (start >= 0) {
-    return [...lines.slice(0, start), ...block, '', ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n');
-  }
-  if (section === 'warmup') return [...block, '', ...lines].join('\n');
-  return [...lines, '', ...block].join('\n') + '\n';
-}
-
-/** A segment's blocks as section body lines (its format header + items). */
-function segmentBody(src: Workout, catalog: Catalog): string[] {
-  const text = serializeRutina(
-    {
-      format: src.format ?? 'for_time',
-      formatConfig: src.formatConfig,
-      blocks: src.blocks.map((b) => ({ ...b, section: 'main' as const })),
-    },
-    catalog,
-  );
-  const lines = text.replace(/\s+$/, '').split('\n');
-  // Drop the serialized main header when the segment has no format of its own.
-  return src.format ? lines : lines.slice(1);
-}
-
-// Starting points for a new rutina. `ex(i)` is the i-th exercise of the
-// catalog (so the template parses clean), with generic names as a fallback.
 type Template = { id: string; title: string; desc: string; text: (ex: (i: number) => string) => string };
 const TEMPLATES: Template[] = [
   {
@@ -375,9 +310,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [description, setDescription] = useState(workout?.description ?? '');
   const [difficulty, setDifficulty] = useState(workout?.difficulty ?? 'beginner');
   const [status, setStatus] = useState(workout?.status ?? 'draft');
-  const [durationMin, setDurationMin] = useState(
-    workout?.estimatedDurationSeconds ? String(Math.round(workout.estimatedDurationSeconds / 60)) : '',
-  );
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   // A new rutina asks for name + type in one dialog, then opens the editor.
   const [createOpen, setCreateOpen] = useState(!workout);
@@ -389,10 +321,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [snippetModal, setSnippetModal] = useState<{ name: string; text: string } | null>(null);
   const editorApi = useRef<RutinaEditorApi | null>(null);
   const [newExercise, setNewExercise] = useState<{ name: string; difficulty: Workout['difficulty'] } | null>(null);
-  // Legacy rutinas may still reference a warmup/cooldown rutina; once loaded it
-  // is folded into the text so everything is editable in place.
-  const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(workout?.warmupWorkoutId ?? null);
-  const [cooldownWorkoutId, setCooldownWorkoutId] = useState<string | null>(workout?.cooldownWorkoutId ?? null);
   const editorHost = useRef<HTMLDivElement>(null);
 
   const { data: exList } = useQuery({
@@ -486,38 +414,17 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const mainFormats = parsed.blocks
     .filter((b) => b.section === 'main' && b.kind === 'part' && b.format)
     .map((b) => FORMAT_LABEL[b.format!.format]);
+  // Estimated on the fly from the text; the API stores the same number on save.
+  const estimatedSeconds =
+    type === 'video' ? (workout?.videoDurationSeconds ?? null) : estimateDurationSeconds(toWorkoutInput(parsed).blocks);
+  const durationLabel = estimatedSeconds ? `${Math.ceil(estimatedSeconds / 60)} min` : null;
   const metaLine = [
     type === 'video' ? 'Video' : mainFormats.length ? mainFormats.join(' + ') : FORMAT_LABEL[format],
-    durationMin ? `${durationMin} min` : null,
+    durationLabel,
     es.difficulty[difficulty],
   ]
     .filter(Boolean)
     .join(' · ');
-
-  // Legacy warmup/cooldown references fold into the text once loaded.
-  const warmupQ = useQuery({
-    queryKey: ['workout', warmupWorkoutId],
-    queryFn: () => api.workouts.get(warmupWorkoutId!),
-    enabled: !!warmupWorkoutId && catalogReady && text !== null,
-  });
-  const cooldownQ = useQuery({
-    queryKey: ['workout', cooldownWorkoutId],
-    queryFn: () => api.workouts.get(cooldownWorkoutId!),
-    enabled: !!cooldownWorkoutId && catalogReady && text !== null,
-  });
-  useEffect(() => {
-    if (warmupWorkoutId && warmupQ.data) {
-      setText((t) => replaceSection(t ?? '', 'warmup', segmentBody(warmupQ.data, catalog)));
-      setWarmupWorkoutId(null);
-    }
-  }, [warmupWorkoutId, warmupQ.data, catalog]);
-  useEffect(() => {
-    if (cooldownWorkoutId && cooldownQ.data) {
-      setText((t) => replaceSection(t ?? '', 'cooldown', segmentBody(cooldownQ.data, catalog)));
-      setCooldownWorkoutId(null);
-    }
-  }, [cooldownWorkoutId, cooldownQ.data, catalog]);
-
 
   // ---- Saved blocks + other rutinas as suggestions ---------------------------
   const snippetsQ = useQuery({
@@ -543,14 +450,8 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const insertBlock = async (kind: 'snippet' | 'rutina', id: string): Promise<string | null> => {
     if (kind === 'snippet') return snippetsQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
     const src = await api.workouts.get(id);
-    // Another rutina's main content, without its format header.
-    const lines = serializeRutina(
-      { format: src.format ?? 'for_time', formatConfig: src.formatConfig, blocks: src.blocks.filter((b) => b.section === 'main') },
-      catalog,
-    )
-      .replace(/\s+$/, '')
-      .split('\n');
-    return lines.slice(1).join('\n');
+    // Another rutina's main section, as written (its parts included).
+    return serializeRutina({ blocks: src.blocks.filter((b) => b.section === 'main') }, catalog).replace(/\s+$/, '');
   };
   const createSnippet = useMutation({
     mutationFn: (args: { name: string; text: string }) => api.snippets.create(args),
@@ -596,17 +497,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       type,
       format: structure?.format ?? null,
       difficulty,
-      estimatedDurationSeconds: durationMin ? Math.max(1, Number(durationMin)) * 60 : null,
       status,
       thumbnailAssetId,
       videoAssetId: structured ? null : videoAssetId,
-      formatConfig: structure?.formatConfig ?? null,
-      warmupFormat: segmentMode ? null : (structure?.warmupFormat ?? null),
-      warmupFormatConfig: segmentMode ? null : (structure?.warmupFormatConfig ?? null),
-      cooldownFormat: segmentMode ? null : (structure?.cooldownFormat ?? null),
-      cooldownFormatConfig: segmentMode ? null : (structure?.cooldownFormatConfig ?? null),
-      warmupWorkoutId: null,
-      cooldownWorkoutId: null,
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
       blocks: (structure?.blocks ?? []).map((b) => (segmentMode ? { ...b, section: 'main' as const } : b)),
@@ -1112,7 +1005,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 </div>
                 <div>
                   <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
-                  <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+                  <div className="flex h-10 items-center rounded-lg border border-line bg-surface-2 px-3 font-mono text-[13px] text-ink-2">
+                    {durationLabel ?? '—'}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-4 text-ink-3">Se calcula sola a partir del texto.</p>
                 </div>
               </div>
 

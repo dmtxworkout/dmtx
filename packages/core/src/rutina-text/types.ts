@@ -19,6 +19,7 @@ export type Severity = 'error' | 'warning' | 'info';
 
 export type DiagnosticCode =
   | 'unknown_exercise'
+  | 'unknown_keyword'
   | 'missing_exercise'
   | 'ambiguous_exercise'
   | 'missing_count'

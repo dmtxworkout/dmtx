@@ -121,6 +121,9 @@ importers:
       '@dmtx/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@dmtx/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@dmtx/db':
         specifier: workspace:*
         version: link:../../packages/db

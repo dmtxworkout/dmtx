@@ -9,7 +9,6 @@ import { difficultyLabel, es, formatLabel } from '../../../i18n';
 import { durationLabel, loadLabel, mmss, targetLabel, tempoDash } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
 import type { Units } from '../../../lib/units';
-import type { WorkoutFormat } from '@dmtx/schemas';
 import type { WorkoutBlock, WorkoutItem } from '../../../lib/types';
 
 function itemSub(item: WorkoutItem, units: Units): string {
@@ -110,22 +109,10 @@ export default function RutinaDetalle() {
     { k: 'Nivel', v: difficultyLabel(w.difficulty, true) || '—' },
   ];
 
-  // Warmup → main → cooldown, each grouped like the admin Vista previa. A
-  // referenced warmup/cooldown segment shows its own format next to the label.
-  const headline = formatHeadline(w.format, w.formatConfig);
-  const segLabel = (base: string, fmt: WorkoutFormat | null, cfg: unknown): string => {
-    if (!fmt) return base;
-    const h = formatHeadline(fmt, cfg);
-    return `${base} · ${formatLabel(fmt)}${h ? ` ${h}` : ''}`;
-  };
-  // Each section lists its parts (a format + its blocks); legacy data without
-  // part blocks shows the section's own format.
-  const partsOf = (section: 'warmup' | 'main' | 'cooldown', base: string, fmt: WorkoutFormat | null, cfg: unknown) => {
+  // Warmup → main → cooldown, each grouped like the admin Vista previa.
+  // Each section lists its parts (a format + its blocks) and its loose blocks.
+  const partsOf = (section: 'warmup' | 'main' | 'cooldown', base: string) => {
     const blocks = w.blocks.filter((b) => (b.section ?? 'main') === section);
-    if (!blocks.some((b) => b.kind === 'part')) {
-      const label = section === 'main' ? `${formatLabel(fmt) || 'Rutina'}${headline ? ` ${headline}` : ''}` : segLabel(base, fmt, cfg);
-      return [{ key: section, label, units: unitsFor(blocks) }];
-    }
     const out: { key: string; label: string; units: PvUnit[] }[] = [];
     let loose: WorkoutBlock[] = [];
     const flush = () => {
@@ -147,9 +134,9 @@ export default function RutinaDetalle() {
     return out;
   };
   const sections = [
-    ...partsOf('warmup', 'Calentamiento', w.warmupFormat, w.warmupFormatConfig),
-    ...partsOf('main', 'Rutina', w.format, w.formatConfig),
-    ...partsOf('cooldown', 'Enfriamiento', w.cooldownFormat, w.cooldownFormatConfig),
+    ...partsOf('warmup', 'Calentamiento'),
+    ...partsOf('main', 'Rutina'),
+    ...partsOf('cooldown', 'Enfriamiento'),
   ].filter((s) => s.units.length > 0);
 
   return (

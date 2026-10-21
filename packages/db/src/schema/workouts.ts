@@ -35,18 +35,7 @@ export const workouts = pgTable('workouts', {
   difficulty: difficultyEnum().notNull(),
   estimatedDurationSeconds: integer(),
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
-  formatConfig: jsonb().$type<FormatConfig>(),
   scoringGoal: jsonb().$type<Goal>(),
-  // A rutina's warmup/cooldown section runs on its OWN format (a warmup may be an
-  // AMRAP while the main is an EMOM). Copied from the source segment on import and
-  // editable in place; null → that section is a plain sequential walk.
-  warmupFormat: workoutFormatEnum(),
-  warmupFormatConfig: jsonb().$type<FormatConfig>(),
-  cooldownFormat: workoutFormatEnum(),
-  cooldownFormatConfig: jsonb().$type<FormatConfig>(),
-  // Optional reusable warmup/cooldown: another rutina, played untracked.
-  warmupWorkoutId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'set null' }),
-  cooldownWorkoutId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'set null' }),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   videoDurationSeconds: integer(),
   // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.

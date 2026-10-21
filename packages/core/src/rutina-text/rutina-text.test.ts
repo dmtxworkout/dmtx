@@ -38,7 +38,8 @@ describe('parseRutina', () => {
 `);
     expect(hasErrors(p)).toBe(false);
     const w = toWorkoutInput(p);
-    expect(w.format).toBe('for_time');
+    // No format header → no part: a plain sequential rutina.
+    expect(w.format).toBeNull();
     expect(w.blocks).toHaveLength(3);
     const [a, b, c] = w.blocks;
     expect(a!.items[0]).toMatchObject({ exerciseId: 'burpee', reps: 41, measure: 'reps' });
@@ -58,10 +59,10 @@ describe('parseRutina', () => {
 
   it('parses strength sets x reps with rest, load and tempo', () => {
     const p = parse(`Fuerza
-felxiones de pecho 3x5 desc 90s
-Sentadilla 5x5 @80% tempo 0-3-1-1
-3 x 8 dominadas +20 kg
-zancadas 3x10 c/lado @RPE 8
+  felxiones de pecho 3x5 desc 90s
+  Sentadilla 5x5 @80% tempo 0-3-1-1
+  3 x 8 dominadas +20 kg
+  zancadas 3x10 c/lado @RPE 8
 `);
     expect(hasErrors(p)).toBe(false);
     const w = toWorkoutInput(p);
@@ -97,15 +98,15 @@ zancadas 3x10 c/lado @RPE 8
 
   it('parses time and distance items', () => {
     const p = parse(`AMRAP 12 min
-plancha 30s
-400 m carrera
-remo 1 km
-3x45s plancha
-1:30 plancha
+  plancha 30s
+  400 m carrera
+  remo 1 km
+  3x45s plancha
+  1:30 plancha
 `);
     expect(hasErrors(p)).toBe(false);
     const w = toWorkoutInput(p);
-    expect(w.formatConfig).toEqual({ format: 'amrap', configVersion: 1, totalSeconds: 720 });
+    expect(w.blocks[0]).toMatchObject({ kind: 'part', formatConfig: { format: 'amrap', configVersion: 1, totalSeconds: 720 } });
     const items = flat(w.blocks).map((b) => b.items[0]!);
     expect(items[0]).toMatchObject({ exerciseId: 'plank', measure: 'time', workSeconds: 30 });
     expect(items[1]).toMatchObject({ exerciseId: 'run', measure: 'distance', distanceMeters: 400 });
@@ -116,55 +117,51 @@ remo 1 km
 
   it('parses EMOM with interval prefixes and tabata without counts', () => {
     const e = toWorkoutInput(parse(`EMOM 10 x 90s
-min 1: 10 burpees
-min 2: 15 sentadillas
+  intervalo 1: 10 burpees
+  min 2: 15 sentadillas
 `));
-    expect(e.formatConfig).toEqual({ format: 'emom', configVersion: 1, intervalSeconds: 90, rounds: 10 });
+    expect(e.blocks[0]!.formatConfig).toEqual({ format: 'emom', configVersion: 1, intervalSeconds: 90, rounds: 10 });
     expect(flat(e.blocks)[0]!.items[0]).toMatchObject({ intervalIndex: 0, reps: 10 });
     expect(flat(e.blocks)[1]!.items[0]).toMatchObject({ intervalIndex: 1, reps: 15, exerciseId: 'squat' });
 
-    const e2 = toWorkoutInput(parse('EMOM 12 min\n5 burpees'));
-    expect(e2.formatConfig).toEqual({ format: 'emom', configVersion: 1, intervalSeconds: 60, rounds: 12 });
+    const e2 = toWorkoutInput(parse('EMOM 12 min\n  5 burpees'));
+    expect(e2.blocks[0]!.formatConfig).toEqual({ format: 'emom', configVersion: 1, intervalSeconds: 60, rounds: 12 });
 
     const t = parse(`Tabata 8 x 20/10
-burpees
-plancha
+  burpees
+  plancha
 `);
     expect(t.diagnostics).toEqual([]);
     const tw = toWorkoutInput(t);
-    expect(tw.formatConfig).toEqual({ format: 'tabata', configVersion: 1, workSeconds: 20, restSeconds: 10, rounds: 8 });
+    expect(tw.blocks[0]!.formatConfig).toEqual({ format: 'tabata', configVersion: 1, workSeconds: 20, restSeconds: 10, rounds: 8 });
     expect(flat(tw.blocks)[0]!.items[0]).toMatchObject({ measure: 'time', reps: null });
   });
 
-  it('parses warmup / cooldown sections with their own format', () => {
-    const p = parse(`Calentamiento:
-AMRAP 5 min
-10 burpees
-plancha 20s
+  it('parses warmup / cooldown sections, each with its own parts', () => {
+    const p = parse(`Calentamiento
+  AMRAP 5 min
+    10 burpees
+    plancha 20s
 
-Rutina:
 For time cap 20 min
-3 rondas, descanso 1 min:
-  10 dominadas
-  20 flexiones
+  3 rondas, descanso 1 min:
+    10 dominadas
+    20 flexiones
 
-Enfriamiento:
-plancha 1 min
+Enfriamiento
+  plancha 1 min
 `);
     expect(hasErrors(p)).toBe(false);
     const w = toWorkoutInput(p);
-    expect(w.warmupFormat).toBe('amrap');
-    expect(w.warmupFormatConfig).toMatchObject({ totalSeconds: 300 });
     expect(w.format).toBe('for_time');
-    expect(w.formatConfig).toMatchObject({ timeCapSeconds: 1200 });
-    expect(w.cooldownFormat).toBeNull();
-    // warmup and main are parts (they have a format); cooldown has none.
     expect(w.blocks.map((b) => [b.section, b.kind])).toEqual([
       ['warmup', 'part'],
       ['main', 'part'],
       ['cooldown', 'group'],
     ]);
+    expect(w.blocks[0]).toMatchObject({ format: 'amrap', formatConfig: { totalSeconds: 300 } });
     expect(w.blocks[0]!.blocks).toHaveLength(2);
+    expect(w.blocks[1]).toMatchObject({ format: 'for_time', formatConfig: { timeCapSeconds: 1200 } });
     const grp = w.blocks[1]!.blocks[0]!;
     expect(grp.rounds).toBe(3);
     expect(grp.items.map((i) => i.kind)).toEqual(['exercise', 'exercise', 'rest']);
@@ -221,48 +218,44 @@ describe('serializeRutina', () => {
   };
 
   it('round-trips the for-time example', () => {
-    // Header-less text has no part; the serializer adds the (default) format
-    // header, after which the structure is stable.
-    const { out, second } = roundTrip(`41 burpees
+    const { out, first, second } = roundTrip(`41 burpees
 
 3 rondas
-19 power clean @135/95 lb
-10 bar muscle ups
-41 single cross overs
+  19 power clean @135/95 lb
+  10 bar muscle ups
+  41 single cross overs
 
 41 burpees`);
-    expect(serializeRutina(second, catalog)).toBe(out);
-    expect(out).toBe(`For time
-  41 Burpees
+    expect(second).toEqual(first);
+    expect(out).toBe(`41 Burpees
 
-  3 rondas:
-    19 Cargada de potencia @135/95 lb
-    10 Bar Muscle Up
-    41 Single Cross Over
+3 rondas:
+  19 Cargada de potencia @135/95 lb
+  10 Bar Muscle Up
+  41 Single Cross Over
 
-  41 Burpees
+41 Burpees
 `);
   });
 
   it('round-trips strength, sections, tempo, rests and notes', () => {
-    const { first, second } = roundTrip(`Calentamiento:
-AMRAP 5 min
-10 burpees
-descanso 30s
+    const { first, second } = roundTrip(`Calentamiento
+  AMRAP 5 min
+    10 burpees
+    descanso 30s
 
-Rutina:
 Fuerza
-sentadilla 5x5 @80% tempo 0-3-1-1 desc 2 min // profundo
-Superserie 3 rondas - Empuje:
-  10 flexiones
-  8 dominadas +10 kg
-  descanso 1 min
-zancadas 3x10 c/lado
-3x400 m carrera
+  sentadilla 5x5 @80% tempo 0-3-1-1 desc 2 min // profundo
+  Superserie 3 rondas - Empuje:
+    10 flexiones
+    8 dominadas +10 kg
+    descanso 1 min
+  zancadas 3x10 c/lado
+  3x400 m carrera
 
-Enfriamiento:
-Tabata 4 x 30/15
-plancha
+Enfriamiento
+  Tabata 4 x 30/15
+    plancha
 `);
     expect(second).toEqual(first);
   });
@@ -278,8 +271,8 @@ plancha
       'Fuerza',
       'Circuito 4 rondas descanso 1 min cap 30 min',
     ]) {
-      const { first, second, out } = roundTrip(`${h}\n10 burpees`);
-      expect(second.formatConfig, h).toEqual(first.formatConfig);
+      const { first, second, out } = roundTrip(`${h}\n  10 burpees`);
+      expect(second.blocks[0]!.formatConfig, h).toEqual(first.blocks[0]!.formatConfig);
       expect(out.split('\n')[0], h).toBe(h);
     }
   });
@@ -365,6 +358,8 @@ describe('completionsAt context: units, format params, tempos, modifiers', () =>
     expect(at('For time\nplancha 30')?.options.map((o) => o.label)).toEqual([
       '30s',
       '30 min',
+      "30''",
+      "30'",
       '30 m',
       '30 km',
       '30 reps',
@@ -392,23 +387,23 @@ describe('indentation scoping (Python style)', () => {
   it('scopes sections by indentation and returns to main on dedent, no colons needed', () => {
     const p = parse(`Calentamiento
   AMRAP 5 min
-  10 burpees
-  3 rondas
-    5 flexiones
-    plancha 20s
-  20 sentadillas
+    10 burpees
+    3 rondas
+      5 flexiones
+      plancha 20s
+    20 sentadillas
 
 For time cap 20 min
-41 burpees
+  41 burpees
 
 Enfriamiento
   plancha 1 min
 `);
     expect(hasErrors(p)).toBe(false);
     const w = toWorkoutInput(p);
-    expect(w.warmupFormat).toBe('amrap');
+    expect(w.blocks[0]).toMatchObject({ format: 'amrap' });
     expect(w.format).toBe('for_time');
-    expect(w.formatConfig).toMatchObject({ timeCapSeconds: 1200 });
+    expect(w.blocks[1]).toMatchObject({ formatConfig: { timeCapSeconds: 1200 } });
     expect(w.blocks.map((b) => [b.section, b.kind, b.blocks.length])).toEqual([
       ['warmup', 'part', 3],
       ['main', 'part', 1],
@@ -420,10 +415,10 @@ Enfriamiento
   it('serializes sections indented and round-trips', () => {
     const text = `Calentamiento
   AMRAP 5 min
-  10 burpees
+    10 burpees
 
 Fuerza
-sentadilla 5x5
+  sentadilla 5x5
 
 Enfriamiento
   plancha 1 min
@@ -470,7 +465,7 @@ describe('EMOM interval groups', () => {
     const p = parse(text);
     expect(hasErrors(p)).toBe(false);
     const w = toWorkoutInput(p);
-    expect(w.formatConfig).toMatchObject({ format: 'emom', intervalSeconds: 90, rounds: 8 });
+    expect(w.blocks[0]!.formatConfig).toMatchObject({ format: 'emom', intervalSeconds: 90, rounds: 8 });
     const slots = w.blocks[0]!.blocks;
     expect(slots).toHaveLength(2);
     expect(slots[0]!.items.map((i) => [i.exerciseId, i.intervalIndex])).toEqual([
@@ -494,19 +489,19 @@ describe('EMOM interval groups', () => {
   });
 });
 
-describe('legacy block names', () => {
-  it('drops the old builder\'s automatic "Bloque N" label', () => {
-    const out = serializeRutina(
-      {
-        format: 'for_time',
-        blocks: [
-          { kind: 'group', section: 'main', type: 'circuit', rounds: 3, label: 'Bloque 1', items: [{ kind: 'exercise', exerciseId: 'burpee', reps: 10 }] },
-          { kind: 'group', section: 'main', type: 'circuit', rounds: 2, label: 'Pierna', items: [{ kind: 'exercise', exerciseId: 'squat', reps: 10 }] },
-        ],
-      },
-      catalog,
-    );
-    expect(out).toContain('  3 rondas:\n');
-    expect(out).toContain('  2 rondas - Pierna:\n');
+describe('keyword typos and quote units', () => {
+  it('flags a misspelled keyword and suggests the fix', () => {
+    const p = parse('EMOM 8 x 90s\n  Intervalor 2: 20 burpees\n  3 rondsa:\n    10 burpees');
+    expect(p.diagnostics.map((d) => [d.line, d.code, d.suggestions?.[0]])).toEqual([
+      [1, 'unknown_keyword', 'intervalo'],
+      [2, 'unknown_keyword', 'rondas'],
+    ]);
+    expect(p.diagnostics[0]).toMatchObject({ from: 2, to: 12 });
+  });
+  it("accepts ' for minutes and '' or \" for seconds", () => {
+    const w = toWorkoutInput(parse("AMRAP 12'\n  plancha 30''\n  plancha 45\"\n  1'30'' plancha"));
+    expect(w.blocks[0]!.formatConfig).toMatchObject({ totalSeconds: 720 });
+    const items = flat(w.blocks).map((b) => b.items[0]!);
+    expect(items.map((i) => i.workSeconds)).toEqual([30, 45, 90]);
   });
 });

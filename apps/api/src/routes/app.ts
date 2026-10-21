@@ -272,53 +272,12 @@ appRoute.get('/workouts/:id', async (c) => {
         )
         .orderBy(workouts.createdAt);
 
-  // Warmup/cooldown may be a referenced rutina; pull its blocks too and re-tag
-  // them with that section so the player treats it uniformly. A set reference
-  // overrides any inline blocks of the same section.
-  const warmupRefId = w.warmupWorkoutId && w.warmupWorkoutId !== w.id ? w.warmupWorkoutId : null;
-  const cooldownRefId =
-    w.cooldownWorkoutId && w.cooldownWorkoutId !== w.id ? w.cooldownWorkoutId : null;
-  const workoutIds = [w.id, warmupRefId, cooldownRefId].filter((x): x is string => Boolean(x));
-
-  const allBlocks = await db
+  const blocks = await db
     .select()
     .from(workoutBlocks)
-    .where(inArray(workoutBlocks.workoutId, workoutIds))
+    .where(eq(workoutBlocks.workoutId, w.id))
     .orderBy(workoutBlocks.position);
-
-  // A referenced warmup/cooldown segment carries its OWN format (a warmup may be
-  // an AMRAP while the main is an EMOM). Pull the segments' format so the player
-  // runs each section on its own terms. Inline sections have no separate format.
-  const refIds = [warmupRefId, cooldownRefId].filter((x): x is string => Boolean(x));
-  const refWorkouts = refIds.length
-    ? await db
-        .select({ id: workouts.id, format: workouts.format, formatConfig: workouts.formatConfig })
-        .from(workouts)
-        .where(inArray(workouts.id, refIds))
-    : [];
-  const refFmt = new Map(refWorkouts.map((r) => [r.id, r]));
-  const warmupSeg = warmupRefId ? refFmt.get(warmupRefId) : null;
-  const cooldownSeg = cooldownRefId ? refFmt.get(cooldownRefId) : null;
-
-  // Assemble the played order — warmup, main, cooldown — pulling each section
-  // from its reference (if set) or the workout's own inline blocks. Building the
-  // sections explicitly (rather than tagging each block once) lets the SAME
-  // segment serve as both warmup and cooldown.
-  type BlockRow = (typeof allBlocks)[number];
-  const warmupSrc: BlockRow[] = warmupRefId
-    ? allBlocks.filter((b) => b.workoutId === warmupRefId)
-    : allBlocks.filter((b) => b.workoutId === w.id && b.section === 'warmup');
-  const mainSrc = allBlocks.filter((b) => b.workoutId === w.id && (b.section ?? 'main') === 'main');
-  const cooldownSrc: BlockRow[] = cooldownRefId
-    ? allBlocks.filter((b) => b.workoutId === cooldownRefId)
-    : allBlocks.filter((b) => b.workoutId === w.id && b.section === 'cooldown');
-  const blocks = [
-    ...warmupSrc.map((b) => ({ ...b, section: 'warmup' as const })),
-    ...mainSrc.map((b) => ({ ...b, section: 'main' as const })),
-    ...cooldownSrc.map((b) => ({ ...b, section: 'cooldown' as const })),
-  ];
-  // A shared warmup/cooldown segment yields duplicate block ids; load items once.
-  const blockIds = [...new Set(blocks.map((b) => b.id))];
+  const blockIds = blocks.map((b) => b.id);
   const items = blockIds.length
     ? await db
         .select()
@@ -400,14 +359,8 @@ appRoute.get('/workouts/:id', async (c) => {
     thumbnailUrl: url(media, w.thumbnailAssetId),
     videoUrl: url(media, w.videoAssetId),
     videoDurationSeconds: w.videoDurationSeconds,
-    formatConfig: w.formatConfig ?? null,
-    // Per-section format so the mobile plays the warmup/cooldown on their own
-    // format. Prefer the rutina's own column (inline import copies it); fall back
-    // to a referenced segment's format for legacy rutinas that still hold a ref.
-    warmupFormat: w.warmupFormat ?? warmupSeg?.format ?? null,
-    warmupFormatConfig: w.warmupFormatConfig ?? warmupSeg?.formatConfig ?? null,
-    cooldownFormat: w.cooldownFormat ?? cooldownSeg?.format ?? null,
-    cooldownFormatConfig: w.cooldownFormatConfig ?? cooldownSeg?.formatConfig ?? null,
+    // The player builds each part's timing from its block; nothing at this level.
+    formatConfig: null,
     scoringGoal: w.scoringGoal ?? null,
     variantOfId: w.variantOfId,
     variantLabel: w.variantLabel,

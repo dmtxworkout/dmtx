@@ -95,6 +95,8 @@ interface Unit {
 const ITEM_UNITS: Unit[] = [
   { u: 's', detail: 'segundos', tight: true, aliases: ['seg', 'segundos'] },
   { u: 'min', detail: 'minutos', aliases: ['minutos'] },
+  { u: "''", detail: 'segundos (30\'\')', tight: true },
+  { u: "'", detail: "minutos (12')", tight: true },
   { u: 'm', detail: 'metros', aliases: ['metros', 'mts'] },
   { u: 'km', detail: 'kilómetros', aliases: ['kilometros'] },
   { u: 'reps', detail: 'repeticiones', aliases: ['repeticiones'] },
@@ -105,7 +107,11 @@ const LOAD_UNITS: Unit[] = [
   { u: 'lb', detail: 'libras' },
 ];
 const FORMAT_UNITS: Record<FormatKey, Unit[]> = {
-  amrap: [{ u: 'min', detail: 'minutos', aliases: ['minutos'] }, { u: 's', detail: 'segundos', tight: true, aliases: ['seg'] }],
+  amrap: [
+    { u: 'min', detail: 'minutos', aliases: ['minutos'] },
+    { u: "'", detail: "minutos (12')", tight: true },
+    { u: 's', detail: 'segundos', tight: true, aliases: ['seg'] },
+  ],
   emom: [
     { u: 'min', detail: 'minutos (1 intervalo por minuto)' },
     { u: 'x', detail: 'intervalos × duración (10 x 90s)' },

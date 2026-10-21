@@ -1,3 +1,4 @@
+import { estimateDurationSeconds } from '@dmtx/core';
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { workoutBlocks, workoutItems, workouts } from '@dmtx/db';
@@ -108,14 +109,7 @@ async function loadFull(db: Database, w: WorkoutRow) {
   return {
     ...base(w),
     variants: variants.map((v) => ({ id: v.id, label: v.label ?? '' })),
-    formatConfig: w.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
-    warmupFormat: w.warmupFormat ?? null,
-    warmupFormatConfig: w.warmupFormatConfig ?? null,
-    cooldownFormat: w.cooldownFormat ?? null,
-    cooldownFormatConfig: w.cooldownFormatConfig ?? null,
-    warmupWorkoutId: w.warmupWorkoutId,
-    cooldownWorkoutId: w.cooldownWorkoutId,
     blocks: nestBlocks(blocks).map((b) => ({
       ...serializeBlock(b, byBlock),
       blocks: b.blocks.map((c) => ({ ...serializeBlock(c, byBlock), blocks: [] })),
@@ -294,19 +288,15 @@ workoutsRoute.openapi(
         type: input.type,
         format: structured ? (input.format ?? null) : null,
         difficulty: input.difficulty,
-        estimatedDurationSeconds: input.estimatedDurationSeconds ?? null,
+        // Derived on save: timers for timed formats, a pace heuristic otherwise.
+        estimatedDurationSeconds: structured
+          ? estimateDurationSeconds(input.blocks ?? [])
+          : (input.videoDurationSeconds ?? null),
         status: input.status,
         thumbnailAssetId: input.thumbnailAssetId ?? null,
         videoAssetId: structured ? null : (input.videoAssetId ?? null),
         videoDurationSeconds: structured ? null : (input.videoDurationSeconds ?? null),
-        formatConfig: structured ? (input.formatConfig ?? null) : null,
         scoringGoal: input.scoringGoal ?? null,
-        warmupFormat: structured ? (input.warmupFormat ?? null) : null,
-        warmupFormatConfig: structured ? (input.warmupFormatConfig ?? null) : null,
-        cooldownFormat: structured ? (input.cooldownFormat ?? null) : null,
-        cooldownFormatConfig: structured ? (input.cooldownFormatConfig ?? null) : null,
-        warmupWorkoutId: structured ? (input.warmupWorkoutId ?? null) : null,
-        cooldownWorkoutId: structured ? (input.cooldownWorkoutId ?? null) : null,
         variantOfId: input.variantOfId ?? null,
         variantLabel: input.variantLabel ?? null,
       })
@@ -343,24 +333,15 @@ workoutsRoute.openapi(
     if (input.type !== undefined) set.type = input.type;
     if (input.format !== undefined) set.format = input.format ?? null;
     if (input.difficulty !== undefined) set.difficulty = input.difficulty;
-    if (input.estimatedDurationSeconds !== undefined)
-      set.estimatedDurationSeconds = input.estimatedDurationSeconds ?? null;
     if (input.status !== undefined) set.status = input.status;
     if (input.thumbnailAssetId !== undefined) set.thumbnailAssetId = input.thumbnailAssetId ?? null;
     if (input.videoAssetId !== undefined) set.videoAssetId = input.videoAssetId ?? null;
-    if (input.videoDurationSeconds !== undefined)
+    if (input.videoDurationSeconds !== undefined) {
       set.videoDurationSeconds = input.videoDurationSeconds ?? null;
-    if (input.formatConfig !== undefined) set.formatConfig = input.formatConfig ?? null;
+      set.estimatedDurationSeconds = input.videoDurationSeconds ?? null;
+    }
+    if (input.blocks !== undefined) set.estimatedDurationSeconds = estimateDurationSeconds(input.blocks);
     if (input.scoringGoal !== undefined) set.scoringGoal = input.scoringGoal ?? null;
-    if (input.warmupFormat !== undefined) set.warmupFormat = input.warmupFormat ?? null;
-    if (input.warmupFormatConfig !== undefined)
-      set.warmupFormatConfig = input.warmupFormatConfig ?? null;
-    if (input.cooldownFormat !== undefined) set.cooldownFormat = input.cooldownFormat ?? null;
-    if (input.cooldownFormatConfig !== undefined)
-      set.cooldownFormatConfig = input.cooldownFormatConfig ?? null;
-    if (input.warmupWorkoutId !== undefined) set.warmupWorkoutId = input.warmupWorkoutId ?? null;
-    if (input.cooldownWorkoutId !== undefined)
-      set.cooldownWorkoutId = input.cooldownWorkoutId ?? null;
     if (input.variantOfId !== undefined) set.variantOfId = input.variantOfId ?? null;
     if (input.variantLabel !== undefined) set.variantLabel = input.variantLabel ?? null;
 

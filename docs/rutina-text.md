@@ -30,15 +30,15 @@ Enfriamiento
 **Indentation scopes, like Python.** Whatever is indented under a line belongs
 to it: items under `3 rondas` form that block; lines under a format header
 (`AMRAP 5 min`) are that format's content; lines under `Calentamiento` form the
-warmup. The serializer always indents; the parser also accepts flat content. Dedenting back to the column of the header returns to the
-main rutina, so `Rutina:` is only needed in the older flat style. Colons after
-section and group headers are optional.
+warmup. Dedenting back to the column of the header returns to the main
+rutina. Colons after section and group headers are optional. There is no flat
+mode: a header with nothing indented under it is simply empty.
 
 ## Lines
 
 | Line | Meaning |
 |---|---|
-| `Calentamiento` / `Enfriamiento` (/ `Rutina`) | Section header (`warmup` / `cooldown` / `main`). Content indented under it belongs to it; dedent returns to `main`. A header whose next line is not indented runs in flat mode until the next header (legacy colon style). Also `Warmup`, `Cooldown`, `Vuelta a la calma`. |
+| `Calentamiento` / `Enfriamiento` (/ `Rutina`) | Section header (`warmup` / `cooldown` / `main`). Content indented under it belongs to it; dedent returns to `main`. Also `Warmup`, `Cooldown`, `Vuelta a la calma`. |
 | `AMRAP 12 min` | **Part**: a format header; the blocks indented under it play on that format. A section can hold several parts in sequence, plus loose blocks outside any part (played once, in order). Main without any part defaults to `For time`. |
 | `3 rondas, descanso 1 min - Pierna:` | **Group header** → block with `rounds`, optional trailing rest item and label. Also `Superserie`, `Circuito 3 rondas`, `Bloque:`, `5 series`. Items follow until a blank line (or until indentation drops back). |
 | `41 burpees` | **Item**: count + exercise + modifiers (see below). A loose item is its own single block. |
@@ -57,7 +57,17 @@ section and group headers are optional.
 | `Fuerza` · `Strength` | `strength` |
 | `Circuito 3 rondas descanso 1 min cap 30 min` | `circuit` · rounds? · restBetweenRoundsSeconds? · timeCapSeconds? |
 
-Each format line starts a new part; the previous part closes on dedent (or at the next format line in the flat, legacy style).
+Each format line starts a new part; the part closes on dedent. The rutina's
+`format` column is derived from the main section's first part (null when main
+has no part) and only serves lists and filters.
+
+Durations accept `12 min`, `90s`, `1:30`, `1 min 30 s`, and the paper
+shorthands `12'` (minutes) and `30''` / `30"` (seconds).
+
+**Keyword typos.** A line whose first word is within edit distance of a
+keyword (`Intervalor 2:`, `3 rondsa:`, `Calentamineto`) and that would be
+structural once fixed gets an `unknown_keyword` diagnostic on that word with
+the fix as its suggestion. Real exercise names are never flagged.
 
 ## Item modifiers (any order)
 
@@ -65,7 +75,7 @@ Each format line starts a new part; the previous part closes on dedent (or at th
 |---|---|
 | `41 burpees` · `burpees x41` · `10 reps` | `reps` |
 | `flexiones 3x5` · `3 x 5 flexiones` · `3 series de 5` | `sets` × `reps` |
-| `plancha 30s` · `1 min` · `1:30` · `3x45s plancha` | `measure: time` · `workSeconds` (× sets) |
+| `plancha 30s` · `30''` · `1 min` · `1'` · `1:30` · `3x45s plancha` | `measure: time` · `workSeconds` (× sets) |
 | `400 m carrera` · `remo 1 km` · `4x400 m` | `measure: distance` · `distanceMeters` (× sets) |
 | `@60 kg` · `@135/95 lb` · `60 kg` | `loadPrescription: absolute` (`womenValue` from the second number; unit defaults to kg) |
 | `@80%` | `percent_1rm` |

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@dmtx/auth": "workspace:*",
+    "@dmtx/core": "workspace:*",
     "@dmtx/db": "workspace:*",
     "@dmtx/schemas": "workspace:*",
     "@hono/zod-openapi": "^1.5.1",

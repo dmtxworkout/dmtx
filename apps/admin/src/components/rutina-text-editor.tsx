@@ -236,6 +236,11 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
       if (create) {
         button('rt-diag-action', `${PLUS_ICON}<span>Crear ejercicio "${escape(raw)}"</span>`, () => create(raw));
       }
+    } else if (d.code === 'unknown_keyword') {
+      const top = el('div', 'rt-diag-top');
+      el('div', 'rt-diag-label error', '¿Quisiste decir?', top);
+      for (const name of d.suggestions ?? []) button('rt-diag-sugg', escape(name), replaceWith(name), top);
+      el('div', 'rt-diag-msg', d.message, top);
     } else if (d.code === 'ambiguous_exercise') {
       el('div', 'rt-diag-label', 'Varias coincidencias · elige', top);
       for (const name of d.suggestions ?? []) button('rt-diag-sugg', escape(name), replaceWith(name), top);
