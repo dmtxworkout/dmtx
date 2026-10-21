@@ -8,7 +8,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Catalog, parseRutina } from '@dmtx/core';
 import { cn } from '@/lib/utils';
-import { RutinaTextEditor } from '@/components/rutina-text-editor';
 import { RutinaPreview, previewFrom } from '@/components/rutina-preview';
 
 // A small catalog so the examples resolve (and one archived exercise for the warning).
@@ -26,20 +25,52 @@ const DEMO_CATALOG = new Catalog([
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-// --- Live example: a real editor + the athlete's preview ----------------------
+// --- Example: the text as the editor shows it, and the athlete's preview --------
 
-function Live({ text, height = 150, preview = true, goal = false }: { text: string; height?: number; preview?: boolean; goal?: boolean }) {
-  const [value, setValue] = useState(text);
-  const parsed = useMemo(() => parseRutina(value, { catalog: DEMO_CATALOG }), [value]);
+const LINE_CLASS: Record<string, string> = {
+  format: 'font-semibold text-[#0451a5]',
+  section: 'font-bold uppercase tracking-[0.08em] text-accent',
+  group: 'font-semibold text-[#795e26]',
+  rest: 'italic text-[#267f99]',
+  comment: 'text-[#008000]',
+  note: 'text-[#008000]',
+};
+
+/** A line of rutina text with the editor's colours: numbers, loads, tempo and notes tinted. */
+function Tokens({ text }: { text: string }) {
+  const parts = text.split(/(\/\/.*$|@\S+(?:\s*(?:kg|lb))?|tempo \S+|\b\d+(?:[.,]\d+)?(?:\s*(?:x|×)\s*\d+)?(?:\s*(?:min|s|m|km|reps))?\b)/);
+  return (
+    <>
+      {parts.map((p, i) => {
+        if (!p) return null;
+        if (p.startsWith('//')) return <span key={i} className="italic text-[#008000]">{p}</span>;
+        if (p.startsWith('@')) return <span key={i} className="text-[#a31515]">{p}</span>;
+        if (p.startsWith('tempo')) return <span key={i} className="text-[#267f99]">{p}</span>;
+        if (/^\d/.test(p)) return <span key={i} className="text-[#098658]">{p}</span>;
+        return <span key={i}>{p}</span>;
+      })}
+    </>
+  );
+}
+
+function Example({ text, preview = true, goal = false }: { text: string; preview?: boolean; goal?: boolean }) {
+  const parsed = useMemo(() => parseRutina(text, { catalog: DEMO_CATALOG }), [text]);
   const model = useMemo(() => previewFrom(parsed, 'structured', false, !goal), [parsed, goal]);
+  const lines = text.replace(/\n$/, '').split('\n');
   return (
     <div className="overflow-hidden rounded-xl border border-line-2 bg-surface">
-      <div className="flex items-center justify-between border-b border-line-3 bg-surface-2 px-3 py-1.5">
-        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">Editor · escribe aquí</span>
-        <span className="font-mono text-[10px] text-faint">pruébalo</span>
-      </div>
-      <div style={{ height }}>
-        <RutinaTextEditor value={value} onChange={setValue} catalog={DEMO_CATALOG} parsed={parsed} className="h-full" />
+      <div className="border-b border-line-3 bg-surface-2 px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">Editor</div>
+      <div className="py-2">
+        {lines.map((line, i) => {
+          const kind = parsed.lines[i]?.kind ?? 'item';
+          const cls = LINE_CLASS[kind];
+          return (
+            <div key={i} className="flex h-7 items-center font-mono text-[12.5px] text-ink">
+              <span className="w-10 shrink-0 text-right text-[11px] text-faint-2">{i + 1}</span>
+              <span className={cn('ml-4 whitespace-pre', cls)}>{cls ? line : <Tokens text={line} />}</span>
+            </div>
+          );
+        })}
       </div>
       {preview && (
         <div className="border-t border-line-3 bg-surface-2/40 px-4 py-3">
@@ -131,9 +162,9 @@ function ScenePlus() {
       name={n}
       duration={7}
       height={290}
-      cursor="0%,15%{left:150px;top:62px} 35%,100%{left:16px;top:64px}"
+      cursor="0%,15%{left:150px;top:62px} 35%,100%{left:12px;top:72px}"
       css={`
-        .${n} .g-ring { left:22px; top:70px; animation:${n}-click 7s ease-out infinite; animation-delay:0s; }
+        .${n} .g-ring { left:18px; top:78px; }
         @keyframes ${n}-ring { 0%,36%{transform:scale(.4);opacity:0} 42%{transform:scale(1);opacity:.9} 50%,100%{transform:scale(1.2);opacity:0} }
         .${n} .g-ring { animation:${n}-ring 7s ease-out infinite; }
         @keyframes ${n}-menu { 0%,44%{opacity:0;transform:translateY(-4px)} 52%,92%{opacity:1;transform:translateY(0)} 100%{opacity:0} }
@@ -300,6 +331,239 @@ function SceneTab() {
   );
 }
 
+function SceneSections() {
+  const n = 'g-sections';
+  return (
+    <Scene
+      name={n}
+      duration={8}
+      height={150}
+      cursor="0%,20%{left:220px;top:90px} 45%,100%{left:112px;top:16px}"
+      css={`
+        @keyframes ${n}-ring { 0%,50%{transform:scale(.4);opacity:0} 56%{transform:scale(1);opacity:.9} 64%,100%{transform:scale(1.2);opacity:0} }
+        .${n} .g-ring { left:122px; top:22px; animation:${n}-ring 8s ease-out infinite; }
+        @keyframes ${n}-tab-a { 0%,58%{color:var(--color-ink);box-shadow:inset 0 -2px 0 var(--color-accent)} 62%,100%{color:var(--color-muted);box-shadow:none} }
+        @keyframes ${n}-tab-b { 0%,58%{color:var(--color-muted);box-shadow:none} 62%,100%{color:var(--color-ink);box-shadow:inset 0 -2px 0 var(--color-accent)} }
+        .${n} .g-tab-a { animation:${n}-tab-a 8s ease-out infinite; }
+        .${n} .g-tab-b { animation:${n}-tab-b 8s ease-out infinite; }
+        @keyframes ${n}-doc-a { 0%,58%{opacity:1} 62%,100%{opacity:0} }
+        @keyframes ${n}-doc-b { 0%,58%{opacity:0} 62%,100%{opacity:1} }
+        .${n} .g-doc-a { animation:${n}-doc-a 8s ease-out infinite; }
+        .${n} .g-doc-b { position:absolute; left:8px; right:8px; top:44px; animation:${n}-doc-b 8s ease-out infinite; }
+      `}
+      caption="Encima del editor hay una pestaña por sección: Rutina, Calentamiento y Enfriamiento. Cada una se escribe igual que la rutina; en la vista previa salen como secciones separadas y una pestaña vacía no se muestra."
+    >
+      <div className="-mx-2 -mt-2 mb-2 flex h-8 items-stretch border-b border-line bg-surface-2 font-mono text-[11px]">
+        <span className="g-tab-a flex items-center border-r border-line px-3">Rutina</span>
+        <span className="g-tab-b flex items-center border-r border-line px-3">Calentamiento</span>
+        <span className="flex items-center border-r border-line px-3 text-muted">Enfriamiento</span>
+      </div>
+      <div className="g-doc-a">
+        <Row n={1}>
+          <F>AMRAP 12 min</F>
+        </Row>
+        <Row n={2}>
+          {'  '}
+          <N>10</N> Sentadillas
+        </Row>
+        <Row n={3}>
+          {'  '}
+          <N>8</N> Flexiones
+        </Row>
+      </div>
+      <div className="g-doc-b">
+        <Row n={1}>
+          <G>2 rondas</G>
+        </Row>
+        <Row n={2}>
+          {'  '}
+          <N>10</N> Zancadas
+        </Row>
+        <Row n={3}>
+          {'  '}
+          <N>30s</N> Plancha
+        </Row>
+      </div>
+      <span className="g-ring" aria-hidden />
+    </Scene>
+  );
+}
+
+/** Typing "10 sen" letter by letter: the suggestions appear, Tab completes the name. */
+function SceneTyping() {
+  const n = 'g-typing';
+  const typed = '10 sen';
+  const total = 9;
+  // Each character shows up at its own moment; the popup follows the first letter of the name.
+  const charKeys = typed
+    .split('')
+    .map((_, i) => `@keyframes ${n}-c${i} { 0%,${8 + i * 4}%{opacity:0} ${10 + i * 4}%,100%{opacity:1} }`)
+    .join('\n');
+  return (
+    <Scene
+      name={n}
+      duration={total}
+      height={220}
+      cursor="0%,100%{left:260px;top:120px}"
+      css={`
+        ${charKeys}
+        ${typed
+          .split('')
+          .map((_, i) => `.${n} .g-c${i} { animation:${n}-c${i} ${total}s linear infinite; }`)
+          .join('\n')}
+        @keyframes ${n}-caret { 0%,100%{opacity:1} 50%{opacity:0} }
+        .${n} .g-caret { display:inline-block; width:1.5px; height:15px; background:var(--color-ink); vertical-align:-2px; animation:${n}-caret 1s steps(1) infinite; }
+        @keyframes ${n}-pop { 0%,22%{opacity:0;transform:translateY(-4px)} 26%,60%{opacity:1;transform:translateY(0)} 64%,100%{opacity:0} }
+        .${n} .g-pop { animation:${n}-pop ${total}s ease-out infinite; }
+        @keyframes ${n}-key { 0%,52%{opacity:0} 55%,62%{opacity:1} 65%,100%{opacity:0} }
+        .${n} .g-key { animation:${n}-key ${total}s linear infinite; }
+        @keyframes ${n}-rest { 0%,62%{opacity:0} 66%,92%{opacity:1} 100%{opacity:0} }
+        .${n} .g-rest { animation:${n}-rest ${total}s linear infinite; }
+        @keyframes ${n}-typed { 0%,92%{opacity:1} 100%{opacity:0} }
+        .${n} .g-typed { animation:${n}-typed ${total}s linear infinite; }
+      `}
+      caption="Mientras escribes el nombre de un ejercicio aparecen los del catálogo que coinciden (también por alias y aunque se te escape una letra). Tab o Enter acepta, Esc cierra. Si no existe, la última opción es «Crear ejercicio» con lo que escribiste."
+    >
+      <Row n={1}>
+        <G>3 rondas</G>
+      </Row>
+      <Row n={2}>
+        {'  '}
+        <span className="g-typed">
+          {typed.split('').map((ch, i) => (
+            <span key={i} className={`g-c${i}`}>
+              {ch === ' ' ? '\u00a0' : ch}
+            </span>
+          ))}
+        </span>
+        <span className="g-rest text-ink">tadillas</span>
+        <span className="g-caret" />
+      </Row>
+      <Row n={3}>{''}</Row>
+      <div className="g-show g-pop absolute left-[86px] top-[66px] z-[1] w-60 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+        <div className="px-2.5 pb-0.5 pt-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-2">Ejercicios</div>
+        <div className="rounded-lg bg-accent-tint px-2.5 py-1 text-[12px] font-semibold text-ink">Sentadilla</div>
+        <div className="px-2.5 py-1 text-[12px] font-semibold text-ink">Sentadilla búlgara</div>
+        <div className="mt-0.5 border-t border-line-3 px-2.5 pb-0.5 pt-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-2">Nuevo</div>
+        <div className="flex items-center justify-between px-2.5 py-1 text-[12px] font-semibold text-ink">
+          Crear ejercicio «sen» <span className="font-mono text-[9px] font-normal text-muted">nuevo en el catálogo</span>
+        </div>
+      </div>
+      <div className="g-show g-key absolute right-4 top-3 rounded-md border border-line-2 bg-surface-2 px-2 py-1 font-mono text-[11px] font-semibold text-ink-2 shadow-sm">Tab ⇥</div>
+    </Scene>
+  );
+}
+
+/** The "Versión" / "Nivel" dropdown: the cursor opens it and the list appears. */
+function SceneVersions({ skillMode }: { skillMode: boolean }) {
+  const n = skillMode ? 'g-levels' : 'g-versions';
+  const rows = skillMode ? ['Nivel 1', 'Nivel 2', 'Nivel 3'] : ['Principal', 'Escalada'];
+  return (
+    <Scene
+      name={n}
+      duration={8}
+      height={210}
+      cursor="0%,20%{left:200px;top:110px} 45%,100%{left:468px;top:14px}"
+      css={`
+        @keyframes ${n}-ring { 0%,50%{transform:scale(.4);opacity:0} 56%{transform:scale(1);opacity:.9} 64%,100%{transform:scale(1.2);opacity:0} }
+        .${n} .g-ring { left:478px; top:20px; animation:${n}-ring 8s ease-out infinite; }
+        @keyframes ${n}-menu { 0%,58%{opacity:0;transform:translateY(-4px)} 64%,94%{opacity:1;transform:translateY(0)} 100%{opacity:0} }
+        .${n} .g-menu { animation:${n}-menu 8s ease-out infinite; }
+      `}
+      caption={
+        skillMode
+          ? 'El desplegable de la derecha lista los niveles: cada uno es una rutina completa con su objetivo. «Nuevo nivel» copia el nivel activo. Arrastra por el asa ⋮⋮ para reordenar, el lápiz (o doble clic) renombra en la propia fila y la ✕ pide confirmación ahí mismo.'
+          : 'El desplegable «Versión» de la derecha guarda variantes de la rutina entera (RX, Escalada…): la nueva copia la versión activa y en la app el usuario elige cuál hacer. El lápiz renombra en la fila y la ✕ pide confirmación ahí mismo.'
+      }
+    >
+      <div className="-mx-2 -mt-2 mb-2 flex h-8 items-stretch border-b border-line bg-surface-2 font-mono text-[11px]">
+        <span className="flex items-center border-r border-line px-3 text-ink shadow-[inset_0_-2px_0_var(--color-accent)]">Rutina</span>
+        <span className="flex items-center border-r border-line px-3 text-muted">Calentamiento</span>
+        <span className="flex items-center border-r border-line px-3 text-muted">Enfriamiento</span>
+        {skillMode && <span className="flex items-center border-r border-line px-3 text-muted">Objetivo</span>}
+        <span className="flex-1" />
+        <span className="mr-2 flex items-center gap-1.5 self-center rounded-md border-l border-line px-2 py-1 text-[11px]">
+          {!skillMode && <span className="text-muted">Versión</span>}
+          <span className="font-semibold text-ink">{rows[0]}</span>
+          <span className="text-ink-3">⌄</span>
+        </span>
+      </div>
+      <Row n={1}>
+        <F>AMRAP 12 min</F>
+      </Row>
+      <Row n={2}>
+        {'  '}
+        <N>10</N> Sentadillas
+      </Row>
+      <span className="g-ring" aria-hidden />
+      <div className="g-show g-menu absolute right-3 top-9 z-[1] w-64 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+        {rows.map((r, i) => (
+          <div key={r} className={cn('flex items-center gap-1 rounded-lg pl-1.5 pr-1 text-[12px]', i === 0 ? 'bg-accent-tint text-accent-dark' : 'text-ink-2')}>
+            {skillMode && <span className="px-0.5 font-mono text-[11px] text-faint-2">⋮⋮</span>}
+            <span className="flex-1 py-1.5 font-semibold">{r}</span>
+            {!skillMode && i === 0 && <span className="font-mono text-[9px] text-muted">base</span>}
+            <span className="px-1 text-[10px] text-faint-2">✎</span>
+            {(skillMode || i > 0) && <span className="px-1 text-[10px] text-faint-2">✕</span>}
+          </div>
+        ))}
+        <div className="my-1 h-px bg-line-3" />
+        <div className="flex items-center gap-2 px-2.5 py-1.5 text-[12px] font-semibold text-accent-dark">
+          <span className="w-3 text-center">+</span>
+          {skillMode ? 'Nuevo nivel' : 'Nueva variante'}
+        </div>
+      </div>
+    </Scene>
+  );
+}
+
+/** Selecting two lines by dragging: the "Guardar como bloque" action appears and gets clicked. */
+function SceneBlock() {
+  const n = 'g-block';
+  return (
+    <Scene
+      name={n}
+      duration={9}
+      height={190}
+      cursor="0%,12%{left:60px;top:40px} 30%,45%{left:230px;top:96px} 62%,100%{left:262px;top:124px}"
+      css={`
+        @keyframes ${n}-sel { 0%,12%{width:0} 30%,100%{width:170px} }
+        .${n} .g-sel { position:absolute; left:58px; top:36px; height:56px; background:rgba(209,80,42,0.18); animation:${n}-sel 9s ease-in-out infinite; }
+        @keyframes ${n}-chip { 0%,32%{opacity:0;transform:translateY(-4px)} 40%,90%{opacity:1;transform:translateY(0)} 100%{opacity:0} }
+        .${n} .g-chip { animation:${n}-chip 9s ease-out infinite; }
+        @keyframes ${n}-ring { 0%,64%{transform:scale(.4);opacity:0} 70%{transform:scale(1);opacity:.9} 78%,100%{transform:scale(1.2);opacity:0} }
+        .${n} .g-ring { left:272px; top:130px; animation:${n}-ring 9s ease-out infinite; }
+        @keyframes ${n}-dlg { 0%,74%{opacity:0;transform:scale(.97)} 80%,96%{opacity:1;transform:scale(1)} 100%{opacity:0} }
+        .${n} .g-dlg { animation:${n}-dlg 9s ease-out infinite; }
+      `}
+      caption="Selecciona dos líneas o más y aparece «Guardar como bloque»: le pones un nombre y queda guardado. Después lo insertas desde el menú + (Bloques reutilizables), igual que cualquier otra rutina del catálogo: se copia su texto en la línea."
+    >
+      <span className="g-sel" aria-hidden />
+      <Row n={1}>
+        <G>3 rondas</G>
+      </Row>
+      <Row n={2}>
+        {'  '}
+        <N>10</N> Sentadillas
+      </Row>
+      <Row n={3}>
+        {'  '}
+        <N>8</N> Flexiones
+      </Row>
+      <div className="g-show g-chip absolute left-[230px] top-[112px] z-[1] flex items-center gap-1.5 rounded-lg border border-line-2 bg-surface px-2.5 py-1.5 text-[12px] font-semibold text-ink shadow-[0_8px_24px_-8px_rgba(0,0,0,0.3)]">
+        <span className="text-accent-dark">🔖</span> Guardar como bloque
+      </div>
+      <span className="g-ring" aria-hidden />
+      <div className="g-show g-dlg absolute inset-x-10 top-4 z-[2] rounded-xl border border-line-2 bg-surface shadow-[0_12px_32px_-10px_rgba(0,0,0,0.35)]">
+        <div className="border-b border-line-3 px-3 py-2 text-[12px] font-bold text-ink">Guardar como bloque</div>
+        <div className="flex flex-col gap-1.5 px-3 py-2.5">
+          <span className="font-mono text-[9px] uppercase tracking-[0.1em] text-muted-2">Nombre</span>
+          <span className="rounded-md border border-accent bg-surface px-2 py-1 text-[12px] font-semibold text-ink">Circuito de pierna</span>
+        </div>
+      </div>
+    </Scene>
+  );
+}
+
 // --- Reference rows ----------------------------------------------------------
 
 type Ref = { k: string; v: string };
@@ -308,8 +572,8 @@ function Reference({ rows }: { rows: Ref[] }) {
     <dl className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface-2/40 p-3">
       {rows.map((g) => (
         <div key={g.k} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)] gap-3">
-          <dt className="font-mono text-[11.5px] font-medium text-ink">{g.k}</dt>
-          <dd className="text-[11px] leading-snug text-muted">{g.v}</dd>
+          <dt className="font-mono text-[12px] font-medium text-ink">{g.k}</dt>
+          <dd className="text-[12.5px] leading-snug text-ink-2">{g.v}</dd>
         </div>
       ))}
     </dl>
@@ -332,7 +596,7 @@ function sections(skillMode: boolean): Section[] {
             Se escribe como en una pizarra: una cosa por línea. Primero la cantidad, luego el ejercicio. Lo que escribes a la
             izquierda es lo que el usuario ve a la derecha.
           </p>
-          <Live
+          <Example
             text={`AMRAP 12 min
   10 Sentadillas
   8 Flexiones
@@ -352,8 +616,7 @@ function sections(skillMode: boolean): Section[] {
             Lo indentado pertenece a la línea de arriba. Un formato (AMRAP, EMOM…) o un bloque de rondas abre un contenedor;
             Tab indenta y Enter mantiene el nivel. Los bloques se anidan sin límite.
           </p>
-          <Live
-            height={190}
+          <Example
             text={`EMOM 10 x 90s
   3 rondas
     10 Burpees
@@ -386,8 +649,7 @@ function sections(skillMode: boolean): Section[] {
               { k: 'Circuito 3 rondas descanso 1 min', v: 'vueltas al circuito' },
             ]}
           />
-          <Live
-            height={170}
+          <Example
             text={`Tabata 8 x 20/10
   Burpees
   Plancha
@@ -407,8 +669,7 @@ For time cap 20 min
       body: (
         <>
           <p className="text-[13px] leading-relaxed text-ink-2">Después del nombre van la carga, el tempo y el resto de detalles, en el orden que quieras.</p>
-          <Live
-            height={150}
+          <Example
             text={`Fuerza
   Sentadilla 5x5 @100 kg tempo 0-3-1-1 desc 2 min
   Zancadas 3x10 c/lado @20 kg
@@ -458,8 +719,7 @@ For time cap 20 min
             <span className="font-mono">//</span> es una nota que el usuario ve. <span className="font-mono">#</span> es un comentario
             interno: queda en el texto pero nunca llega a la app.
           </p>
-          <Live
-            height={150}
+          <Example
             text={`# revisar la carga la semana que viene
 3 rondas
   10 Sentadillas // despacio en la bajada
@@ -474,12 +734,7 @@ For time cap 20 min
       id: 'sections',
       title: 'Calentamiento y enfriamiento',
       keywords: 'calentamiento enfriamiento pestaña seccion',
-      body: (
-        <p className="text-[13px] leading-relaxed text-ink-2">
-          Cada uno tiene su pestaña encima del editor y se escribe exactamente igual que la rutina. En la vista previa aparecen
-          como secciones separadas. Una pestaña vacía no se muestra.
-        </p>
-      ),
+      body: <SceneSections />,
     },
     {
       id: 'plus',
@@ -500,14 +755,6 @@ For time cap 20 min
       body: (
         <>
           <SceneCard />
-          <p className="text-[13px] leading-relaxed text-ink-2">Pruébalo: la primera línea tiene una errata y Handstand está archivado.</p>
-          <Live
-            height={120}
-            preview={false}
-            text={`10 Sentadila
-30s Handstand
-`}
-          />
         </>
       ),
     },
@@ -521,35 +768,19 @@ For time cap 20 min
       id: 'suggest',
       title: 'Sugerencias al escribir',
       keywords: 'sugerencias autocompletar nombre alias typo tab esc',
-      body: (
-        <p className="text-[13px] leading-relaxed text-ink-2">
-          Mientras escribes un ejercicio aparecen los nombres y alias del catálogo que coinciden, tolerando erratas. Tab acepta,
-          Esc cierra. Si no existe, la última opción es «Crear ejercicio» con lo que escribiste.
-        </p>
-      ),
+      body: <SceneTyping />,
     },
     {
       id: 'blocks',
       title: 'Bloques reutilizables y otras rutinas',
       keywords: 'bloque reutilizable guardar seleccion rutina insertar',
-      body: (
-        <p className="text-[13px] leading-relaxed text-ink-2">
-          Selecciona dos líneas o más y pulsa «Guardar como bloque»: queda guardado con un nombre. Después lo insertas desde el
-          menú +, igual que cualquier otra rutina del catálogo (se copia su texto).
-        </p>
-      ),
+      body: <SceneBlock />,
     },
     {
       id: 'versions',
       title: skillMode ? 'Niveles' : 'Versiones',
       keywords: 'version nivel variante rx escalada desplegable',
-      body: (
-        <p className="text-[13px] leading-relaxed text-ink-2">
-          {skillMode
-            ? 'El desplegable de la derecha lista los niveles. Cada uno es una rutina completa con su objetivo. El nuevo copia el nivel activo; arrastra para reordenar, doble clic para renombrar.'
-            : 'El desplegable «Versión» de la derecha guarda variantes de la rutina entera (RX, Escalada…). La nueva copia la versión activa; en la app el usuario elige cuál hacer.'}
-        </p>
-      ),
+      body: <SceneVersions skillMode={skillMode} />,
     },
   ];
   if (skillMode) {
@@ -563,8 +794,7 @@ For time cap 20 min
             En la pestaña Objetivo escribes las marcas que el usuario debe alcanzar para pasar al siguiente nivel, una por línea y
             con la gramática de siempre. Hay que cumplirlas todas. El último nivel no lleva objetivo.
           </p>
-          <Live
-            height={120}
+          <Example
             goal
             text={`Objetivo
   3 Dominadas
@@ -608,7 +838,7 @@ export function RutinaGuide({ open, onClose, skillMode = false }: { open: boolea
         <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
           <div>
             <h3 className="text-[15px] font-bold">Guía del editor</h3>
-            <p className="text-[12px] text-muted">Ejemplos vivos: escribe en ellos para probar.</p>
+            <p className="text-[12px] text-muted">Cómo se escribe y qué ve el usuario.</p>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink">
             ✕
