@@ -350,6 +350,24 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [activeTab, setActiveTab] = useState(0); // 0 = base, n = variants[n-1]
   const [tabDialog, setTabDialog] = useState<{ mode: 'add' | 'rename'; index: number; label: string } | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<{ index: number; label: string } | null>(null);
+  // The "Versión" dropdown in the tab bar: closes on an outside click or Escape.
+  const [versionOpen, setVersionOpen] = useState(false);
+  const versionRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!versionOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!versionRef.current?.contains(e.target as Node)) setVersionOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setVersionOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [versionOpen]);
   useEffect(() => {
     if (variants !== null || !catalogReady || !workout?.variants?.length) return;
     let cancelled = false;
@@ -370,6 +388,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     };
   }, [variants, catalogReady, workout, catalog]);
   const tabs = variants ?? [];
+  const versionList = [
+    { id: 'base', label: baseLabel.trim() || 'Principal' },
+    ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label })),
+  ];
   const activeVariant = activeTab > 0 ? tabs[activeTab - 1] : undefined;
   const activeSections = activeVariant ? activeVariant.sections : (sections ?? EMPTY_SECTIONS);
   const value = activeSections[activeSection];
@@ -677,51 +699,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                   </div>
                 );
               })}
-              {!segmentMode && (
-                <div className="ml-3 flex items-center gap-1 font-mono text-[11px]">
-                  <span className="mr-1 text-muted">Versión</span>
-                  {[{ id: 'base', label: baseLabel.trim() || 'Principal' }, ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label }))].map(
-                    (t, i) => (
-                      <span
-                        key={t.id}
-                        onClick={() => setActiveTab(i)}
-                        onDoubleClick={() => setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label })}
-                        title={i === 0 ? 'Versión principal · doble clic para nombrar el nivel' : 'Variante · doble clic para renombrar'}
-                        className={cn(
-                          'group inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5',
-                          activeTab === i
-                            ? 'border-accent bg-accent-tint text-accent-dark'
-                            : 'border-line-2 text-ink-3 hover:border-line hover:text-ink-2',
-                        )}
-                      >
-                        {t.label || 'Sin nombre'}
-                        {i > 0 && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setConfirmRemove({ index: i - 1, label: t.label });
-                            }}
-                            className="rounded px-0.5 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
-                            title="Eliminar variante"
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </span>
-                    ),
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setTabDialog({ mode: 'add', index: tabs.length + 1, label: tabs.length === 0 ? 'Escalada' : '' })}
-                    disabled={!editorReady}
-                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[13px] text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-40"
-                    title="Añadir variante (copia la versión activa)"
-                  >
-                    +
-                  </button>
-                </div>
-              )}
               <span className="flex-1" />
               <div className="flex items-center gap-0.5 px-2">
                 <button
@@ -751,6 +728,96 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                   </svg>
                 </button>
               </div>
+              {!segmentMode && (
+                <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
+                  <button
+                    type="button"
+                    onClick={() => setVersionOpen((o) => !o)}
+                    disabled={!editorReady}
+                    className={cn(
+                      'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] hover:bg-surface-3 disabled:opacity-40',
+                      versionOpen ? 'bg-surface-3 text-ink' : 'text-ink-2',
+                    )}
+                    title="Versión de la rutina (sus tres pestañas)"
+                  >
+                    <span className="text-muted">Versión</span>
+                    <span className="font-semibold text-ink">{versionList[activeTab]?.label || 'Sin nombre'}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-3">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  {versionOpen && (
+                    <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+                      {versionList.map((t, i) => (
+                        <div
+                          key={t.id}
+                          className={cn(
+                            'group flex items-center gap-1 rounded-lg pl-2.5 pr-1 text-[13px]',
+                            activeTab === i ? 'bg-accent-tint text-accent-dark' : 'text-ink-2 hover:bg-surface-2',
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(i);
+                              setVersionOpen(false);
+                            }}
+                            className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+                          >
+                            <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>
+                            <span className="truncate font-semibold">{t.label || 'Sin nombre'}</span>
+                            {i === 0 && <span className="font-mono text-[10px] text-muted">base</span>}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVersionOpen(false);
+                              setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label });
+                            }}
+                            className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink group-hover:opacity-100"
+                            title={i === 0 ? 'Nombrar el nivel de la versión principal' : 'Renombrar'}
+                            aria-label="Renombrar"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                          </button>
+                          {i > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setVersionOpen(false);
+                                setConfirmRemove({ index: i - 1, label: t.label });
+                              }}
+                              className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
+                              title="Eliminar variante"
+                              aria-label="Eliminar variante"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <div className="my-1 h-px bg-line-3" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVersionOpen(false);
+                          setTabDialog({ mode: 'add', index: tabs.length + 1, label: tabs.length === 0 ? 'Escalada' : '' });
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-semibold text-accent-dark hover:bg-accent-tint"
+                      >
+                        <span className="w-3 text-center">+</span>
+                        Nueva variante
+                      </button>
+                      <p className="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-muted">
+                        Una versión es la rutina entera: sus tres pestañas. La nueva copia la versión activa.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
