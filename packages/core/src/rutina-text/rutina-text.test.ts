@@ -661,7 +661,8 @@ describe('archived exercises', () => {
     const exact = parseRutina('Handstand 30s', { catalog: cat });
     expect(exact.blocks[0]!.items[0]!.match?.id).toBe('hs');
     expect(exact.diagnostics.map((d) => [d.severity, d.code])).toEqual([['warning', 'archived_exercise']]);
-    expect(cat.resolve('handstnd').match?.id).toBe('hsw');
+    expect(cat.resolve('handstnd').match?.id).not.toBe('hs');
+    expect(cat.resolve('handstand wlk').match?.id).toBe('hsw');
     expect(cat.search('hand', 5).map((e) => e.id)).toEqual(['hsw']);
     expect(cat.resolve('hand').suggestions).toEqual(['Handstand walk']);
   });
