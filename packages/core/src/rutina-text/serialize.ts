@@ -199,7 +199,7 @@ export function serializeRutina(
       if (!head.length) head.push('Bloque');
       let line = head.join(' ');
       if (b.label) line += ` - ${b.label}`;
-      out.push(`${pad}${line}:`);
+      out.push(`${pad}${line}`);
     }
     if (b.notes) out.push(`${pad}  // ${b.notes}`);
     afterHeader = true;

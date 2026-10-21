@@ -512,7 +512,7 @@ const BUILT_IN_FORMATS: InsertItem[] = [
 const BUILT_IN_RONDAS: InsertItem[] = Array.from({ length: 10 }, (_, i) => ({
   id: `r${i + 1}`,
   title: i === 0 ? '1 ronda' : `${i + 1} rondas`,
-  text: `${i + 1} rondas:`,
+  text: `${i + 1} rondas`,
 }));
 const BUILT_IN_DESCANSO: InsertItem[] = ['10s', '20s', '30s', '45s', '60s', '90s', '2 min', '3 min', '5 min'].map((d) => ({
   id: `d${d}`,

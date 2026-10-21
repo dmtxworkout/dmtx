@@ -69,8 +69,8 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     rows: [
       { k: 'AMRAP 12 min', v: 'una parte: su formato y, indentado debajo, su contenido. Puede haber varias partes seguidas' },
       { k: '41 burpees', v: 'un ejercicio por línea: cantidad + nombre' },
-      { k: '3 rondas:', v: 'bloque; sus ejercicios van indentados debajo y se cierra con línea en blanco' },
-      { k: 'Superserie:', v: 'bloque tipo superserie (admite "Superserie 3 rondas:")' },
+      { k: '3 rondas', v: 'bloque; sus ejercicios van indentados debajo (los dos puntos son opcionales)' },
+      { k: 'Superserie', v: 'bloque tipo superserie (admite "Superserie 3 rondas")' },
       { k: '3 rondas, descanso 1 min:', v: 'descanso al final de cada ronda' },
       { k: 'descanso 90s', v: 'descanso suelto entre ejercicios' },
       { k: 'Calentamiento · Enfriamiento', v: 'cada uno tiene su pestaña arriba; se escriben igual que la rutina' },

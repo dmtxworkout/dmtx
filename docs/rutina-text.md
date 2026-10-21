@@ -46,7 +46,7 @@ switched from the same bar.
 | Line | Meaning |
 |---|---|
 | `Calentamiento` / `Enfriamiento` (/ `Rutina`) | Section header (`warmup` / `cooldown` / `main`). Content indented under it belongs to it; dedent returns to `main`. Also `Warmup`, `Cooldown`, `Vuelta a la calma`. |
-| `AMRAP 12 min` | **Part**: a format header; the blocks indented under it play on that format. A section can hold several parts in sequence, plus loose blocks outside any part (played once, in order). Parts and groups nest freely by indentation: `EMOM … › 3 rondas: › AMRAP 3 min › exercises`. A container holds either exercise lines or child blocks; lines after a nested block become loose runs among the children, order kept. Main without any part defaults to `For time`. |
+| `AMRAP 12 min` | **Part**: a format header; the blocks indented under it play on that format. A section can hold several parts in sequence, plus loose blocks outside any part (played once, in order). Parts and groups nest freely by indentation: `EMOM … › 3 rondas › AMRAP 3 min › exercises`. A container holds either exercise lines or child blocks; lines after a nested block become loose runs among the children, order kept. Main without any part defaults to `For time`. |
 | `3 rondas, descanso 1 min - Pierna:` | **Group header** → block with `rounds`, optional trailing rest item and label. Also `Superserie`, `Circuito 3 rondas`, `Bloque:`, `5 series`. Its items are the lines indented under it; blank lines change nothing, dedenting to the header's column leaves the group. A header with no exercise indented under it gets an `empty_group` warning. |
 | `41 burpees` | **Item**: count + exercise + modifiers (see below). A loose item is its own single block. |
 | `descanso 90s` | Rest line: rest item inside a group, or a loose rest block. |
@@ -118,7 +118,7 @@ Each diagnostic carries a 0-based `line`, column `from/to`, `severity`
 autocomplete: formats on the first line and their parameters after the keyword,
 units after a bare number (`12 mi` → `12 min`, `800 met` → `800 m`, `@60 k` →
 `60 kg`), exercises after a count, loads/tempos/modifiers after a complete
-exercise, tempo patterns after `tempo`, `N rondas:` group headers, sections, and
+exercise, tempo patterns after `tempo`, `N rondas` group headers, sections, and
 a "Crear ejercicio" entry when nothing matches. On an empty line (reached with
 Enter) it lists everything that can go there; the editor accepts with Tab, and
 Enter on an empty line only breaks the line.
@@ -126,7 +126,7 @@ Enter on an empty line only breaks the line.
 ## Serializer conventions
 
 - Main always gets its format header; `Rutina:` is only written when a warmup exists.
-- Loose items print on their own line; groups print `3 rondas:` (+ ` - label`) with items indented two spaces and a blank line after.
+- Loose items print on their own line; groups print `3 rondas` (+ ` - label`, no colon) with items indented two spaces and a blank line after.
 - Durations: `90s` under 10 min, `12 min` for whole minutes, `12:30` otherwise. Distances: `400 m` / `1.5 km`.
 - `@135/95 lb` for dual loads, `tempo 0-3-1-1`, `c/lado`, `desc 90s`, `// notes`, `intervalo 2:` in EMOM.
 

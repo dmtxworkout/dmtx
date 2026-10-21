@@ -250,7 +250,7 @@ describe('serializeRutina', () => {
     expect(second).toEqual(first);
     expect(out).toBe(`41 Burpees
 
-3 rondas:
+3 rondas
   19 Cargada de potencia @135/95 lb
   10 Bar Muscle Up
   41 Single Cross Over
@@ -327,7 +327,7 @@ describe('completionsAt', () => {
   });
 
   it('suggests group headers and sections', () => {
-    expect(at('For time\n3 r')?.options[0]).toMatchObject({ label: '3 rondas:', type: 'group' });
+    expect(at('For time\n3 r')?.options[0]).toMatchObject({ label: '3 rondas', type: 'group' });
     expect(at('For time\n10 burpees\n\nEnf')?.options[0]?.label).toBe('Enfriamiento');
   });
 
@@ -593,7 +593,7 @@ describe('nested parts', () => {
     ]);
     expect(rounds.blocks[0]!.blocks.map((b) => b.items[0]!.kind)).toEqual(['exercise', 'rest']);
     expect(serializeRutina(w, catalog)).toBe(`EMOM 5 x 5 min
-  3 rondas:
+  3 rondas
     AMRAP 3 min
       10 Burpees
       descanso 1 min

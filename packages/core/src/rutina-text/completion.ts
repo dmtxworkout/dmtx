@@ -186,7 +186,7 @@ const REST_WORD_RE = /^\s*(?:descanso|desc|rest|pausa)\s+$/;
 /** "des…" / "re…" → the rest line in the spelling being typed. */
 const restOptions = (q: string): Completion[] =>
   q && 'descanso'.startsWith(q) ? [REST_LINE] : q && 'rest'.startsWith(q) ? [REST_LINE_EN] : [];
-const GROUP_LINE: Completion = { label: '3 rondas:', detail: 'bloque de rondas', type: 'group', apply: '3 rondas:' };
+const GROUP_LINE: Completion = { label: '3 rondas', detail: 'bloque de rondas', type: 'group', apply: '3 rondas' };
 
 const prefixOf = (q: string) => (c: Completion) => q.length > 0 && fold(c.label).startsWith(q);
 
@@ -294,7 +294,7 @@ export function completionsAt(
     return { from: offset, to: offset, options: REST_DURATIONS };
   }
 
-  // D. A bare number, maybe with a partial word: "3 r" → "3 rondas:", "800 met" →
+  // D. A bare number, maybe with a partial word: "3 r" → "3 rondas", "800 met" →
   // "800 m", "41 b" → "41 Burpees". Everything replaces the whole line.
   const rawTyped = before
     .normalize('NFD')
@@ -307,7 +307,7 @@ export function completionsAt(
     const partial = bare[3]!;
     const options: Completion[] = [];
     if (partial && 'rondas'.startsWith(partial)) {
-      options.push({ label: `${n} rondas:`, detail: 'bloque de rondas', type: 'group', apply: `${n} rondas:` });
+      options.push({ label: `${n} rondas`, detail: 'bloque de rondas', type: 'group', apply: `${n} rondas` });
     }
     options.push(...unitOptions(n, partial, ITEM_UNITS));
     // "41 bur" is an exercise being typed: leave it to the item path below.
