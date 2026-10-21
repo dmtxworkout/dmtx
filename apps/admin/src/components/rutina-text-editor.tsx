@@ -42,7 +42,12 @@ import {
   closeBrackets,
   closeCompletion,
   completionStatus,
+  hasNextSnippetField,
+  hasPrevSnippetField,
   moveCompletionSelection,
+  nextSnippetField,
+  prevSnippetField,
+  snippet,
   startCompletion,
   type CompletionContext,
   type CompletionResult,
@@ -64,10 +69,8 @@ export interface InsertItem {
   id: string;
   title: string;
   desc?: string | null;
-  /** Built-in items insert this text straight away (no preview). */
+  /** Built-in items insert this text straight away (no preview). `${…}` marks a placeholder. */
   text?: string;
-  /** After inserting, reopen the suggestions (the keyword takes a parameter). */
-  reopen?: boolean;
 }
 export interface InsertGroup {
   kind: InsertKind | 'rondas' | 'descanso' | 'formato' | 'ejercicio';
@@ -345,6 +348,8 @@ const selectionTooltip = StateField.define<Tooltip | null>({
         },
       };
     }
+    // A selected snippet placeholder is about to be overwritten: no card over it.
+    if (hasNextSnippetField(state) || hasPrevSnippetField(state)) return null;
     const hit = diagnosticsAt(state, sel.from) ?? diagnosticsAt(state, sel.to);
     if (!hit) return null;
     return {
@@ -508,19 +513,21 @@ const catalogField = StateField.define<Catalog | null>({
 // these keys to it (so typing anything else just closes it and goes to the text).
 const menuKeys = new WeakMap<EditorView, (key: string) => boolean>();
 
+// What the menu inserts comes with placeholders (${…}), never made-up values:
+// the editor highlights them and Tab jumps from one to the next.
 const BUILT_IN_FORMATS: InsertItem[] = [
-  { id: 'amrap', title: 'AMRAP', desc: 'máximas rondas en un tiempo · AMRAP 12 min', text: 'AMRAP ', reopen: true },
-  { id: 'emom', title: 'EMOM', desc: 'cada intervalo, al intervalo · EMOM 10 x 90s', text: 'EMOM ', reopen: true },
-  { id: 'tabata', title: 'Tabata', desc: 'trabajo/descanso · Tabata 8 x 20/10', text: 'Tabata ', reopen: true },
-  { id: 'for_time', title: 'For time', desc: 'completar lo más rápido posible', text: 'For time' },
-  { id: 'chipper', title: 'Chipper', desc: 'lista completada una vez, por tiempo', text: 'Chipper' },
-  { id: 'fuerza', title: 'Fuerza', desc: 'series y repeticiones', text: 'Fuerza' },
-  { id: 'circuito', title: 'Circuito', desc: 'rondas con descanso · Circuito 3 rondas', text: 'Circuito ', reopen: true },
+  { id: 'amrap', title: 'AMRAP', desc: 'máximas rondas en un tiempo · AMRAP 12 min', text: 'AMRAP ${minutos} min\n  ${reps} ${ejercicio}' },
+  { id: 'emom', title: 'EMOM', desc: 'cada intervalo, al intervalo · EMOM 10 x 90s', text: 'EMOM ${intervalos} x ${segundos}s\n  ${reps} ${ejercicio}' },
+  { id: 'tabata', title: 'Tabata', desc: 'trabajo/descanso · Tabata 8 x 20/10', text: 'Tabata ${rondas} x ${trabajo}/${descanso}\n  ${ejercicio}' },
+  { id: 'for_time', title: 'For time', desc: 'completar lo más rápido posible', text: 'For time\n  ${reps} ${ejercicio}' },
+  { id: 'chipper', title: 'Chipper', desc: 'lista completada una vez, por tiempo', text: 'Chipper\n  ${reps} ${ejercicio}' },
+  { id: 'fuerza', title: 'Fuerza', desc: 'series y repeticiones', text: 'Fuerza\n  ${ejercicio} ${series}x${reps}' },
+  { id: 'circuito', title: 'Circuito', desc: 'rondas con descanso · Circuito 3 rondas', text: 'Circuito ${rondas} rondas\n  ${reps} ${ejercicio}' },
 ];
 const BUILT_IN_RONDAS: InsertItem[] = Array.from({ length: 10 }, (_, i) => ({
   id: `r${i + 1}`,
   title: i === 0 ? '1 ronda' : `${i + 1} rondas`,
-  text: `${i + 1} rondas`,
+  text: `${i + 1} rondas\n  \${reps} \${ejercicio}`,
 }));
 const BUILT_IN_DESCANSO: InsertItem[] = ['10s', '20s', '30s', '45s', '60s', '90s', '2 min', '3 min', '5 min'].map((d) => ({
   id: `d${d}`,
@@ -538,7 +545,7 @@ function builtInGroups(catalog: Catalog | null): InsertGroup[] {
       kind: 'ejercicio',
       title: 'Ejercicios',
       direct: true,
-      items: exercises.map((ex) => ({ id: ex.id, title: ex.name, text: `${ex.name} `, reopen: true })),
+      items: exercises.map((ex) => ({ id: ex.id, title: ex.name, text: `\${cantidad} ${ex.name}` })),
     },
   ];
 }
@@ -580,18 +587,32 @@ function parentKindOf(view: EditorView, lineNo: number): LineKind | null {
   return null;
 }
 
-/** Put `text` on `lineNo`: replacing it when blank, else on new lines below it, re-indented to match. */
+const HAS_PLACEHOLDER = /\$\{[^}]*\}/;
+/** Placeholders shown as ⟨…⟩ in previews and copy. */
+const showPlaceholders = (text: string) => text.replace(/\$\{([^}]*)\}/g, '⟨$1⟩');
+
+/**
+ * Put `text` on `lineNo`: replacing it when blank, else on new lines below it,
+ * re-indented to match. Text with `${…}` placeholders goes in as a snippet: the
+ * first placeholder is selected, Tab moves to the next, typing fills it.
+ */
 function insertAtLine(view: EditorView, lineNo: number, text: string) {
   const doc = view.state.doc;
   const line = doc.line(Math.min(lineNo + 1, doc.lines));
   const blank = !line.text.trim();
   const indent = ' '.repeat(indentOf(line.text));
   const body = text.replace(/\s+$/, '').split('\n');
-  // A template's explanatory "# …" header only helps in an empty editor.
-  if (doc.toString().trim()) while (body.length && /^\s*#/.test(body[0]!)) body.shift();
-  const insert = body.map((l) => (l.trim() ? indent + l : '')).join('\n');
   const from = blank ? line.from : line.to;
-  const to = blank ? line.to : line.to;
+  const to = line.to;
+  if (HAS_PLACEHOLDER.test(text)) {
+    // The snippet re-indents every line after the first to match `line`, so
+    // only the first line carries the indent itself (or a line break).
+    const template = blank ? indent + body.join('\n') : `\n${body.join('\n')}`;
+    snippet(template)(view, null, from, to);
+    view.focus();
+    return;
+  }
+  const insert = body.map((l) => (l.trim() ? indent + l : '')).join('\n');
   const payload = blank ? insert : `\n${insert}`;
   view.dispatch({
     changes: { from, to, insert: payload },
@@ -680,7 +701,6 @@ function buildInsertMenu(
   const pickDirect = (item: InsertItem) => {
     close();
     insertAtLine(view, lineNo, item.text ?? item.title);
-    if (item.reopen) window.setTimeout(() => startCompletion(view), 0);
   };
   const choose = (group: InsertGroup, item: InsertItem) => (group.direct ? pickDirect(item) : openPreview(group, item));
   const openPreview = (group: InsertGroup, item: InsertItem) => {
@@ -832,7 +852,7 @@ function buildInsertMenu(
     const { item, text } = screen;
     header(item.title, back);
     if (item.desc) el('div', 'rt-insert-desc', item.desc);
-    const pre = el('pre', 'rt-insert-preview', text == null ? 'Cargando…' : text.replace(/\s+$/, '') || '(vacío)');
+    const pre = el('pre', 'rt-insert-preview', text == null ? 'Cargando…' : showPlaceholders(text.replace(/\s+$/, '')) || '(vacío)');
     if (text == null) pre.classList.add('loading');
     const actions = el('div', 'rt-insert-actions');
     const ok = button('rt-insert-go', actions, () => doInsert(text));
@@ -1134,6 +1154,14 @@ const theme = EditorView.theme({
   },
   '.cm-lintRange-info': { backgroundImage: 'none' },
   // tooltips
+  // Snippet placeholders: a soft chip the author overwrites; the active one is outlined.
+  '.cm-snippetField': {
+    backgroundColor: 'var(--color-accent-tint)',
+    borderRadius: '4px',
+    boxShadow: '0 0 0 1px var(--color-line-2) inset',
+    padding: '0 2px',
+  },
+  '.cm-snippetFieldPosition': { borderLeft: '1.4px dotted var(--color-accent)' },
   '.cm-tooltip': {
     border: '1px solid var(--color-line-2)',
     borderRadius: '10px',
@@ -1317,12 +1345,15 @@ export function RutinaTextEditor({
       // A blank line is the insert menu's job (opened by Enter or a click);
       // the popup starts once something is typed, or on Ctrl-Space.
       const line = ctx.state.doc.lineAt(ctx.pos);
-      if (!ctx.explicit && !line.text.slice(0, ctx.pos - line.from).trim()) return null;
+      if (!line.text.slice(0, ctx.pos - line.from).trim()) return null;
       const r = completionsAt(ctx.state.doc.toString(), ctx.pos, catalogRef.current, {
         explicit: ctx.explicit,
         extras: extrasRef.current,
         // Sections are edited in their own tabs; no header suggestions.
         sections: false,
+        // Formats, rondas, descansos, plantillas, bloques y rutinas live in the
+        // "+" menu; the popup is for exercises and what follows them.
+        structure: false,
       });
       if (!r || !r.options.length) return null;
       return {
@@ -1342,19 +1373,7 @@ export function RutinaTextEditor({
               : o.type === 'block' || o.type === 'rutina' || o.type === 'template'
                 ? (view: EditorView, _c: unknown, from: number, to: number) =>
                     insertBlock(view, o.type as InsertKind, o.apply, from, to)
-                : o.apply.endsWith(' ')
-                  ? // A keyword that takes a parameter ("AMRAP ", "descanso "): insert
-                    // it and reopen the suggestions so the parameter is offered next.
-                    (view: EditorView, _c: unknown, from: number, to: number) => {
-                      view.dispatch({
-                        changes: { from, to, insert: o.apply },
-                        selection: { anchor: from + o.apply.length },
-                        userEvent: 'input',
-                      });
-                      // After the accept closes this popup, open the next one.
-                      window.setTimeout(() => startCompletion(view), 0);
-                    }
-                  : o.apply,
+                : o.apply,
         })),
       };
     };
@@ -1469,8 +1488,11 @@ export function RutinaTextEditor({
     // on a blank line it indents one level (even with the popup open).
     const tabKey = (view: EditorView) => {
       if (completionStatus(view.state) === 'active' && typedOnLine(view)) return acceptCompletion(view);
+      // Inside an inserted snippet, Tab walks its placeholders.
+      if (hasNextSnippetField(view.state)) return nextSnippetField(view);
       return indentMore(view);
     };
+    const shiftTabKey = (view: EditorView) => (hasPrevSnippetField(view.state) ? prevSnippetField(view) : indentLess(view));
     // Backspace inside the leading whitespace removes a whole level (2 spaces),
     // so the cursor always lands on a level boundary.
     const backspaceKey = (view: EditorView) => {
@@ -1536,14 +1558,22 @@ export function RutinaTextEditor({
               })),
               { key: 'Enter', run: enterKey },
               { key: 'Tab', run: tabKey },
-              { key: 'Shift-Tab', run: indentLess },
+              { key: 'Shift-Tab', run: shiftTabKey },
               { key: 'Backspace', run: backspaceKey },
               { key: 'Escape', run: closeCompletion },
               { key: 'ArrowDown', run: moveCompletionSelection(true) },
               { key: 'ArrowUp', run: moveCompletionSelection(false) },
               { key: 'PageDown', run: moveCompletionSelection(true, 'page') },
               { key: 'PageUp', run: moveCompletionSelection(false, 'page') },
-              { key: 'Ctrl-Space', run: startCompletion },
+              {
+                key: 'Ctrl-Space',
+                run: (view: EditorView) => {
+                  const line = view.state.doc.lineAt(view.state.selection.main.head);
+                  if (line.text.trim()) return startCompletion(view);
+                  openMenuAtCursor(view);
+                  return true;
+                },
+              },
             ]),
           ),
           keymap.of([...historyKeymap, ...lintKeymap, ...defaultKeymap]),

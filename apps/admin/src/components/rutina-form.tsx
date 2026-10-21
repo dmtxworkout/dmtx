@@ -139,7 +139,8 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
   {
     title: 'Editor',
     rows: [
-      { k: 'Sugerencias', v: 'aparecen al escribir y al saltar de línea; Tab acepta, Esc cierra' },
+      { k: 'Sugerencias', v: 'al escribir un ejercicio aparecen nombres y modificadores; Tab acepta, Esc cierra' },
+      { k: 'Menú +', v: 'formatos, rondas, descansos, plantillas y bloques; lo insertado trae huecos ⟨así⟩ que se rellenan con Tab' },
       { k: 'Enter', v: 'tras una cabecera indenta; en una línea vacía indentada sube un nivel por pulsación' },
       { k: 'Nombre de bloque o rutina', v: 'al inicio de línea inserta su contenido completo' },
       { k: 'Guardar bloque', v: 'selecciona dos líneas o más y pulsa la acción que aparece junto a la selección' },
@@ -151,72 +152,63 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
 // ---- Text helpers ----------------------------------------------------------
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-type Template = { id: string; title: string; desc: string; text: (ex: (i: number) => string) => string };
+// Templates are snippets: each ${…} is a placeholder the editor highlights and
+// Tab jumps between, so nothing comes pre-filled (no made-up exercises or times).
+type Template = { id: string; title: string; desc: string; text: string };
 const TEMPLATES: Template[] = [
   {
     id: 'amrap',
     title: 'AMRAP clásico',
     desc: 'Máximas rondas de un circuito en un tiempo.',
-    text: (ex) => `# Cambia los ejercicios por los tuyos y borra esta línea
-AMRAP 12 min
-  10 ${ex(0)}
-  15 ${ex(1)}
-  20 ${ex(2)}
+    text: `AMRAP \${minutos} min
+  \${reps} \${ejercicio}
+  \${reps 2} \${ejercicio 2}
+  \${reps 3} \${ejercicio 3}
 `,
   },
   {
     id: 'emom',
     title: 'EMOM por intervalos',
     desc: 'Cada intervalo un grupo de trabajo distinto, rotando.',
-    text: (ex) => `# Cada "intervalo N:" es el trabajo de ese intervalo; luego rotan
-EMOM 10 x 90s
+    text: `EMOM \${intervalos} x \${segundos}s
   intervalo 1:
-    10 ${ex(0)}
-    10 ${ex(1)}
+    \${reps} \${ejercicio}
   intervalo 2:
-    15 ${ex(2)}
+    \${reps 2} \${ejercicio 2}
 `,
   },
   {
     id: 'fuerza',
-    title: 'Fuerza 5x5',
+    title: 'Fuerza',
     desc: 'Series × reps con carga, tempo y descanso.',
-    text: (ex) => `# series x reps · @carga · tempo · desc = descanso entre series
-Fuerza
-  ${ex(0)} 5x5 @80% tempo 0-3-1-1 desc 2 min
-  ${ex(1)} 3x8 @60 kg desc 90s
-  ${ex(2)} 3x12 c/lado
+    text: `Fuerza
+  \${ejercicio} \${series}x\${reps} @\${carga} desc \${descanso}
+  \${ejercicio 2} \${series 2}x\${reps 2}
 `,
   },
   {
     id: 'partes',
     title: 'For time con partes',
     desc: 'Varias partes seguidas, cada una con su formato.',
-    text: (ex) => `# Lo indentado pertenece a la línea de arriba (formato o bloque)
-For time cap 20 min
-  3 rondas
-    15 ${ex(0)}
-    10 ${ex(1)}
-    400 m ${ex(2)}
+    text: `For time cap \${minutos} min
+  \${rondas} rondas
+    \${reps} \${ejercicio}
+    \${reps 2} \${ejercicio 2}
 
-40 ${ex(0)}
-
-AMRAP 5 min
-  10 ${ex(1)}
-  ${ex(2)} 30s
+AMRAP \${minutos 2} min
+  \${reps 3} \${ejercicio 3}
 `,
   },
   {
     id: 'tabata',
     title: 'Tabata',
     desc: 'Trabajo y descanso fijos, los ejercicios rotan.',
-    text: (ex) => `Tabata 8 x 20/10
-  ${ex(0)}
-  ${ex(1)}
+    text: `Tabata \${rondas} x \${trabajo}/\${descanso}
+  \${ejercicio}
+  \${ejercicio 2}
 `,
   },
 ];
-const FALLBACK_EX = ['burpees', 'sentadillas', 'flexiones'];
 
 /** Initial text: an existing rutina serialized; a new one starts empty (templates are offered in the editor). */
 function initialText(workout: Workout | undefined, catalog: Catalog): string {
@@ -507,10 +499,8 @@ export function RutinaForm({
     ],
     [blocksQ.data, rutinasQ.data, workout?.id],
   );
-  const exNames = (exList?.data ?? []).map((e) => e.name);
   const insertBlock = async (kind: InsertKind, id: string): Promise<string | null> => {
-    // Templates use real catalog exercises so they do not land full of errors.
-    if (kind === 'template') return TEMPLATES.find((t) => t.id === id)?.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio') ?? null;
+    if (kind === 'template') return TEMPLATES.find((t) => t.id === id)?.text ?? null;
     if (kind === 'block') return blocksQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
     const src = await api.workouts.get(id);
     // Another rutina's main section, as written (its parts included).

@@ -25,6 +25,12 @@ export interface CompletionOptions {
   extras?: CompletionExtra[];
   /** Offer "Calentamiento" / "Enfriamiento" headers (off when sections are edited in tabs). */
   sections?: boolean;
+  /**
+   * Offer structure while typing: formats, rondas, descanso, templates, blocks,
+   * rutinas (default). Off when the editor has a separate insert menu for those,
+   * so the popup only helps with exercises and what follows them.
+   */
+  structure?: boolean;
 }
 
 export interface Completion {
@@ -243,6 +249,7 @@ export function completionsAt(
   const indent = before.length - before.trimStart().length;
   const typed = fold(before);
   const sectionOpts = opts.sections === false ? [] : SECTIONS;
+  const structure = opts.structure !== false;
   const atSectionStart = isSectionStart(text, lineStart);
   const wordStart = lineStart + before.lastIndexOf(' ') + 1;
   const word = fold(before.slice(before.lastIndexOf(' ') + 1));
@@ -250,6 +257,7 @@ export function completionsAt(
   // A. Nothing typed yet: everything that can go on this line, grouped by the
   // editor into sections (formats, structure, exercises, templates, blocks, rutinas).
   if (!typed) {
+    if (!structure) return null;
     const options: Completion[] = [
       GROUP_LINE,
       REST_LINE,
@@ -270,6 +278,7 @@ export function completionsAt(
   // C. Format line: a format can start a PART on any line. With the keyword
   // complete (a space typed after it), offer its parameters/units.
   const fm = typed.match(FORMAT_LINE_RE);
+  if (fm && !structure) return null;
   if (fm && (fm[2] !== undefined || /\s$/.test(before))) {
     const key = formatKey(fm[1]!);
     const tail = fm[2] ?? '';
@@ -282,7 +291,7 @@ export function completionsAt(
     const params = FORMAT_PARAMS[key].filter((c) => !word || fold(c.label).startsWith(word));
     return params.length ? { from: wordStart, to: offset, options: params } : null;
   }
-  if (atSectionStart) {
+  if (atSectionStart && structure) {
     const formats = FORMATS.filter(prefixOf(typed));
     if (formats.length || sections.length) {
       return { from: lineStart + indent, to: lineEnd, options: [...formats, ...sections] };
@@ -291,7 +300,7 @@ export function completionsAt(
 
   // C2. "descanso " → how long.
   if (REST_WORD_RE.test(typed) || REST_WORD_RE.test(before)) {
-    return { from: offset, to: offset, options: REST_DURATIONS };
+    return structure ? { from: offset, to: offset, options: REST_DURATIONS } : null;
   }
 
   // D. A bare number, maybe with a partial word: "3 r" → "3 rondas", "800 met" →
@@ -306,7 +315,7 @@ export function completionsAt(
     const n = bare[1]!;
     const partial = bare[3]!;
     const options: Completion[] = [];
-    if (partial && 'rondas'.startsWith(partial)) {
+    if (structure && partial && 'rondas'.startsWith(partial)) {
       options.push({ label: `${n} rondas`, detail: 'bloque de rondas', type: 'group', apply: `${n} rondas` });
     }
     options.push(...unitOptions(n, partial, ITEM_UNITS));
@@ -373,12 +382,12 @@ export function completionsAt(
   const options: Completion[] = exerciseOptions(cat, query);
   // Nothing but indentation before the word: whole-line things are possible.
   const atLineStart = before.slice(0, nameStart).trim() === '';
-  if (atLineStart) options.unshift(...restOptions(fold(query)));
+  if (atLineStart && structure) options.unshift(...restOptions(fold(query)));
   // A format can start a part anywhere, nested included: when the word being
   // typed is the start of one ("am" → AMRAP), it goes first.
-  if (atLineStart && !query.includes(' ')) options.unshift(...FORMATS.filter(prefixOf(fold(query))));
+  if (atLineStart && structure && !query.includes(' ')) options.unshift(...FORMATS.filter(prefixOf(fold(query))));
   // Whole blocks / rutinas only make sense at the start of a line (no count before).
-  if (atLineStart) options.push(...extraOptions(opts, query));
+  if (atLineStart && structure) options.push(...extraOptions(opts, query));
   // No exact match → always offer to create the exercise as written.
   if (!exact) {
     options.push({

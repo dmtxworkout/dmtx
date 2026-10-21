@@ -114,14 +114,17 @@ Each diagnostic carries a 0-based `line`, column `from/to`, `severity`
 `format_needs_config`. `lines[i].kind` classifies every line for editor styling.
 
 `toWorkoutInput(parsed)` yields the `format*`/`blocks` fields of
-`CreateWorkoutInput`; `completionsAt(text, offset, catalog)` powers the editor's
-autocomplete: formats on the first line and their parameters after the keyword,
-units after a bare number (`12 mi` → `12 min`, `800 met` → `800 m`, `@60 k` →
-`60 kg`), exercises after a count, loads/tempos/modifiers after a complete
-exercise, tempo patterns after `tempo`, `N rondas` group headers, sections, and
-a "Crear ejercicio" entry when nothing matches. On an empty line (reached with
-Enter) it lists everything that can go there; the editor accepts with Tab, and
-Enter on an empty line only breaks the line.
+`CreateWorkoutInput`; `completionsAt(text, offset, catalog, opts)` powers the
+editor's autocomplete: units after a bare number (`12 mi` → `12 min`, `800 met`
+→ `800 m`, `@60 k` → `60 kg`), exercises after a count, loads/tempos/modifiers
+after a complete exercise, tempo patterns after `tempo`, and a "Crear ejercicio"
+entry when nothing matches. With `structure: true` (the default) it also offers
+formats and their parameters, `N rondas`, `descanso`, sections, templates,
+blocks and rutinas, and lists everything on an empty line; the admin editor
+passes `structure: false` because those come from its "+" menu instead. What
+that menu inserts carries placeholders (`${minutos}`, `${ejercicio}`…) that the
+editor highlights: the first is selected, Tab jumps to the next, typing fills
+it. Nothing comes pre-filled with invented exercises or times.
 
 ## Serializer conventions
 
