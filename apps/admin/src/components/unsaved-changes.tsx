@@ -23,7 +23,7 @@ export function useUnsavedChanges({
   onSave: () => void;
   onDiscard: () => void;
   canSave?: boolean;
-}): { bar: ReactNode; guardNav: (go: () => void) => void } {
+}): { bar: ReactNode; guardNav: (go: () => void) => void; shake: () => void } {
   const [shake, setShake] = useState(0);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
@@ -106,5 +106,5 @@ export function useUnsavedChanges({
     </div>
   ) : null;
 
-  return { bar, guardNav };
+  return { bar, guardNav, shake: () => setShake((n) => n + 1) };
 }

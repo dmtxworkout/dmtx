@@ -302,7 +302,6 @@ export function RutinaForm({
   const listTitle = blockMode ? es.reusableBlocks.title : es.workouts.title;
   const newLabel = blockMode ? 'Nuevo bloque' : es.workouts.new;
   const isNew = blockMode ? !block : !workout;
-  const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
 
   const [name, setName] = useState(workout?.name ?? block?.name ?? '');
@@ -392,7 +391,7 @@ export function RutinaForm({
           })),
         );
       })
-      .catch((e) => setServerError(e instanceof Error ? e.message : es.app.error));
+      .catch((e) => toast(e instanceof Error ? e.message : es.app.error, 'error'));
     return () => {
       cancelled = true;
     };
@@ -564,7 +563,7 @@ export function RutinaForm({
       setBlockModal(null);
       toast(`Bloque reutilizable: ${sn.name}`);
     },
-    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
+    onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
 
   const titleCase = (s: string) => s.trim().replace(/^\p{L}/u, (c) => c.toUpperCase());
@@ -602,7 +601,7 @@ export function RutinaForm({
       toast('Bloque reutilizable');
       if (!block) router.replace(`/bloques/${saved.id}`);
     },
-    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
+    onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
   const save = useMutation({
     mutationFn: async () => {
@@ -628,7 +627,7 @@ export function RutinaForm({
       toast('Rutina guardada');
       if (!workout) router.replace(`${basePath}/${saved.id}`);
     },
-    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
+    onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
 
   // ---- Unsaved changes (Shopify-style bar) ----------------------------------
@@ -680,11 +679,10 @@ export function RutinaForm({
     setVariants(baseline.variants);
     setRemovedVariantIds([]);
     setActiveTab((t) => Math.min(t, baseline.variants.length));
-    setServerError(null);
   };
   // Save / discard bar, ⌘S, navigation guard (shared with the exercise form).
   const doSaveRef = useRef<() => void>(() => {});
-  const { bar: unsavedBar, guardNav } = useUnsavedChanges({
+  const { bar: unsavedBar, guardNav, shake: shakeBar } = useUnsavedChanges({
     dirty,
     saving: save.isPending || saveBlock.isPending,
     onSave: () => doSaveRef.current(),
@@ -693,7 +691,6 @@ export function RutinaForm({
   });
 
   const doSave = () => {
-    setServerError(null);
     if (!name.trim()) {
       setNameError(true);
       return;
@@ -708,11 +705,14 @@ export function RutinaForm({
         if (n > 0) {
           setActiveTab(i);
           setActiveSection(p.lines[errors[0]!.line]?.section ?? 'main');
-          setServerError(
+          // Not saved: a toast says why and the bar shakes, like a blocked navigation.
+          toast(
             (n === 1 ? 'Hay 1 línea con error' : `Hay ${n} líneas con error`) +
               (all.length > 1 ? ` en «${all[i]!.label}»` : '') +
               '. Corrígelo antes de guardar.',
+            'error',
           );
+          shakeBar();
           return;
         }
       }
@@ -779,10 +779,6 @@ export function RutinaForm({
           )}
         </div>
       </header>
-
-      {serverError && (
-        <p className="mx-7 mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark">{serverError}</p>
-      )}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Left: the editor, VS Code style (tab bar · editor · problems) */}
@@ -948,7 +944,6 @@ export function RutinaForm({
                     blockMode
                       ? undefined
                       : (t) => {
-                          setServerError(null);
                           setBlockModal({ name: '', text: t.trim() });
                         }
                   }
