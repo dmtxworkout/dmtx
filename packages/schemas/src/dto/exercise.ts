@@ -33,6 +33,25 @@ export const updateExerciseSchema = updateSchemaOf(createExerciseSchema).extend(
 });
 export type UpdateExerciseInput = z.infer<typeof updateExerciseSchema>;
 
+/**
+ * One action over many exercises (the list's bulk bar). Tag actions add or
+ * remove the given muscles / equipment on every selected exercise.
+ */
+export const bulkExerciseSchema = z.object({
+  ids: z.array(uuidSchema).min(1).max(500),
+  action: z.enum(['archive', 'restore', 'delete', 'add_muscles', 'remove_muscles', 'add_equipment', 'remove_equipment']),
+  muscles: z.array(exerciseMuscleInputSchema).default([]),
+  muscleIds: z.array(uuidSchema).default([]),
+  equipmentIds: z.array(uuidSchema).default([]),
+});
+export type BulkExerciseInput = z.infer<typeof bulkExerciseSchema>;
+export const bulkExerciseResultSchema = z.object({
+  done: z.number().int(),
+  /** Exercises the action could not touch (a delete refused because something uses it). */
+  refused: z.array(z.object({ id: uuidSchema, name: z.string(), reason: z.string() })),
+});
+export type BulkExerciseResult = z.infer<typeof bulkExerciseResultSchema>;
+
 /** Full exercise as returned by the API. */
 export const exerciseSchema = z.object({
   id: uuidSchema,

@@ -14,7 +14,7 @@
 ## Next (build order)
 
 1. **Apply the migration** — provision a Neon branch, set `DATABASE_URL`, `pnpm db:migrate`; create the first admin user. (Blocks running anything end-to-end.)
-2. ~~**Taxonomy**~~ — built (2026-10-21): `/api/taxonomy` CRUD, the **Músculos y equipo** screen, muscle/equipment pickers in the exercise form, and the app derives each rutina's tags ("Trabaja" / "Equipo") from its exercises and filters Explorar by them (`/app/filters`, `/app/browse?muscleGroup=&equipment=`).
+2. ~~**Taxonomy**~~ — built (2026-10-21): `/api/taxonomy` CRUD, the **Músculos y equipo** screen, muscle/equipment pickers in the exercise form, and the app derives each rutina's tags ("Trabaja" / "Equipo") from its exercises and filters Explorar by them (`/app/filters`, `/app/browse?muscle=&equipment=`). Muscle groups were dropped the same day: one flat list of muscles is enough.
 3. **Add DB indexes** — FKs, `subscriptions.next_charge_date`, `status`, `deleted_at` on hot paths (none defined yet).
 4. **Workouts (rutinas)** — format picker + per-format config forms + block/item builder. Add `@dmtx/core` for the format/goal engines (`meetsGoal`, timer configs) shared with mobile.
 5. **Programs, Skills, Collections** — same golden-path pattern.

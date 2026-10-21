@@ -6,7 +6,7 @@
 // yet is created right there ("Agregar «…»").
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Equipment, ExerciseMuscleInput, Muscle, MuscleGroup, MuscleRole, Taxonomy } from '@dmtx/schemas';
+import type { Equipment, ExerciseMuscleInput, Muscle, MuscleRole, Taxonomy } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -37,15 +37,13 @@ interface TagPopoverProps {
   sections: Section[];
   selected: Set<string>;
   onToggle: (id: string) => void;
-  /** Creates a tag named `name` and ticks it. Return false to keep the popover open (e.g. a second step is showing). */
-  onCreate: (name: string) => Promise<boolean>;
-  /** Rendered instead of the list while a creation needs more input (the muscle's group). */
-  createStep?: ReactNode;
+  /** Creates a tag named `name` and ticks it. */
+  onCreate: (name: string) => Promise<void>;
   /** The chosen tags, rendered inside the field in front of the opener. */
   chips?: ReactNode;
 }
 
-function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCreate, createStep, chips }: TagPopoverProps) {
+function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCreate, chips }: TagPopoverProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -58,21 +56,22 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
     const onDown = (e: MouseEvent) => {
       if (!box.current?.contains(e.target as Node)) setOpen(false);
     };
+    // Capture phase: Escape closes only the popover, not a dialog around it.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
-    document.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
-      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onKey, true);
     };
   }, [open]);
-  // Closing, or finishing a two-step creation, starts the search afresh.
-  const creating = !!createStep;
   useEffect(() => {
-    if (!open || !creating) setQuery('');
-  }, [open, creating]);
+    if (!open) setQuery('');
+  }, [open]);
 
   const q = fold(query.trim());
   const visible = useMemo(
@@ -91,8 +90,8 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
     if (!name || busy) return;
     setBusy(true);
     try {
-      const done = await onCreate(name);
-      if (done) setQuery('');
+      await onCreate(name);
+      setQuery('');
     } finally {
       setBusy(false);
     }
@@ -146,8 +145,7 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
             )}
           </div>
 
-          {createStep ?? (
-            <div className="max-h-72 overflow-y-auto p-1.5">
+          <div className="max-h-72 overflow-y-auto p-1.5">
               {canCreate && (
                 <button
                   type="button"
@@ -192,8 +190,7 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
                   })}
                 </div>
               ))}
-            </div>
-          )}
+          </div>
         </div>
       )}
     </div>
@@ -210,17 +207,6 @@ export function MusclePicker({ value, onChange }: { value: ExerciseMuscleInput[]
   const { data } = useTaxonomy();
   const cache = useTaxonomyCache();
   const muscles = data?.muscles ?? [];
-  const groups = data?.groups ?? [];
-  // A muscle being created: it needs a group, chosen (or created) in a second step.
-  const [pending, setPending] = useState<string | null>(null);
-  const [newGroup, setNewGroup] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const sections = useMemo<Section[]>(() => {
-    const byGroup = groups.map((g) => ({ title: g.name, items: muscles.filter((m) => m.muscleGroupId === g.id) })).filter((s) => s.items.length);
-    const orphans = muscles.filter((m) => !groups.some((g) => g.id === m.muscleGroupId));
-    return orphans.length ? [...byGroup, { items: orphans }] : byGroup;
-  }, [groups, muscles]);
   const selected = useMemo(() => new Set(value.map((v) => v.muscleId)), [value]);
 
   const add = (muscleId: string) => onChange([...value, { muscleId, role: value.length ? 'secondary' : 'primary' }]);
@@ -228,83 +214,19 @@ export function MusclePicker({ value, onChange }: { value: ExerciseMuscleInput[]
   const toggle = (id: string) => (selected.has(id) ? remove(id) : add(id));
   const setRole = (muscleId: string, role: MuscleRole) => onChange(value.map((v) => (v.muscleId === muscleId ? { ...v, role } : v)));
 
-  const createIn = async (group: MuscleGroup | { name: string }) => {
-    if (!pending || busy) return;
-    setBusy(true);
-    try {
-      let g: MuscleGroup;
-      if ('id' in group) g = group;
-      else {
-        g = await api.taxonomy.createGroup({ name: group.name });
-        cache.patch((t) => ({ ...t, groups: [...t.groups, g] }));
-      }
-      const m: Muscle = await api.taxonomy.createMuscle({ name: pending, muscleGroupId: g.id });
-      cache.patch((t) => ({ ...t, muscles: [...t.muscles, m] }));
-      add(m.id);
-      setPending(null);
-      setNewGroup('');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createStep = pending ? (
-    <div className="p-1.5">
-      <p className="px-2.5 pb-1 pt-1.5 text-[13px] text-ink-2">
-        Agregar <span className="font-semibold text-ink">«{pending}»</span> en el grupo:
-      </p>
-      {groups.map((g) => (
-        <button
-          key={g.id}
-          type="button"
-          disabled={busy}
-          onClick={() => void createIn(g)}
-          className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[13px] font-medium text-ink hover:bg-surface-2 disabled:opacity-60"
-        >
-          {g.name}
-        </button>
-      ))}
-      {/* Not a <form>: the picker already lives inside the exercise form. */}
-      <div className="mt-1 flex items-center gap-1.5 border-t border-line-3 px-2.5 pt-2">
-        <input
-          value={newGroup}
-          onChange={(e) => setNewGroup(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return;
-            e.preventDefault();
-            if (newGroup.trim()) void createIn({ name: newGroup.trim() });
-          }}
-          placeholder={groups.length ? 'Nuevo grupo…' : 'Nombre del grupo (p. ej. Pierna)'}
-          className="h-8 min-w-0 flex-1 rounded-md border border-dashed border-line-2 bg-surface-3 px-2 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => newGroup.trim() && void createIn({ name: newGroup.trim() })}
-          disabled={!newGroup.trim() || busy}
-          className="h-8 rounded-md bg-ink px-2.5 text-[12px] font-semibold text-white disabled:opacity-40"
-        >
-          Crear
-        </button>
-      </div>
-      <button type="button" onClick={() => setPending(null)} className="mt-1 px-2.5 py-1 text-[12px] text-muted hover:text-ink">
-        ← Volver
-      </button>
-    </div>
-  ) : undefined;
-
   return (
     <div className="flex flex-col gap-2">
       <TagPopover
         addLabel="Agregar músculos"
         placeholder="Buscar o agregar músculos"
-        sections={sections}
+        sections={[{ items: muscles }]}
         selected={selected}
         onToggle={toggle}
         onCreate={async (name) => {
-          setPending(name);
-          return false;
+          const m: Muscle = await api.taxonomy.createMuscle({ name });
+          cache.patch((t) => ({ ...t, muscles: [...t.muscles, m] }));
+          add(m.id);
         }}
-        createStep={createStep}
         chips={value.map((v) => {
           const m = muscles.find((x) => x.id === v.muscleId);
           return (
@@ -350,7 +272,6 @@ export function EquipmentPicker({ value, onChange }: { value: string[]; onChange
         const e: Equipment = await api.taxonomy.createEquipment({ name });
         cache.patch((t) => ({ ...t, equipment: [...t.equipment, e] }));
         onChange([...value, e.id]);
-        return true;
       }}
       chips={value.map((id) => {
         const e = items.find((x) => x.id === id);

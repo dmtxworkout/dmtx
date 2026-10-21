@@ -108,7 +108,7 @@ export default function RutinaDetalle() {
     { k: 'Formato', v: w.type === 'video' ? 'Video' : formatLabel(w.format) || '—' },
     { k: 'Duración', v: w.estimatedDurationSeconds ? mmss(w.estimatedDurationSeconds) : '—' },
     { k: 'Nivel', v: difficultyLabel(w.difficulty, true) || '—' },
-    ...(w.muscleGroups.length ? [{ k: 'Trabaja', v: w.muscleGroups.join(', ') }] : []),
+    ...(w.muscles.length ? [{ k: 'Trabaja', v: w.muscles.join(', ') }] : []),
     { k: 'Equipo', v: w.equipment.length ? w.equipment.join(', ') : 'Sin equipo' },
   ];
 

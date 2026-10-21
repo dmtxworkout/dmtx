@@ -27,26 +27,26 @@ export default function Explorar() {
   const [q, setQ] = useState('');
   const [type, setType] = useState<string>('all');
   // Tag filters only apply to rutinas; picking one narrows the results to them.
-  const [muscleGroup, setMuscleGroup] = useState<string | null>(null);
+  const [muscle, setMuscle] = useState<string | null>(null);
   const [equipment, setEquipment] = useState<string | null>(null);
   const showTags = type === 'all' || type === 'workout';
   const filters = useQuery({ queryKey: ['browse-filters'], queryFn: api.filters, enabled: showTags });
   const browse = useQuery({
-    queryKey: ['browse', q, type, showTags ? muscleGroup : null, showTags ? equipment : null],
+    queryKey: ['browse', q, type, showTags ? muscle : null, showTags ? equipment : null],
     queryFn: () =>
       api.browse({
         q,
         type,
-        muscleGroup: showTags ? (muscleGroup ?? undefined) : undefined,
+        muscle: showTags ? (muscle ?? undefined) : undefined,
         equipment: showTags ? (equipment ?? undefined) : undefined,
       }),
   });
   const tagChips = [
-    ...(filters.data?.muscleGroups ?? []).map((g) => ({
-      key: `g:${g.slug}`,
-      label: g.name,
-      active: muscleGroup === g.slug,
-      onPress: () => setMuscleGroup(muscleGroup === g.slug ? null : g.slug),
+    ...(filters.data?.muscles ?? []).map((m) => ({
+      key: `m:${m.slug}`,
+      label: m.name,
+      active: muscle === m.slug,
+      onPress: () => setMuscle(muscle === m.slug ? null : m.slug),
     })),
     ...(filters.data?.equipment ?? []).map((e) => ({
       key: `e:${e.slug}`,

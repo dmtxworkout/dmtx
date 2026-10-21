@@ -12,8 +12,22 @@ export interface ActionItem {
   disabled?: boolean;
 }
 
-/** "Acciones ▾": a small menu of secondary actions for a record's page. */
-export function ActionsMenu({ label = 'Acciones', items }: { label?: string; items: ActionItem[] }) {
+/** "Acciones ▾": a small menu of secondary actions for a record's page (or a "···" in a bulk bar). */
+export function ActionsMenu({
+  label = 'Acciones',
+  items,
+  chevron = true,
+  align = 'right',
+  size,
+  ariaLabel,
+}: {
+  label?: ReactNode;
+  items: ActionItem[];
+  chevron?: boolean;
+  align?: 'left' | 'right';
+  size?: 'sm' | 'default';
+  ariaLabel?: string;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -34,8 +48,9 @@ export function ActionsMenu({ label = 'Acciones', items }: { label?: string; ite
 
   return (
     <div ref={ref} className="relative">
-      <Button type="button" variant="outline" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+      <Button type="button" variant="outline" size={size} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open} aria-label={ariaLabel}>
         {label}
+        {chevron && (
         <svg
           width="12"
           height="12"
@@ -49,11 +64,15 @@ export function ActionsMenu({ label = 'Acciones', items }: { label?: string; ite
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
+        )}
       </Button>
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-20 mt-1 w-52 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
+          className={cn(
+            'absolute top-full z-20 mt-1 w-52 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]',
+            align === 'right' ? 'right-0' : 'left-0',
+          )}
         >
           {items.map((it, i) => (
             <button

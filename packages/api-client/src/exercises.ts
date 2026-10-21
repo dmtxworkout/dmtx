@@ -1,4 +1,6 @@
 import type {
+  BulkExerciseInput,
+  BulkExerciseResult,
   CreateExerciseInput,
   Exercise,
   PaginationQuery,
@@ -38,6 +40,10 @@ export function exercisesApi(http: Http) {
     },
     remove(id: string): Promise<void> {
       return http.request(`/api/exercises/${id}`, { method: 'DELETE' });
+    },
+    /** One action over many exercises (archive, restore, delete, add/remove tags). */
+    bulk(input: BulkExerciseInput): Promise<BulkExerciseResult> {
+      return http.request('/api/exercises/bulk', { method: 'POST', body: JSON.stringify(input) });
     },
   };
 }

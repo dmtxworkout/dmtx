@@ -32,7 +32,7 @@ export interface ContentCard {
   meta: string;
   progressPct: number;
   /** Rutinas only: muscle groups worked and equipment needed, for search and filters. */
-  muscleGroups?: string[];
+  muscles?: string[];
   equipment?: string[];
   format?: WorkoutFormat | null;
   durationSeconds?: number | null;
@@ -58,7 +58,7 @@ export interface Browse {
 
 /** Tags the app can filter rutinas by (slug → label). */
 export interface BrowseFilters {
-  muscleGroups: { slug: string; name: string }[];
+  muscles: { slug: string; name: string }[];
   equipment: { slug: string; name: string }[];
 }
 
@@ -139,7 +139,7 @@ export interface WorkoutDetail {
   videoUrl: string | null;
   videoDurationSeconds: number | null;
   /** Tags derived from the exercises: muscle groups worked (primary) and equipment needed. */
-  muscleGroups: string[];
+  muscles: string[];
   equipment: string[];
   /** Timing of the part being played; null on the rutina itself (parts carry it). */
   formatConfig: unknown;

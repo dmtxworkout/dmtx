@@ -33,7 +33,7 @@ PostgreSQL via Drizzle. Schema lives in `packages/db/src/schema/` (one file per 
 ## Supporting
 
 - **`media_assets`** — single source of truth for every R2 object (`r2_key`, `kind`, `processing_status`, `variants` jsonb, dims). Content references it by FK.
-- **`muscle_groups` → `muscles`** (two levels: a group like Pierna holds muscles like Cuádriceps), **`equipment`**. Managed in **Músculos y equipo**; an exercise tags its muscles (one `primary`, the rest `secondary`) and equipment. A rutina's tags are **derived**, never stored: the groups of its exercises' primary muscles and the union of their equipment (`/app/workouts/:id` → `muscleGroups`/`equipment`; `/app/browse` filters by slug). Deleting a tag is refused while an exercise uses it.
+- **`muscles`**, **`equipment`** — two flat lists of tags (one level on purpose: the admin picks the granularity with the names, e.g. Pierna, Pecho, Core). Managed in **Músculos y equipo** or created inline from the exercise form; an exercise tags its muscles (one `primary`, the rest `secondary`) and equipment. A rutina's tags are **derived**, never stored: its exercises' primary muscles and the union of their equipment (`/app/workouts/:id` → `muscles`/`equipment`; `/app/filters` lists the ones in use; `/app/browse?muscle=&equipment=` filters by slug). Deleting a tag is refused while an exercise uses it.
 - **`collections`** (Netflix rows) → **`collection_items`** — polymorphic via **exactly-one-nullable-FK + CHECK** (`workout_id`/`program_id`/`skill_id`), preserving real FK integrity.
 
 ## Users & billing

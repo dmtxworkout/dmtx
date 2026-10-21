@@ -43,11 +43,11 @@ export const api = {
   me: () => req<Me>('/app/me'),
   home: () => req<Home>('/app/home'),
   filters: () => req<BrowseFilters>('/app/filters'),
-  browse: (opts?: { q?: string; type?: string; muscleGroup?: string; equipment?: string }) => {
+  browse: (opts?: { q?: string; type?: string; muscle?: string; equipment?: string }) => {
     const p = new URLSearchParams();
     if (opts?.q) p.set('q', opts.q);
     if (opts?.type && opts.type !== 'all') p.set('type', opts.type);
-    if (opts?.muscleGroup) p.set('muscleGroup', opts.muscleGroup);
+    if (opts?.muscle) p.set('muscle', opts.muscle);
     if (opts?.equipment) p.set('equipment', opts.equipment);
     const qs = p.toString();
     return req<Browse>(`/app/browse${qs ? `?${qs}` : ''}`);
