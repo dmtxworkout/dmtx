@@ -34,10 +34,18 @@ export function createHttp({ baseUrl, fetch: fetchImpl = fetch }: HttpClientOpti
     if (res.status === 204) return undefined as T;
 
     const text = await res.text();
-    const body: unknown = text ? JSON.parse(text) : undefined;
+    let body: unknown;
+    try {
+      body = text ? JSON.parse(text) : undefined;
+    } catch {
+      // Not JSON (a 500 page, a proxy error): keep the text for the message.
+      body = undefined;
+    }
 
     if (!res.ok) {
-      const message = (body as ApiErrorBody | undefined)?.error ?? res.statusText;
+      const message =
+        (body as ApiErrorBody | undefined)?.error ??
+        (res.status >= 500 ? 'Error del servidor. Inténtalo de nuevo.' : text || res.statusText);
       throw new ApiError(res.status, message, body);
     }
     return body as T;

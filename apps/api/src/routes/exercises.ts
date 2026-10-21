@@ -146,15 +146,31 @@ exercisesRoute.openapi(
         description: 'Ejercicio creado',
         content: { 'application/json': { schema: exerciseSchema } },
       },
+      409: { description: 'Ya existe', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
+    const slug = input.slug ?? slugify(input.name);
+    const [dup] = await db
+      .select({ id: exercises.id, name: exercises.name, archivedAt: exercises.archivedAt })
+      .from(exercises)
+      .where(and(eq(exercises.slug, slug), isNull(exercises.deletedAt)));
+    if (dup) {
+      return c.json(
+        {
+          error: dup.archivedAt
+            ? `Ya existe «${dup.name}», archivado. Restáuralo desde Ejercicios en vez de crearlo de nuevo.`
+            : `Ya existe un ejercicio llamado «${dup.name}».`,
+        },
+        409,
+      );
+    }
     const [row] = await db
       .insert(exercises)
       .values({
-        slug: input.slug ?? slugify(input.name),
+        slug,
         name: input.name,
         description: input.description ?? null,
         cues: input.cues,
