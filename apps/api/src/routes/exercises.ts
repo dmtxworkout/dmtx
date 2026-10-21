@@ -152,11 +152,23 @@ exercisesRoute.openapi(
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
-    const slug = input.slug ?? slugify(input.name);
+    // The same name, live, is a duplicate (archived or not). The slug must also
+    // dodge soft-deleted rows, which still hold theirs: "handstand-2", …
     const [dup] = await db
       .select({ id: exercises.id, name: exercises.name, archivedAt: exercises.archivedAt })
       .from(exercises)
-      .where(and(eq(exercises.slug, slug), isNull(exercises.deletedAt)));
+      .where(and(ilike(exercises.name, input.name.trim()), isNull(exercises.deletedAt)));
+    const base = input.slug ?? slugify(input.name);
+    const taken = new Set(
+      (
+        await db
+          .select({ slug: exercises.slug })
+          .from(exercises)
+          .where(or(eq(exercises.slug, base), ilike(exercises.slug, `${base}-%`)))
+      ).map((r) => r.slug),
+    );
+    let slug = base;
+    for (let n = 2; taken.has(slug); n += 1) slug = `${base}-${n}`;
     if (dup) {
       return c.json(
         {

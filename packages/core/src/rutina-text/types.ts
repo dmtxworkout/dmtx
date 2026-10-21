@@ -30,7 +30,9 @@ export type DiagnosticCode =
   | 'orphan_rest'
   | 'interval_outside_emom'
   | 'orphan_note'
-  | 'empty_group';
+  | 'empty_group'
+  | 'rest_with_more'
+  | 'two_items';
 
 /** A problem on one line. `from`/`to` are column offsets within that line. */
 export interface Diagnostic {

@@ -13,6 +13,12 @@ import { subscriptionsRoute } from './routes/subscriptions';
 import { appRoute } from './routes/app';
 
 const app = createApp();
+// An unexpected error reaches the admin as JSON with its message (the UI shows
+// it), and the log keeps the stack; never a bare "Internal Server Error" page.
+app.onError((err, c) => {
+  console.error(err);
+  return c.json({ error: err instanceof Error ? err.message : 'Error inesperado' }, 500);
+});
 
 // CORS — credentials require an explicit origin (never "*").
 app.use('*', (c, next) =>

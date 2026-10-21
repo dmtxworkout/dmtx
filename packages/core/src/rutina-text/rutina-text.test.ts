@@ -639,3 +639,14 @@ describe('comments and notes on structural lines', () => {
     expect(g.items[1]).toMatchObject({ kind: 'rest', workSeconds: 60, notes: 'respira' });
   });
 });
+
+describe('one thing per line', () => {
+  it('rejects a rest followed by more, and two exercises on one line', () => {
+    const p = parse('3 rondas\n  descanso 1 min burpees 30 @60 kg\n  10 burpees 20 sentadillas\n  10 burpees');
+    expect(p.diagnostics.map((d) => [d.line, d.code])).toEqual([
+      [1, 'rest_with_more'],
+      [2, 'two_items'],
+    ]);
+    expect(p.diagnostics[1]!.message).toContain('"20 sentadillas"');
+  });
+});

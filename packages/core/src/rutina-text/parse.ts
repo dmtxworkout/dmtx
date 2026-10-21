@@ -118,6 +118,8 @@ function keywordTypo(line: string, catalog: Catalog): { word: string; from: numb
 
 // "intervalo 2:" (or "min 2:") on its own line: the work for that EMOM interval.
 const SLOT_RE = /^\s*(?:min(?:uto)?|intervalo)\.?\s*(\d+)\s*:?\s*$/;
+/** "descanso 1 min" at the start of a line, whatever follows. */
+const REST_START_RE = new RegExp(String.raw`^${REST_KW}\.?\s*:?\s*(?:de\s+)?(?:${DUR})`);
 const REST_LINE_RE = new RegExp(
   String.raw`^\s*(?:${REST_KW}\.?\s*:?\s*(?:de\s+)?(${DUR})|(${DUR})\s*(?:de\s+)?${REST_KW})\s*$`,
 );
@@ -479,7 +481,19 @@ export function parseItemLine(
 
   const res = ctx.catalog.resolve(name);
   it.match = res.match;
-  if (!res.match) {
+  // "10 burpees 20 sentadillas": the name does not resolve but, split at the
+  // inner count, both halves do — two exercises on one line.
+  const split = !res.match ? name.match(/^(.*?\S)\s+(\d+(?:\s*[x×]\s*\d+)?)\s+(\S.*)$/) : null;
+  if (split && ctx.catalog.resolve(split[1]!).match && ctx.catalog.resolve(split[3]!).match) {
+    diag(ctx, {
+      line,
+      from,
+      to,
+      severity: 'error',
+      code: 'two_items',
+      message: `Un ejercicio por línea: pon "${split[2]} ${split[3]}" en la línea siguiente.`,
+    });
+  } else if (!res.match) {
     diag(ctx, {
       line,
       from,
@@ -772,6 +786,21 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       }
     }
 
+    // A rest line is a rest and nothing else: "descanso 1 min bicep 30" is two
+    // things on one line, which the notation never allows.
+    const restStart = trimmed.match(REST_START_RE);
+    if (restStart && !REST_LINE_RE.test(trimmed)) {
+      diag(ctx, {
+        line: i,
+        from: indent + restStart[0].length,
+        to: indent + trimmed.length,
+        severity: 'error',
+        code: 'rest_with_more',
+        message: 'Un descanso va solo en su línea. Pon lo demás en la línea siguiente.',
+      });
+      seen[section] = true;
+      return info('item');
+    }
     const rest = trimmed.match(REST_LINE_RE);
     if (rest) {
       const seconds = parseDuration(rest[1] ?? rest[2] ?? '') ?? 0;
