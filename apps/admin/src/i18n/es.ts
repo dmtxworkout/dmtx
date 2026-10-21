@@ -88,7 +88,7 @@ export const es = {
       measurementType: 'Tipo de medición',
       status: 'Estado',
       tempo: 'Tempo',
-      media: 'Medios',
+      media: 'Multimedia',
       thumbnail: 'Portada',
       demoVideo: 'Video demostración',
     },
