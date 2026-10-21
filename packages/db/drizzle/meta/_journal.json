@@ -162,6 +162,13 @@
       "when": 1792594481835,
       "tag": "0022_drop_is_unilateral",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792601744231,
+      "tag": "0023_drop_body_region",
+      "breakpoints": true
     }
   ]
 }

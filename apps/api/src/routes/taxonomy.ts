@@ -67,7 +67,6 @@ async function loadAll(db: Database) {
       id: g.id,
       slug: g.slug,
       name: g.name,
-      bodyRegion: g.bodyRegion,
       position: g.position,
       exerciseCount: gUse.get(g.id) ?? 0,
     })),
@@ -133,7 +132,7 @@ taxonomyRoute.openapi(
     const [agg] = await db.select({ pos: max(muscleGroups.position) }).from(muscleGroups);
     const [row] = await db
       .insert(muscleGroups)
-      .values({ slug, name: input.name.trim(), bodyRegion: input.bodyRegion, position: (agg?.pos ?? 0) + 1 })
+      .values({ slug, name: input.name.trim(), position: (agg?.pos ?? 0) + 1 })
       .returning();
     if (!row) throw new Error('No se pudo crear el grupo');
     return c.json({ ...row, exerciseCount: 0 }, 201);
@@ -159,7 +158,6 @@ taxonomyRoute.openapi(
       .update(muscleGroups)
       .set({
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-        ...(input.bodyRegion !== undefined ? { bodyRegion: input.bodyRegion } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
       })
       .where(eq(muscleGroups.id, id))

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { bodyRegionSchema } from '../enums';
 import { uuidSchema } from '../common';
 
 /**
@@ -10,7 +9,6 @@ export const muscleGroupSchema = z.object({
   id: uuidSchema,
   slug: z.string(),
   name: z.string(),
-  bodyRegion: bodyRegionSchema,
   position: z.number().int(),
   /** Exercises tagged with any muscle of the group. */
   exerciseCount: z.number().int(),
@@ -45,12 +43,10 @@ export type Taxonomy = z.infer<typeof taxonomySchema>;
 
 export const createMuscleGroupSchema = z.object({
   name: z.string().min(1).max(100),
-  bodyRegion: bodyRegionSchema.default('full_body'),
 });
 export type CreateMuscleGroupInput = z.infer<typeof createMuscleGroupSchema>;
 export const updateMuscleGroupSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  bodyRegion: bodyRegionSchema.optional(),
   position: z.number().int().optional(),
 });
 export type UpdateMuscleGroupInput = z.infer<typeof updateMuscleGroupSchema>;

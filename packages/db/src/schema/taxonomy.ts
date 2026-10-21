@@ -1,5 +1,5 @@
 import { integer, pgTable, text, uuid } from 'drizzle-orm/pg-core';
-import { bodyRegionEnum, primaryId, timestamps } from './_shared';
+import { primaryId, timestamps } from './_shared';
 import { mediaAssets } from './media';
 
 /** Top-level muscle grouping for browse/filter, e.g. "Espalda". */
@@ -7,7 +7,6 @@ export const muscleGroups = pgTable('muscle_groups', {
   id: primaryId(),
   slug: text().notNull().unique(),
   name: text().notNull(), // Spanish display
-  bodyRegion: bodyRegionEnum().notNull(),
   position: integer().notNull().default(0),
   ...timestamps,
 });

@@ -6,16 +6,13 @@
 // rename inline, delete only what no exercise uses.
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BODY_REGION, type BodyRegion } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { Select } from '@/components/ui/select';
 
-const REGION: Record<BodyRegion, string> = { upper: 'Tren superior', lower: 'Tren inferior', core: 'Core', full_body: 'Cuerpo completo' };
 
 type Row = { id: string; name: string; count: number; sub?: string };
 
@@ -30,7 +27,6 @@ function Column({
   onRename,
   onRemove,
   empty,
-  extra,
 }: {
   title: string;
   rows: Row[];
@@ -42,7 +38,6 @@ function Column({
   onRename: (id: string, name: string) => Promise<unknown>;
   onRemove: (row: Row) => void;
   empty: string;
-  extra?: React.ReactNode;
 }) {
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
@@ -138,7 +133,6 @@ function Column({
           placeholder={addLabel}
           className="h-[30px] min-w-0 flex-1 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] placeholder:text-ink-3 focus:border-accent focus:outline-none"
         />
-        {extra}
       </div>
     </div>
   );
@@ -148,7 +142,6 @@ export default function TaxonomiaPage() {
   const qc = useQueryClient();
   const { data, isLoading, isError } = useQuery({ queryKey: ['taxonomy'], queryFn: () => api.taxonomy.get() });
   const [groupId, setGroupId] = useState<string | null>(null);
-  const [region, setRegion] = useState<BodyRegion>('full_body');
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ label: string; run: () => Promise<unknown> } | null>(null);
   const refresh = () => qc.invalidateQueries({ queryKey: ['taxonomy'] });
@@ -197,24 +190,15 @@ export default function TaxonomiaPage() {
           <div className="grid min-w-[880px] grid-cols-3 items-start gap-4">
             <Column
               title="Grupos musculares"
-              rows={groups.map((g) => ({ id: g.id, name: g.name, count: g.exerciseCount, sub: REGION[g.bodyRegion] }))}
+              rows={groups.map((g) => ({ id: g.id, name: g.name, count: g.exerciseCount }))}
               selectedId={selected}
               onSelect={setGroupId}
               countLabel={(n) => `${n} ejerc.`}
               addLabel="+ Grupo"
-              onAdd={(name) => run(api.taxonomy.createGroup({ name, bodyRegion: region }))}
+              onAdd={(name) => run(api.taxonomy.createGroup({ name }))}
               onRename={(id, name) => run(api.taxonomy.updateGroup(id, { name }))}
               onRemove={(r) => setConfirm({ label: `el grupo «${r.name}»`, run: () => api.taxonomy.removeGroup(r.id) })}
               empty="Aún no hay grupos. Crea el primero: Pecho, Espalda, Piernas…"
-              extra={
-                <Select value={region} onChange={(e) => setRegion(e.target.value as BodyRegion)} className="h-[30px] w-[150px] text-[12px]">
-                  {BODY_REGION.map((r) => (
-                    <option key={r} value={r}>
-                      {REGION[r]}
-                    </option>
-                  ))}
-                </Select>
-              }
             />
             <Column
               title={group ? `Músculos · ${group.name}` : 'Músculos'}

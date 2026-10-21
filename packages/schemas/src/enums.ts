@@ -28,9 +28,6 @@ export const MUSCLE_ROLE = ['primary', 'secondary'] as const;
 export const muscleRoleSchema = enumOf(MUSCLE_ROLE);
 export type MuscleRole = z.infer<typeof muscleRoleSchema>;
 
-export const BODY_REGION = ['upper', 'lower', 'core', 'full_body'] as const;
-export const bodyRegionSchema = enumOf(BODY_REGION);
-export type BodyRegion = z.infer<typeof bodyRegionSchema>;
 
 // --- Workouts (rutinas) ------------------------------------------------------
 export const WORKOUT_TYPE = ['structured', 'video'] as const;

@@ -415,8 +415,8 @@ export function ExerciseForm({
                 <MusclePicker value={muscles} onChange={setMuscles} />
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader>
+            <Card className="overflow-visible">
+              <CardHeader className="rounded-t-[11px]">
                 <CardTitle>Equipo</CardTitle>
               </CardHeader>
               <CardContent className="py-4">

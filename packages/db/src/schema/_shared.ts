@@ -2,7 +2,6 @@ import { pgEnum, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
 import {
   BILLING_INTERVAL_UNIT,
-  BODY_REGION,
   BLOCK_KIND,
   BLOCK_SECTION,
   BLOCK_TYPE,
@@ -28,7 +27,6 @@ export const contentStatusEnum = pgEnum('content_status', CONTENT_STATUS);
 export const difficultyEnum = pgEnum('difficulty', DIFFICULTY);
 export const measurementTypeEnum = pgEnum('measurement_type', MEASUREMENT_TYPE);
 export const muscleRoleEnum = pgEnum('muscle_role', MUSCLE_ROLE);
-export const bodyRegionEnum = pgEnum('body_region', BODY_REGION);
 export const workoutTypeEnum = pgEnum('workout_type', WORKOUT_TYPE);
 export const workoutFormatEnum = pgEnum('workout_format', WORKOUT_FORMAT);
 export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
