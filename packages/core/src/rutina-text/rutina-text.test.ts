@@ -611,3 +611,12 @@ describe('after a keyword', () => {
     expect(at('  rest ')?.options[0]?.label).toBe('30s');
   });
 });
+
+describe('sets x reps after the name', () => {
+  const at = (text: string) => completionsAt(text, text.length, catalog);
+  it('treats "3x10" as a modifier, not part of the exercise name', () => {
+    expect(at('sentadilla 3x10')).toBeNull();
+    expect(at('sentadilla 3x10 ')?.options[0]?.label).toBe('@60 kg');
+    expect(at('sentadilla 3x10 te')?.options[0]?.label).toMatch(/^tempo/);
+  });
+});

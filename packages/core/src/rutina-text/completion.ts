@@ -196,7 +196,7 @@ const NAME_START_RE =
   /^\s*(?:(?:(?:min(?:uto)?|intervalo)\.?\s*)?\d+\s*[:).\]]\s+)?(?:\d+\s*[x×*]\s*\d+\s*|\d+(?:[.,]\d+)?\s*(?:s|seg|segundos|min|m|km|reps?)?\s+)?/;
 // A modifier that ends the name zone.
 const MODIFIER_RE =
-  /(@|\+\s*\d|\btempo\b|\bdesc(?:anso)?\b|\brest\b|\bc\/|\bpor lado\b|\/\/|#|\brpe\b|\d+\s*(?:kg|lb)|\d+\s*(?:s|seg|min|m|km)(?![a-z]))/;
+  /(@|\+\s*\d|\btempo\b|\bdesc(?:anso)?\b|\brest\b|\bc\/|\bpor lado\b|\/\/|#|\brpe\b|\d+\s*(?:kg|lb)|\d+\s*(?:s|seg|min|m|km)(?![a-z])|\b\d+\s*[x×]\s*\d+\b)/;
 const FORMAT_LINE_RE =
   /^(amrap|e\d*mom|tabata|for ?time|por tiempo|chipper|fuerza|strength|circuito|circuit)(?![a-z])(?:\s+(.*))?$/;
 const NUM_TAIL_RE = /(?:^|[\s@+/])(\d+(?:[.,]\d+)?)\s*([a-z]*)$/;

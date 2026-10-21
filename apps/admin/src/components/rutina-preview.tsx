@@ -122,7 +122,9 @@ function Blocks({ blocks }: { blocks: PvBlock[] }) {
 }
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
-  const empty = !blocks.some((b) => b.items.length || b.blocks?.length);
+  const empty = !blocks.some(function has(b): boolean {
+    return b.items.length > 0 || (b.blocks ?? []).some(has);
+  });
   return (
     <section>
       <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
@@ -146,7 +148,8 @@ export function RutinaPreview({
   name: string;
   hideHeader?: boolean;
 }) {
-  const mainHasContent = model.main.some((b) => b.items.length > 0);
+  const hasContent = (blocks: PvBlock[]): boolean => blocks.some((b) => b.items.length > 0 || hasContent(b.blocks ?? []));
+  const mainHasContent = hasContent(model.main);
   const empty = !model.warmup && !model.cooldown && !mainHasContent && !model.hasVideo;
   // The main section is headed by the format itself (e.g. "AMRAP 10 min").
   const mainLabel = `${model.formatLabel}${model.headline ? ` ${model.headline}` : ''}`;
