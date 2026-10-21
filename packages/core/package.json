@@ -1,0 +1,23 @@
+{
+  "name": "@dmtx/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dmtx/schemas": "workspace:*"
+  },
+  "devDependencies": {
+    "@dmtx/config": "workspace:*",
+    "eslint": "^10.8.0",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
