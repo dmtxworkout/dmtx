@@ -28,7 +28,7 @@ const flat = (blocks: Blocks): Blocks => blocks.flatMap((b) => (b.kind === 'part
 
 describe('parseRutina', () => {
   it('parses the paper-style for-time example', () => {
-    const p = parse(`41 burpess
+    const p = parse(`41 burpees
 
 3 Rondas
   19 Power Clean @135/95 lb
@@ -54,13 +54,12 @@ describe('parseRutina', () => {
     expect(b!.items[1]).toMatchObject({ exerciseId: 'bmu', reps: 10 });
     expect(b!.items[2]).toMatchObject({ exerciseId: 'sco', reps: 41 });
     expect(c!.items[0]).toMatchObject({ exerciseId: 'burpee', reps: 41 });
-    // "burpess" was a typo → fuzzy match, no error.
-    expect(p.blocks[0]!.items[0]!.match?.confidence).toBe('fuzzy');
+
   });
 
   it('parses strength sets x reps with rest, load and tempo', () => {
     const p = parse(`Fuerza
-  felxiones de pecho 3x5 desc 90s
+  flexiones de pecho 3x5 desc 90s
   Sentadilla 5x5 @80% tempo 0-3-1-1
   3 x 8 dominadas +20 kg
   zancadas 3x10 c/lado @RPE 8
@@ -668,15 +667,17 @@ describe('archived exercises', () => {
   });
 });
 
-describe('fuzzy exercise matches', () => {
-  it('a typo or a partial name resolves but gets an info diagnostic with the real name', () => {
+describe('typos and partial names', () => {
+  it('do not resolve: an error with the real name as the first suggestion', () => {
     const typo = parse('10 burpess');
-    expect(typo.blocks[0]!.items[0]!.match?.id).toBe('burpee');
-    expect(typo.diagnostics.map((d) => [d.severity, d.code, d.suggestions])).toEqual([['info', 'fuzzy_exercise', ['Burpees']]]);
+    expect(typo.blocks[0]!.items[0]!.match).toBeNull();
+    expect(typo.diagnostics.map((d) => [d.severity, d.code, d.suggestions?.[0]])).toEqual([['error', 'unknown_exercise', 'Burpees']]);
     const partial = parse('10 Flexiones dia');
-    expect(partial.blocks[0]!.items[0]!.match?.id).toBe('diamond');
-    expect(partial.diagnostics[0]).toMatchObject({ code: 'fuzzy_exercise', suggestions: ['Flexiones diamante'] });
-    // Written exactly (name or alias): nothing to say.
+    expect(partial.blocks[0]!.items[0]!.match).toBeNull();
+    expect(partial.diagnostics[0]!.code).toBe('unknown_exercise');
+    expect(partial.diagnostics[0]!.suggestions?.[0]).toBe('Flexiones diamante');
+    // Written exactly (name or alias): resolved, nothing to say.
     expect(parse('10 push ups').diagnostics).toEqual([]);
+    expect(parse('10 push ups').blocks[0]!.items[0]!.match?.id).toBe('pushup');
   });
 });

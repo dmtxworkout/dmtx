@@ -100,9 +100,12 @@ the fix as its suggestion. Real exercise names are never flagged.
 | `max` · `al fallo` | no count, noted |
 
 Whatever is left after removing modifiers is the exercise name, matched against
-the catalog by name **or alias** (exact → then fuzzy: prefix, token prefix,
-Damerau-Levenshtein ≥ 0.78). Unknown names are errors with suggestions; a tie
-between two exercises is a warning. Tabata items need no count; elsewhere a
+the catalog by name **or alias**. Only an exact match resolves (accents and
+case ignored; plural and singular count as the same word, so `10 sentadillas`
+finds "Sentadilla"). A typo or a partial name is an error, with the closest
+catalog names as suggestions (prefix, token prefix, Damerau-Levenshtein ≥ 0.78)
+so one click writes it properly; nothing half-written reaches the rutina or its
+preview. A tie between two exercises is a warning. Tabata items need no count; elsewhere a
 missing count is a warning.
 
 ## Diagnostics
@@ -110,9 +113,9 @@ missing count is a warning.
 `parseRutina` returns `{ main, warmup, cooldown, blocks, diagnostics, lines }`.
 Each diagnostic carries a 0-based `line`, column `from/to`, `severity`
 (`error` blocks saving) and a `code`:
-`unknown_exercise`, `missing_exercise`, `ambiguous_exercise`, `fuzzy_exercise`
-(info: a typo or partial name resolved to a catalog exercise; the suggestion is
-the real name), `missing_count`, `format_needs_config`. `lines[i].kind` classifies every line for editor styling.
+`unknown_exercise` (also for a typo or a partial name: only an exact name or
+alias resolves, and the closest catalog name comes first in `suggestions`),
+`missing_exercise`, `ambiguous_exercise`, `missing_count`, `format_needs_config`. `lines[i].kind` classifies every line for editor styling.
 
 `toWorkoutInput(parsed)` yields the `format*`/`blocks` fields of
 `CreateWorkoutInput`; `completionsAt(text, offset, catalog, opts)` powers the

@@ -27,8 +27,11 @@ export class Catalog {
     const q = fold(raw);
     if (!q) return { match: null, suggestions: [], ambiguous: false };
     // An exact name still resolves when archived (rutinas written before keep
-    // working); typos and suggestions only ever look at live exercises.
-    const exact = this.entries.find((e) => e.keys.includes(q) && !e.ex.archived) ?? this.entries.find((e) => e.keys.includes(q));
+    // working); typos and suggestions only ever look at live exercises. Plural
+    // and singular count as the same name ("10 sentadillas" for "Sentadilla").
+    const qs = singular(q);
+    const isExact = (e: Entry) => e.keys.includes(q) || e.keys.some((k) => singular(k) === qs);
+    const exact = this.entries.find((e) => isExact(e) && !e.ex.archived) ?? this.entries.find(isExact);
     if (exact) {
       return {
         match: { id: exact.ex.id, name: exact.ex.name, confidence: 'exact', archived: !!exact.ex.archived },
@@ -69,6 +72,24 @@ export class Catalog {
   byId(id: string): CatalogExercise | undefined {
     return this.entries.find((e) => e.ex.id === id)?.ex;
   }
+}
+
+/**
+ * A folded name with each word in a rough singular, so "flexiones diamante"
+ * and "flexion diamante" compare equal: "-es" after a consonant comes off
+ * (flexiones → flexion), otherwise a final "-s" (sentadillas → sentadilla,
+ * burpees → burpee). Both sides of a comparison go through it.
+ */
+export function singular(folded: string): string {
+  return folded
+    .split(' ')
+    .map((w) => {
+      if (w.length <= 3) return w;
+      if (/[^aeiou]es$/.test(w)) return w.slice(0, -2);
+      if (w.endsWith('s')) return w.slice(0, -1);
+      return w;
+    })
+    .join(' ');
 }
 
 /** 0..1 similarity used for resolving a complete name. */

@@ -480,11 +480,15 @@ export function parseItemLine(
   it.nameRange = [from, to];
 
   const res = ctx.catalog.resolve(name);
-  it.match = res.match;
+  // Only a name written exactly (or an alias) counts: a typo or a partial name
+  // is an error with the real name as the fix, so nothing half-written reaches
+  // the rutina or its preview.
+  const exact = (m: typeof res.match) => (m && m.confidence === 'exact' ? m : null);
+  it.match = exact(res.match);
   // "10 burpees 20 sentadillas": the name does not resolve but, split at the
   // inner count, both halves do — two exercises on one line.
-  const split = !res.match ? it.rawName.match(/^(.*?\S)\s+(\d+(?:\s*[x×]\s*\d+)?)\s+(\S.*)$/) : null;
-  if (split && ctx.catalog.resolve(split[1]!).match && ctx.catalog.resolve(split[3]!).match) {
+  const split = !it.match ? it.rawName.match(/^(.*?\S)\s+(\d+(?:\s*[x×]\s*\d+)?)\s+(\S.*)$/) : null;
+  if (split && exact(ctx.catalog.resolve(split[1]!).match) && exact(ctx.catalog.resolve(split[3]!).match)) {
     diag(ctx, {
       line,
       from,
@@ -493,7 +497,9 @@ export function parseItemLine(
       code: 'two_items',
       message: `Un ejercicio por línea: pon "${split[2]} ${split[3]}" en la línea siguiente.`,
     });
-  } else if (!res.match) {
+  } else if (!it.match) {
+    // The closest name first: a typo's fix is usually the top suggestion.
+    const suggestions = [...new Set([...(res.match ? [res.match.name] : []), ...res.suggestions])].slice(0, 3);
     diag(ctx, {
       line,
       from,
@@ -502,16 +508,16 @@ export function parseItemLine(
       code: 'unknown_exercise',
       // Suggestions travel separately so the UI can make each one clickable.
       message: `Ejercicio no encontrado: "${it.rawName}".`,
-      suggestions: res.suggestions.slice(0, 3),
+      suggestions,
     });
-  } else if (res.match.archived) {
+  } else if (it.match.archived) {
     diag(ctx, {
       line,
       from,
       to,
       severity: 'warning',
       code: 'archived_exercise',
-      message: `"${res.match.name}" está archivado: ya no se sugiere. Restáuralo en Ejercicios si lo vas a seguir usando.`,
+      message: `"${it.match.name}" está archivado: ya no se sugiere. Restáuralo en Ejercicios si lo vas a seguir usando.`,
     });
   } else if (res.ambiguous) {
     diag(ctx, {
@@ -520,20 +526,8 @@ export function parseItemLine(
       to,
       severity: 'warning',
       code: 'ambiguous_exercise',
-      message: `"${it.rawName}" coincide con varios ejercicios; se usó "${res.match.name}".`,
+      message: `"${it.rawName}" coincide con varios ejercicios; se usó "${it.match.name}".`,
       suggestions: res.suggestions,
-    });
-  } else if (res.match.confidence === 'fuzzy') {
-    // A typo or a partial name still resolves (the preview shows the real
-    // name), but the text should say so: one click writes it properly.
-    diag(ctx, {
-      line,
-      from,
-      to,
-      severity: 'info',
-      code: 'fuzzy_exercise',
-      message: `"${it.rawName}" se entiende como "${res.match.name}".`,
-      suggestions: [res.match.name],
     });
   }
 

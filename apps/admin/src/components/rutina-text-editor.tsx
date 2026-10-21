@@ -139,8 +139,6 @@ interface ExerciseRef {
   to: number;
   id: string;
   name: string;
-  /** Written exactly (name or alias). A fuzzy match carries an info diagnostic instead of the link look. */
-  exact: boolean;
 }
 const setExerciseRefs = StateEffect.define<ExerciseRef[]>();
 const exerciseRefsField = StateField.define<ExerciseRef[]>({
@@ -155,9 +153,7 @@ function collectExerciseRefs(blocks: ParsedRutina['blocks']): ExerciseRef[] {
   const walk = (list: ParsedRutina['blocks']) => {
     for (const b of list) {
       for (const it of b.items) {
-        if (it.match && it.nameRange) {
-          out.push({ line: it.line, from: it.nameRange[0], to: it.nameRange[1], id: it.match.id, name: it.match.name, exact: it.match.confidence === 'exact' });
-        }
+        if (it.match && it.nameRange) out.push({ line: it.line, from: it.nameRange[0], to: it.nameRange[1], id: it.match.id, name: it.match.name });
       }
       if (b.children) walk(b.children);
     }
@@ -179,7 +175,7 @@ const exerciseMark = Decoration.mark({ class: 'rt-ex' });
 const exerciseLinks = EditorView.decorations.compute([exerciseRefsField], (state) => {
   const marks: { from: number; to: number }[] = [];
   for (const r of state.field(exerciseRefsField)) {
-    if (!r.exact || r.line + 1 > state.doc.lines) continue;
+    if (r.line + 1 > state.doc.lines) continue;
     const line = state.doc.line(r.line + 1);
     const from = line.from + r.from;
     const to = Math.min(line.from + r.to, line.to);
@@ -350,9 +346,6 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
       el('div', 'rt-diag-msg', d.message, top);
     } else if (d.code === 'ambiguous_exercise') {
       el('div', 'rt-diag-label', 'Varias coincidencias · elige', top);
-      for (const name of d.suggestions ?? []) button('rt-diag-sugg', escape(name), replaceWith(name), top);
-    } else if (d.code === 'fuzzy_exercise') {
-      el('div', 'rt-diag-label', 'Se entiende como · clic para escribirlo bien', top);
       for (const name of d.suggestions ?? []) button('rt-diag-sugg', escape(name), replaceWith(name), top);
     } else {
       el('div', `rt-diag-label${d.severity === 'error' ? ' error' : ''}`, d.severity === 'error' ? 'Error' : 'Aviso', top);
