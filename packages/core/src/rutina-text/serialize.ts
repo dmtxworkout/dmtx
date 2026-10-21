@@ -124,7 +124,7 @@ export function itemLine(it: SerializableItem, name: string, format: WorkoutForm
   const parts: string[] = [];
   const sets = it.sets && it.sets > 1 ? it.sets : null;
   const measure = it.measure ?? 'reps';
-  if (format === 'emom' && it.intervalIndex != null) parts.push(`min ${it.intervalIndex + 1}:`);
+  if (format === 'emom' && it.intervalIndex != null) parts.push(`intervalo ${it.intervalIndex + 1}:`);
   if (measure === 'time' && it.workSeconds != null) {
     parts.push(sets ? `${sets}x${dur(it.workSeconds)} ${name}` : `${name} ${dur(it.workSeconds)}`);
   } else if (measure === 'distance' && it.distanceMeters != null) {
@@ -162,6 +162,8 @@ export function serializeRutina(
 
   const out: string[] = [];
   const bySection = (s: BlockSection) => w.blocks.filter((b) => (b.section ?? 'main') === s);
+  // Set right after a format header so the first group under it has no blank line above.
+  let afterHeader = false;
 
   // One block (group / loose item / rest) at indentation `pad`.
   const writeBlock = (b: SerializableBlock, pad: string, fmt: WorkoutFormat | null) => {
@@ -170,10 +172,20 @@ export function serializeRutina(
     if (loose) {
       const it = b.items[0];
       if (it) out.push(pad + itemLine(it, nameOf(it.exerciseId), fmt));
+      afterHeader = false;
       return;
     }
-    // A group reads better with a blank line before its header.
-    if (out.length && out[out.length - 1] !== '') out.push('');
+    // A group reads better with a blank line before its header (not right under a format).
+    if (out.length && out[out.length - 1] !== '' && !afterHeader) out.push('');
+    afterHeader = false;
+    // EMOM interval slot: "intervalo N:" then its exercises (no per-line prefix).
+    const slot = b.items.find((it) => it.kind === 'exercise')?.intervalIndex;
+    if (fmt === 'emom' && slot != null && !b.rounds && b.type === 'emom') {
+      out.push(`${pad}intervalo ${slot + 1}:`);
+      b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), null)}`));
+      out.push('');
+      return;
+    }
     const head: string[] = [];
     if (b.type === 'superset') head.push('Superserie');
     if (b.rounds) head.push(`${b.rounds} rondas`);
@@ -203,7 +215,10 @@ export function serializeRutina(
     const hasParts = blocks.some((b) => b.kind === 'part');
     if (!hasParts) {
       const fmt = section === 'main' ? (format ?? 'for_time') : (format ?? null);
-      if (fmt) out.push(pad + formatHeader(fmt, config));
+      if (fmt) {
+        out.push(pad + formatHeader(fmt, config));
+        afterHeader = true;
+      }
       const inner = fmt ? pad + '  ' : pad;
       blocks.forEach((b) => writeBlock(b, inner, fmt));
     } else {
@@ -213,6 +228,7 @@ export function serializeRutina(
         if (b.kind === 'part') {
           const fmt = b.format ?? 'for_time';
           out.push(pad + formatHeader(fmt, b.formatConfig));
+          afterHeader = true;
           (b.blocks ?? []).forEach((c) => writeBlock(c, pad + '  ', fmt));
           out.push('');
         } else {

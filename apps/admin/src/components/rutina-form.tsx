@@ -92,7 +92,7 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     title: 'Formatos',
     rows: [
       { k: 'AMRAP 12 min', v: 'máximas rondas en el tiempo' },
-      { k: 'EMOM 10 min · EMOM 10 x 90s', v: 'cada intervalo un ejercicio; "min 2:" fija el intervalo' },
+      { k: 'EMOM 10 min · EMOM 10 x 90s · E2MOM 10', v: 'cada intervalo un ejercicio o un grupo "intervalo N:"; rotan hasta acabar' },
       { k: 'Tabata 8 x 20/10', v: 'rondas × trabajo/descanso (los ejercicios no llevan cantidad)' },
       { k: 'For time · For time cap 20 min', v: 'lo más rápido posible, con tope opcional' },
       { k: 'For time 5 rondas', v: 'rondas del total' },
@@ -137,7 +137,8 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     rows: [
       { k: 'c/lado · por lado', v: 'cantidad por cada lado' },
       { k: 'desc 90s', v: 'descanso entre series (Fuerza)' },
-      { k: 'min 2: 10 burpees', v: 'intervalo en EMOM' },
+      { k: 'intervalo 2: 10 burpees', v: 'fija el intervalo de un ejercicio en un EMOM' },
+      { k: 'intervalo 2:', v: 'en un EMOM, abre el grupo de ejercicios de ese intervalo (indentados debajo); los intervalos rotan' },
       { k: '// despacio', v: 'nota que ve el usuario' },
     ],
   },
@@ -214,9 +215,86 @@ function segmentBody(src: Workout, catalog: Catalog): string[] {
   return src.format ? lines : lines.slice(1);
 }
 
-/** Initial text for an existing rutina; a new one starts empty (the placeholder shows the way). */
-function initialText(workout: Workout | undefined, catalog: Catalog): string {
-  if (!workout) return '';
+// Starting points for a new rutina. `ex(i)` is the i-th exercise of the
+// catalog (so the template parses clean), with generic names as a fallback.
+type Template = { id: string; title: string; desc: string; text: (ex: (i: number) => string) => string };
+const TEMPLATES: Template[] = [
+  { id: 'blank', title: 'En blanco', desc: 'Empieza desde cero; la guía te acompaña.', text: () => '' },
+  {
+    id: 'amrap',
+    title: 'AMRAP clásico',
+    desc: 'Máximas rondas de un circuito en un tiempo.',
+    text: (ex) => `// Cambia los ejercicios por los tuyos y borra esta línea
+AMRAP 12 min
+  10 ${ex(0)}
+  15 ${ex(1)}
+  20 ${ex(2)}
+`,
+  },
+  {
+    id: 'emom',
+    title: 'EMOM por intervalos',
+    desc: 'Cada intervalo un grupo de trabajo distinto, rotando.',
+    text: (ex) => `// Cada "intervalo N:" es el trabajo de ese intervalo; luego rotan
+EMOM 10 x 90s
+  intervalo 1:
+    10 ${ex(0)}
+    10 ${ex(1)}
+  intervalo 2:
+    15 ${ex(2)}
+`,
+  },
+  {
+    id: 'fuerza',
+    title: 'Fuerza 5x5',
+    desc: 'Series × reps con carga, tempo y descanso.',
+    text: (ex) => `// series x reps · @carga · tempo · desc = descanso entre series
+Fuerza
+  ${ex(0)} 5x5 @80% tempo 0-3-1-1 desc 2 min
+  ${ex(1)} 3x8 @60 kg desc 90s
+  ${ex(2)} 3x12 c/lado
+`,
+  },
+  {
+    id: 'partes',
+    title: 'For time con partes',
+    desc: 'Calentamiento, varias partes y enfriamiento.',
+    text: (ex) => `// Lo indentado pertenece a la línea de arriba (sección, formato o bloque)
+Calentamiento
+  AMRAP 5 min
+    10 ${ex(0)}
+    plancha 30s
+
+For time cap 20 min
+  3 rondas
+    15 ${ex(0)}
+    10 ${ex(1)}
+    400 m ${ex(2)}
+
+40 ${ex(0)}
+
+Enfriamiento
+  ${ex(1)} 1 min
+`,
+  },
+  {
+    id: 'tabata',
+    title: 'Tabata',
+    desc: 'Trabajo y descanso fijos, los ejercicios rotan.',
+    text: (ex) => `Tabata 8 x 20/10
+  ${ex(0)}
+  ${ex(1)}
+`,
+  },
+];
+const FALLBACK_EX = ['burpees', 'sentadillas', 'flexiones'];
+
+/** Initial text: an existing rutina serialized, or the chosen template for a new one. */
+function initialText(workout: Workout | undefined, catalog: Catalog, templateId: string, exNames: string[]): string {
+  if (!workout) {
+    const t = TEMPLATES.find((x) => x.id === templateId) ?? TEMPLATES[0]!;
+    return t.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio');
+  }
   if (workout.type !== 'structured') return '';
   return serializeRutina(workout, catalog);
 }
@@ -307,9 +385,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   // New workouts start in a guided wizard (type → name); existing ones skip
   // straight to the editor. The format is whatever the text says.
-  const [wizardStep, setWizardStep] = useState<'type' | 'name' | 'done'>(
+  const [wizardStep, setWizardStep] = useState<'type' | 'name' | 'template' | 'done'>(
     workout ? 'done' : segmentMode ? 'name' : 'type',
   );
+  const [templateId, setTemplateId] = useState('blank');
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -338,9 +417,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
     if (text === null && catalogReady && wizardStep === 'done') {
-      setText(initialText(workout, catalog));
+      setText(initialText(workout, catalog, templateId, (exList?.data ?? []).map((e) => e.name)));
     }
-  }, [text, catalogReady, wizardStep, workout, catalog]);
+  }, [text, catalogReady, wizardStep, workout, catalog, templateId, exList]);
 
   // Variants (RX / Escalada / …): one tab each, after the base tab. Each is a
   // full rutina row linked to this one; loaded (and serialized) once the
@@ -601,12 +680,12 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       return;
     }
     setNameError(false);
-    setWizardStep('done');
+    setWizardStep(type === 'structured' && !segmentMode ? 'template' : 'done');
   };
 
   if (wizardStep !== 'done') {
-    const stepTotal = segmentMode ? 1 : 2;
-    const stepNum = segmentMode ? 1 : wizardStep === 'type' ? 1 : 2;
+    const stepTotal = segmentMode ? 1 : type === 'structured' ? 3 : 2;
+    const stepNum = segmentMode ? 1 : wizardStep === 'type' ? 1 : wizardStep === 'name' ? 2 : 3;
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between gap-6 border-b border-line bg-surface px-7 py-4">
@@ -690,6 +769,51 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 )}
                 <div className="mt-6">
                   <Button onClick={finishWizard}>Continuar</Button>
+                </div>
+              </>
+            )}
+
+            {wizardStep === 'template' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setWizardStep('name')}
+                  className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
+                >
+                  ← Atrás
+                </button>
+                <h1 className="mb-1 text-2xl font-bold tracking-tight">¿Cómo quieres empezar?</h1>
+                <p className="mb-6 text-sm text-ink-3">
+                  Una plantilla es una rutina ya escrita para que la edites: la forma más rápida de aprender la notación.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {TEMPLATES.map((t) => {
+                    const preview = t
+                      .text((i) => (exList?.data ?? []).map((e) => e.name)[i] ?? FALLBACK_EX[i] ?? 'ejercicio')
+                      .split('\n')
+                      .filter((l) => l.trim() && !l.trim().startsWith('//'))
+                      .slice(0, 4);
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setTemplateId(t.id);
+                          setWizardStep('done');
+                        }}
+                        className="flex flex-col gap-2 rounded-xl border border-line-2 bg-surface p-4 text-left hover:border-accent hover:bg-accent-tint/30"
+                      >
+                        <span className="text-[15px] font-bold">{t.title}</span>
+                        <span className="text-[12.5px] leading-snug text-ink-3">{t.desc}</span>
+                        {preview.length > 0 && (
+                          <pre className="mt-1 overflow-hidden rounded-lg bg-surface-2 px-3 py-2 font-mono text-[11px] leading-5 text-ink-2">
+                            {preview.join('\n')}
+                            {'\n…'}
+                          </pre>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </>
             )}

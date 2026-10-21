@@ -168,10 +168,10 @@ const GROUP_LINE: Completion = { label: '3 rondas:', detail: 'bloque de rondas',
 
 const prefixOf = (q: string) => (c: Completion) => q.length > 0 && fold(c.label).startsWith(q);
 
-// Start of the exercise name: after an EMOM "min 1:" prefix, then a count with
+// Start of the exercise name: after an EMOM "intervalo 1:" prefix, then a count with
 // an optional unit ("41 ", "800 m ", "30 s ", "3x5 ").
 const NAME_START_RE =
-  /^\s*(?:(?:min(?:uto)?\.?\s*)?\d+\s*[:).\]]\s+)?(?:\d+\s*[x×*]\s*\d+\s*|\d+(?:[.,]\d+)?\s*(?:s|seg|segundos|min|m|km|reps?)?\s+)?/;
+  /^\s*(?:(?:(?:min(?:uto)?|intervalo)\.?\s*)?\d+\s*[:).\]]\s+)?(?:\d+\s*[x×*]\s*\d+\s*|\d+(?:[.,]\d+)?\s*(?:s|seg|segundos|min|m|km|reps?)?\s+)?/;
 // A modifier that ends the name zone.
 const MODIFIER_RE =
   /(@|\+\s*\d|\btempo\b|\bdesc(?:anso)?\b|\brest\b|\bc\/|\bpor lado\b|\/\/|\brpe\b|\d+\s*(?:kg|lb)|\d+\s*(?:s|seg|min|m|km)(?![a-z]))/;

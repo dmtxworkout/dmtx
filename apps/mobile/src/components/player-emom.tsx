@@ -7,7 +7,7 @@ import type { CreateWorkoutLogInput } from '@dmtx/schemas';
 import { api } from '../lib/api';
 import { mmss } from '../lib/format';
 import { CircuitView } from './circuit-view';
-import type { WorkoutDetail } from '../lib/types';
+import type { WorkoutDetail, WorkoutItem } from '../lib/types';
 import type { PartResult } from '../app/(app)/entrenar/[id]';
 
 /**
@@ -37,17 +37,22 @@ export function EmomPlayer({
   const cfg = workout.formatConfig as { intervalSeconds?: number; rounds?: number } | null;
   const intervalSec = cfg?.intervalSeconds && cfg.intervalSeconds > 0 ? cfg.intervalSeconds : 60;
   const totalIntervals = cfg?.rounds && cfg.rounds > 0 ? cfg.rounds : 1;
-  // The rotation: one exercise per interval, in order ("min 1: …" prefixes fix
-  // a slot), repeating until the EMOM ends. Minute 1 → first, minute 2 → second…
+  // The rotation: one SLOT per interval, repeating until the EMOM ends. A slot
+  // is a group ("min 2:" + its exercises) or a single loose exercise; "min N:"
+  // fixes its position, otherwise slots follow the written order.
   const rotation = useMemo(() => {
-    const items = workout.blocks
-      .flatMap((b) => (b.kind === 'part' ? b.blocks : [b]))
-      .flatMap((b) => b.items)
-      .filter((it) => it.kind === 'exercise' && it.exercise);
-    const withSlot = items.map((it, i) => ({ it, slot: it.intervalIndex ?? i }));
-    return withSlot.sort((a, b) => a.slot - b.slot).map((x) => x.it);
+    const blocks = workout.blocks.flatMap((b) => (b.kind === 'part' ? b.blocks : [b]));
+    const slots = blocks
+      .map((b, i) => {
+        const items = b.items.filter((it) => it.kind === 'exercise' && it.exercise);
+        return { items, slot: items[0]?.intervalIndex ?? i };
+      })
+      .filter((s) => s.items.length > 0);
+    return slots.sort((a, b) => a.slot - b.slot).map((s) => s.items);
   }, [workout]);
   const slotOf = (interval: number) => (rotation.length ? rotation[(interval - 1) % rotation.length] : undefined);
+  const slotText = (items: WorkoutItem[] | undefined) =>
+    (items ?? []).map((it) => `${it.reps != null ? `${it.reps} ` : ''}${it.exercise?.name ?? ''}`).join(' · ');
 
   const [current, setCurrent] = useState(1);
   const [remaining, setRemaining] = useState(intervalSec);
@@ -212,15 +217,14 @@ export function EmomPlayer({
           <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
             Este intervalo
           </Text>
-          <Text className="mt-1 font-extrabold text-[22px] leading-tight text-ink">
-            {slotOf(current)?.reps != null ? `${slotOf(current)!.reps} ` : ''}
-            {slotOf(current)?.exercise?.name}
-          </Text>
-          {current < totalIntervals && rotation.length > 1 ? (
-            <Text className="mt-1.5 font-mono text-[11px] text-ink-3">
-              Siguiente: {slotOf(current + 1)?.reps != null ? `${slotOf(current + 1)!.reps} ` : ''}
-              {slotOf(current + 1)?.exercise?.name}
+          {(slotOf(current) ?? []).map((it) => (
+            <Text key={it.id} className="mt-1 font-extrabold text-[22px] leading-tight text-ink">
+              {it.reps != null ? `${it.reps} ` : ''}
+              {it.exercise?.name}
             </Text>
+          ))}
+          {current < totalIntervals && rotation.length > 1 ? (
+            <Text className="mt-1.5 font-mono text-[11px] text-ink-3">Siguiente: {slotText(slotOf(current + 1))}</Text>
           ) : null}
         </View>
       ) : null}

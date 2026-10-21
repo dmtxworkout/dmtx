@@ -457,3 +457,39 @@ describe('completion name zone after a unit', () => {
     expect(c).toMatchObject({ from: t.length - 3, to: t.length });
   });
 });
+
+describe('EMOM interval groups', () => {
+  const text = `EMOM 8 x 1:30
+  intervalo 1:
+    10 burpees
+    15 sentadillas
+  min 2:
+    20 flexiones
+`;
+  it('groups the work of each interval under "intervalo N:" (or "min N:")', () => {
+    const p = parse(text);
+    expect(hasErrors(p)).toBe(false);
+    const w = toWorkoutInput(p);
+    expect(w.formatConfig).toMatchObject({ format: 'emom', intervalSeconds: 90, rounds: 8 });
+    const slots = w.blocks[0]!.blocks;
+    expect(slots).toHaveLength(2);
+    expect(slots[0]!.items.map((i) => [i.exerciseId, i.intervalIndex])).toEqual([
+      ['burpee', 0],
+      ['squat', 0],
+    ]);
+    expect(slots[1]!.items[0]).toMatchObject({ exerciseId: 'pushup', intervalIndex: 1 });
+  });
+  it('round-trips interval groups', () => {
+    const first = toWorkoutInput(parse(text));
+    const out = serializeRutina(first, catalog);
+    expect(out).toBe(`EMOM 8 x 90s
+  intervalo 1:
+    10 Burpees
+    15 Sentadilla
+
+  intervalo 2:
+    20 Flexiones de pecho
+`);
+    expect(toWorkoutInput(parse(out))).toEqual(first);
+  });
+});

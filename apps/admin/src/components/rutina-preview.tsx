@@ -58,7 +58,7 @@ function Line({ item }: { item: PvItem }) {
 // loose exercise that should sit tight against its neighbours.
 const isBlock = (b: PvBlock) => b.items.length > 1 || (b.rounds != null && b.rounds > 1);
 
-type Unit = { rounds: number | null; loose: boolean; items: PvItem[]; part?: string };
+type Unit = { rounds: number | null; loose: boolean; items: PvItem[]; part?: string; title?: string | null };
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   // Build display units WITHOUT mutating the incoming block arrays (they belong
@@ -70,8 +70,8 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
       continue;
     }
     if (b.items.length === 0) continue;
-    if (isBlock(b)) {
-      units.push({ rounds: b.rounds, loose: false, items: [...b.items] });
+    if (isBlock(b) || b.title) {
+      units.push({ rounds: b.rounds, loose: false, items: [...b.items], title: b.title });
     } else {
       const last = units[units.length - 1];
       // Merge consecutive loose exercises into one tight run.
@@ -96,9 +96,9 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
                   {u.part}
                 </div>
               )}
-              {u.rounds != null && u.rounds > 1 && (
+              {(u.title || (u.rounds != null && u.rounds > 1)) && (
                 <div className="mb-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
-                  {u.rounds} rondas
+                  {[u.title, u.rounds != null && u.rounds > 1 ? `${u.rounds} rondas` : null].filter(Boolean).join(' · ')}
                 </div>
               )}
               {u.items.map((it, j) => (

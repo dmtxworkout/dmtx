@@ -74,7 +74,8 @@ Each format line starts a new part; the previous part closes on dedent (or at th
 | `tempo 0-3-1-1` · `@0311` | `tempoOverride` — **hold arriba · negativa · hold abajo · positiva** (glossary order; `X` = explosive) |
 | `c/lado` · `por lado` · `each side` | `perSide` |
 | `desc 90s` · `descanso 1 min` (inline) | `restBetweenSeconds` |
-| `min 1:` · `1)` prefix | `intervalIndex` (EMOM only; stripped elsewhere) |
+| `intervalo 1:` · `min 1:` · `1)` prefix | `intervalIndex` (EMOM only; stripped elsewhere) |
+| `intervalo 2:` on its own line (EMOM) | A group holding that interval's work (the lines indented under it); the player rotates over such slots. `min 2:` is accepted too |
 | `// nota` (trailing) | `notes` |
 | `max` · `al fallo` | no count, noted |
 
@@ -107,7 +108,7 @@ Enter on an empty line only breaks the line.
 - Main always gets its format header; `Rutina:` is only written when a warmup exists.
 - Loose items print on their own line; groups print `3 rondas:` (+ ` - label`) with items indented two spaces and a blank line after.
 - Durations: `90s` under 10 min, `12 min` for whole minutes, `12:30` otherwise. Distances: `400 m` / `1.5 km`.
-- `@135/95 lb` for dual loads, `tempo 0-3-1-1`, `c/lado`, `desc 90s`, `// notes`, `min 2:` in EMOM.
+- `@135/95 lb` for dual loads, `tempo 0-3-1-1`, `c/lado`, `desc 90s`, `// notes`, `intervalo 2:` in EMOM.
 
 ## Saved blocks and rutina suggestions
 

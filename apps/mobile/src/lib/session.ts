@@ -225,22 +225,28 @@ export function buildSession(workout: WorkoutDetail): Session {
 
     case 'emom': {
       const cfg = config(workout, 'emom');
-      const items = circuit(workout);
       const steps: Step[] = [];
       const rounds = cfg?.rounds ?? 1; // total intervals
       const interval = cfg?.intervalSeconds ?? 60;
-      // One interval per round; the exercises rotate across the intervals.
+      // One SLOT per interval, rotating: a slot is a block ("min 2:" + its
+      // exercises) or a loose exercise. The first exercise of the slot carries
+      // the interval timer; the rest of the slot follows as untimed steps.
+      const slots = workout.blocks
+        .map((b) => ({ b, items: b.items.filter((it) => it.kind === 'exercise'), slot: 0 }))
+        .filter((s) => s.items.length > 0)
+        .map((s, i) => ({ ...s, slot: s.items[0]!.intervalIndex ?? i }))
+        .sort((a, b) => a.slot - b.slot);
       for (let i = 0; i < rounds; i += 1) {
-        const item = items[i % Math.max(1, items.length)];
-        if (!item) break;
-        const b = workout.blocks.find((bl) => bl.items.includes(item))!;
-        steps.push(
-          exerciseStep(b, workout.blocks.indexOf(b), item, null, null, {
-            measure: 'time',
-            targetSeconds: interval,
-            withinReps: item.reps,
-          }),
-        );
+        const s = slots[i % Math.max(1, slots.length)];
+        if (!s) break;
+        const bi = workout.blocks.indexOf(s.b);
+        s.items.forEach((item, j) => {
+          steps.push(
+            exerciseStep(s.b, bi, item, null, null, j === 0
+              ? { measure: 'time', targetSeconds: interval, withinReps: item.reps }
+              : {}),
+          );
+        });
       }
       return { ...base, mode: 'sequential', capSeconds: null, circuitLength: 0, steps };
     }

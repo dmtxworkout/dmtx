@@ -81,6 +81,8 @@ const GROUP_KW_RE = new RegExp(
 );
 
 const REST_KW = String.raw`(?:descanso|desc|rest|pausa|recuperacion)`;
+// "intervalo 2:" (or "min 2:") on its own line: the work for that EMOM interval.
+const SLOT_RE = /^\s*(?:min(?:uto)?|intervalo)\.?\s*(\d+)\s*:?\s*$/;
 const REST_LINE_RE = new RegExp(
   String.raw`^\s*(?:${REST_KW}\.?\s*:?\s*(?:de\s+)?(${DUR})|(${DUR})\s*(?:de\s+)?${REST_KW})\s*$`,
 );
@@ -253,7 +255,7 @@ const DIST_RE = new RegExp(String.raw`(?<![\w.,])${DIST}`);
 const LEAD_COUNT_RE = /^\s*(\d+)\s+(?=\S)/;
 const TRAIL_COUNT_RE = /\s+[x×]?\s*(\d+)\s*$/;
 const MAX_RE = /\b(?:max|maximas?|maximo|al fallo|failure|amrap)\b/;
-const INTERVAL_RE = /^\s*(?:min(?:uto)?\.?\s*)?(\d+)\s*[:).\]]\s+/;
+const INTERVAL_RE = /^\s*(?:(?:min(?:uto)?|intervalo)\.?\s*)?(\d+)\s*[:).\]]\s+/;
 const NOTE_RE = /\/\/(.*)$/;
 
 export function parseItemLine(
@@ -492,6 +494,8 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   let group: ParsedBlock | null = null;
   let groupIndent: number | null = null;
   let groupHeaderIndent = 0;
+  // Interval slot of the open "intervalo N:" group (0-based), stamped on its items.
+  let groupSlot: number | null = null;
   // The open part (a format header + what is indented under it). A part whose
   // first content line is not indented runs "flat" until the next format line
   // or section header (the older style). Parts never nest.
@@ -502,6 +506,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   const closeGroup = () => {
     group = null;
     groupIndent = null;
+    groupSlot = null;
   };
   const closePart = () => {
     part = null;
@@ -672,6 +677,18 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       return info('rest');
     }
 
+    // "intervalo 2:" (or "min 2:") alone → a group holding that interval's work.
+    const slot = trimmed.match(SLOT_RE);
+    if (slot) {
+      flushGroupRest();
+      const n = Number(slot[1]);
+      const { block } = openGroup(i, undefined, null, `intervalo ${n}`);
+      groupSlot = Math.max(0, n - 1);
+      block.type = 'emom';
+      seen[section] = true;
+      return info('group');
+    }
+
     const g = f.match(GROUP_RE) ?? null;
     const gk = g ? null : f.match(GROUP_KW_RE);
     if (g || gk) {
@@ -689,6 +706,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     const item = parseItemLine(raw, i, ctx, { format: part?.format?.format ?? null });
     if (group) {
       if (groupIndent == null) groupIndent = indent;
+      if (groupSlot != null && item.intervalIndex == null) item.intervalIndex = groupSlot;
       (group as ParsedBlock).items.push(item);
     } else {
       pushBlock({
