@@ -251,7 +251,9 @@ const pvBlock = (b: ParsedBlock): PvBlock => ({
   note: b.notes,
   loose: b.loose,
   part: b.kind === 'part' ? (b.format ? formatHeader(b.format.format, b.format) : 'Parte') : null,
-  items: b.items.map((it) => pvItem(it, b.type === 'emom')),
+  // An exercise that did not resolve (typo, half-written) is an error in the
+  // editor; the preview shows the rutina as the athlete would get it, without it.
+  items: b.items.filter((it) => it.kind !== 'exercise' || it.match).map((it) => pvItem(it, b.type === 'emom')),
   blocks: (b.children ?? []).map(pvBlock),
 });
 const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
