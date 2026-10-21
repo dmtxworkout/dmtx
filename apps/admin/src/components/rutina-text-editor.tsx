@@ -1132,8 +1132,13 @@ const theme = EditorView.theme({
   '.cm-content': { padding: '10px 16px 40vh 8px', caretColor: 'var(--color-accent)' },
   '.cm-line': { padding: '0 2px' },
   '&.cm-focused': { outline: 'none' },
+  // Recognised exercises read as links: a dotted underline on hover (the card
+  // with "Editar" appears); with Cmd/Ctrl held the underline turns solid and a
+  // click opens the exercise.
+  '.rt-ex': { textDecorationColor: 'var(--color-line-2)', textUnderlineOffset: '3px' },
+  '.rt-ex:hover': { cursor: 'pointer', textDecoration: 'underline dotted', textDecorationColor: 'var(--color-muted)' },
   '&.rt-mod .rt-ex': { cursor: 'pointer' },
-  '&.rt-mod .rt-ex:hover': { textDecoration: 'underline', textUnderlineOffset: '3px', color: 'var(--color-accent-dark)' },
+  '&.rt-mod .rt-ex:hover': { textDecoration: 'underline', textDecorationColor: 'currentColor', color: 'var(--color-accent-dark)' },
   '.cm-activeLine': { backgroundColor: 'rgba(0,0,0,0.03)' },
   '.rt-line-error': { backgroundColor: 'rgba(229, 20, 0, 0.06)' },
   '.rt-line-warn': { backgroundColor: 'rgba(191, 136, 3, 0.07)' },
