@@ -1,6 +1,7 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, isNull, or, sql, isNotNull } from 'drizzle-orm';
-import { exerciseEquipment, exerciseMuscles, exercises, setResults, workoutItems } from '@dmtx/db';
+import { exerciseEquipment, exerciseMuscles, exercises, reusableBlocks, setResults, workoutItems } from '@dmtx/db';
+import { Catalog, parseRutina } from '@dmtx/core';
 import type { Database } from '@dmtx/db';
 import {
   createExerciseSchema,
@@ -267,16 +268,30 @@ exercisesRoute.openapi(
     const { id } = c.req.valid('param');
     // An exercise that rutinas or athletes' results point to is a reference:
     // archive it instead, so nothing breaks or loses its history.
-    const [[inRutinas], [inResults]] = await Promise.all([
+    const [[inRutinas], [inResults], blocks, catalogRows] = await Promise.all([
       db.select({ value: count() }).from(workoutItems).where(eq(workoutItems.exerciseId, id)),
       db.select({ value: count() }).from(setResults).where(eq(setResults.exerciseId, id)),
+      db.select({ text: reusableBlocks.text }).from(reusableBlocks),
+      db
+        .select({ id: exercises.id, name: exercises.name, aliases: exercises.aliases })
+        .from(exercises)
+        .where(isNull(exercises.deletedAt)),
     ]);
-    if ((inRutinas?.value ?? 0) > 0 || (inResults?.value ?? 0) > 0) {
+    // Reusable blocks keep text, not ids: parse them to see which resolve to this exercise.
+    const catalog = new Catalog(catalogRows);
+    const inBlocks = blocks.filter((b) => {
+      const parsed = parseRutina(b.text, { catalog });
+      const uses = (list: typeof parsed.blocks): boolean =>
+        list.some((blk) => blk.items.some((it) => it.match?.id === id) || uses(blk.children ?? []));
+      return uses(parsed.blocks);
+    }).length;
+    if ((inRutinas?.value ?? 0) > 0 || (inResults?.value ?? 0) > 0 || inBlocks > 0) {
       const parts = [
         inRutinas?.value ? `${inRutinas.value} línea${inRutinas.value === 1 ? '' : 's'} de rutina` : null,
+        inBlocks ? `${inBlocks} bloque${inBlocks === 1 ? '' : 's'} reutilizable${inBlocks === 1 ? '' : 's'}` : null,
         inResults?.value ? `${inResults.value} resultado${inResults.value === 1 ? '' : 's'} de usuarios` : null,
       ].filter(Boolean);
-      return c.json({ error: `No se puede eliminar: lo usan ${parts.join(' y ')}. Archívalo en su lugar.` }, 409);
+      return c.json({ error: `No se puede eliminar: lo usan ${parts.join(', ')}. Archívalo en su lugar.` }, 409);
     }
     const [row] = await db
       .update(exercises)
