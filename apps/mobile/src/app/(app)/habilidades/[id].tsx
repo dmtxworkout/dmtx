@@ -17,6 +17,14 @@ function goalLabel(g: SkillGoal): string {
   if (g.metric === 'distance_meters') return `${meters(g.value)} ${g.exerciseName}`;
   return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;
 }
+/** The user's best towards a goal: "7 de 10", "45 s de 60 s", "80 kg de 100 kg". */
+function bestLabel(g: SkillGoal & { best: number | null }): string {
+  if (g.best == null) return 'sin intentos';
+  if (g.metric === 'time_seconds') return `${seconds(g.best)} de ${seconds(g.value)}`;
+  if (g.metric === 'distance_meters') return `${meters(g.best)} de ${meters(g.value)}`;
+  if (g.metric === 'load_kg') return `${g.best} kg de ${g.value} kg`;
+  return `${g.best} de ${g.value}`;
+}
 
 export default function HabilidadDetalle() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -71,27 +79,35 @@ export default function HabilidadDetalle() {
           {s.levels.map((l, i) => (
             <Pressable
               key={l.id}
-              disabled={!l.workout}
-              onPress={() => l.workout && router.push(`/(app)/rutinas/${l.workout.id}`)}
-              className="flex-row items-center gap-3 rounded-xl border border-line bg-surface p-3"
+              disabled={!l.workout || l.locked}
+              onPress={() => l.workout && !l.locked && router.push(`/(app)/rutinas/${l.workout.id}`)}
+              className={`gap-2 rounded-xl border border-line bg-surface p-3 ${l.locked ? 'opacity-50' : ''}`}
             >
-              <View className="h-8 w-8 items-center justify-center rounded-full bg-accent">
-                <Text className="font-bold text-[13px] text-white">{i + 1}</Text>
-              </View>
-              <View className="min-w-0 flex-1">
-                <Text numberOfLines={1} className="font-semibold text-[15px] text-ink">
-                  {l.name}
-                </Text>
-                {l.workout ? (
-                  <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
-                    {l.workout.name}
+              <View className="flex-row items-center gap-3">
+                <View className={`h-8 w-8 items-center justify-center rounded-full ${l.completed ? 'bg-ink' : l.locked ? 'bg-surface-2' : 'bg-accent'}`}>
+                  <Text className={`font-bold text-[13px] ${l.locked ? 'text-ink-3' : 'text-white'}`}>{l.completed ? '✓' : l.locked ? '🔒' : i + 1}</Text>
+                </View>
+                <View className="min-w-0 flex-1">
+                  <Text numberOfLines={1} className="font-semibold text-[15px] text-ink">
+                    {l.name}
                   </Text>
-                ) : null}
+                  <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
+                    {l.locked ? 'Se desbloquea al cumplir el objetivo del nivel anterior' : l.completed ? 'Superado' : 'Nivel actual'}
+                  </Text>
+                </View>
               </View>
-              {l.unlockGoals.length ? (
-                <Text numberOfLines={2} className="max-w-[40%] text-right font-mono-semibold text-[11px] text-ink-2">
-                  {l.unlockGoals.map(goalLabel).join('\n')}
-                </Text>
+              {l.unlockGoals.length && !l.locked ? (
+                <View className="gap-1 border-t border-line pt-2">
+                  <Text className="font-mono-medium text-[10px] uppercase tracking-wider text-ink-3">
+                    {i === s.levels.length - 1 ? 'Objetivo' : 'Para pasar al siguiente nivel'}
+                  </Text>
+                  {l.unlockGoals.map((g, j) => (
+                    <View key={j} className="flex-row items-center justify-between gap-3">
+                      <Text className={`font-sans text-[13px] ${g.met ? 'text-ink-3 line-through' : 'text-ink'}`}>{goalLabel(g)}</Text>
+                      <Text className={`font-mono-semibold text-[11px] ${g.met ? 'text-accent' : 'text-ink-3'}`}>{g.met ? '✓' : bestLabel(g)}</Text>
+                    </View>
+                  ))}
+                </View>
               ) : null}
             </Pressable>
           ))}

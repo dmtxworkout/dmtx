@@ -11,6 +11,7 @@ import {
   programs,
   setResults,
   skillLevels,
+  skillProgress,
   skills,
   workoutBlocks,
   workoutItems,
@@ -19,6 +20,7 @@ import {
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import { createWorkoutLogSchema } from '@dmtx/schemas';
+import type { SkillGoal } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { nestBlocks, type Nested } from './workouts';
 import { tagsForExercises } from './taxonomy';
@@ -84,7 +86,7 @@ function programCard(p: ProgramRow, thumb: string | null) {
   };
 }
 
-function skillCard(s: SkillRow, thumb: string | null, levels: number) {
+function skillCard(s: SkillRow, thumb: string | null, levels: number, unlocked = 1) {
   return {
     id: s.id,
     kind: 'skill' as const,
@@ -96,8 +98,105 @@ function skillCard(s: SkillRow, thumb: string | null, levels: number) {
     tag: 'HABILIDAD',
     ratio: '1/1',
     meta: levels ? `${levels} nivel${levels === 1 ? '' : 'es'}` : '',
-    progressPct: 0,
+    // Levels passed (the current one is in progress): 2 of 5 unlocked → 1 done.
+    progressPct: levels > 1 ? Math.round(((unlocked - 1) / levels) * 100) : 0,
   };
+}
+
+// --- Skill goals: the user's best marks and what they unlock ------------------
+
+type Marks = { reps: number; seconds: number; distance: number; loads: { kg: number; reps: number }[] };
+
+/** The user's best marks per exercise, over every session they logged. */
+async function bestMarks(db: Database, userId: string, exerciseIds: string[]): Promise<Map<string, Marks>> {
+  const out = new Map<string, Marks>();
+  if (!exerciseIds.length) return out;
+  const rows = await db
+    .select({
+      exerciseId: setResults.exerciseId,
+      reps: setResults.reps,
+      seconds: setResults.seconds,
+      distance: setResults.distanceMeters,
+      loadKg: setResults.loadKg,
+    })
+    .from(setResults)
+    .innerJoin(workoutLogs, eq(workoutLogs.id, setResults.workoutLogId))
+    .where(and(eq(workoutLogs.userId, userId), inArray(setResults.exerciseId, exerciseIds)));
+  for (const r of rows) {
+    if (!r.exerciseId) continue;
+    const m = out.get(r.exerciseId) ?? { reps: 0, seconds: 0, distance: 0, loads: [] };
+    if (r.reps) m.reps = Math.max(m.reps, r.reps);
+    if (r.seconds) m.seconds = Math.max(m.seconds, r.seconds);
+    if (r.distance) m.distance = Math.max(m.distance, r.distance);
+    if (r.loadKg) m.loads.push({ kg: r.loadKg, reps: r.reps ?? 1 });
+    out.set(r.exerciseId, m);
+  }
+  return out;
+}
+
+/** The best the user has done towards a goal, in the goal's own metric (null = never tried). */
+function bestFor(goal: SkillGoal, marks: Map<string, Marks>): number | null {
+  const m = marks.get(goal.exerciseId);
+  if (!m) return null;
+  switch (goal.metric) {
+    case 'reps':
+      return m.reps || null;
+    case 'time_seconds':
+      return m.seconds || null;
+    case 'distance_meters':
+      return m.distance || null;
+    case 'load_kg': {
+      const eligible = m.loads.filter((l) => l.reps >= (goal.reps ?? 1));
+      return eligible.length ? Math.max(...eligible.map((l) => l.kg)) : null;
+    }
+  }
+}
+
+const goalMet = (goal: SkillGoal, marks: Map<string, Marks>) => (bestFor(goal, marks) ?? 0) >= goal.value;
+
+/** Levels of a skill the user has unlocked (1 = only the first). */
+async function unlockedLevels(db: Database, userId: string, skillId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: skillProgress.unlockedLevels })
+    .from(skillProgress)
+    .where(and(eq(skillProgress.userId, userId), eq(skillProgress.skillId, skillId)))
+    .limit(1);
+  return row?.n ?? 1;
+}
+
+/**
+ * After a session: every published skill whose current level has a goal on an
+ * exercise just logged gets re-checked; while the current level's goals are
+ * all met, the next one unlocks.
+ */
+async function advanceSkills(db: Database, userId: string, exerciseIds: string[]) {
+  if (!exerciseIds.length) return;
+  const levels = await db
+    .select({ level: skillLevels })
+    .from(skillLevels)
+    .innerJoin(skills, eq(skills.id, skillLevels.skillId))
+    .where(and(eq(skills.status, 'published'), isNull(skills.deletedAt)))
+    .orderBy(skillLevels.skillId, skillLevels.position);
+  const bySkill = new Map<string, (typeof levels)[number]['level'][]>();
+  for (const { level } of levels) bySkill.set(level.skillId, [...(bySkill.get(level.skillId) ?? []), level]);
+  const touched = new Set(exerciseIds);
+  for (const [skillId, lvls] of bySkill) {
+    if (!lvls.some((l) => l.unlockGoals.some((g) => touched.has(g.exerciseId)))) continue;
+    let unlocked = await unlockedLevels(db, userId, skillId);
+    const marks = await bestMarks(db, userId, [...new Set(lvls.flatMap((l) => l.unlockGoals.map((g) => g.exerciseId)))]);
+    let advanced = false;
+    while (unlocked < lvls.length) {
+      const current = lvls[unlocked - 1]!;
+      if (!current.unlockGoals.length || !current.unlockGoals.every((g) => goalMet(g, marks))) break;
+      unlocked += 1;
+      advanced = true;
+    }
+    if (!advanced) continue;
+    await db
+      .insert(skillProgress)
+      .values({ userId, skillId, unlockedLevels: unlocked })
+      .onConflictDoUpdate({ target: [skillProgress.userId, skillProgress.skillId], set: { unlockedLevels: unlocked, updatedAt: new Date() } });
+  }
 }
 
 /** Compact workout reference embedded in program days / skill levels. */
@@ -116,6 +215,8 @@ function workoutSummary(w: WorkoutRow, thumb: string | null) {
 }
 
 interface CatalogFilter {
+  /** Whose progress the skill cards show. */
+  userId?: string;
   q?: string;
   types: Array<'workout' | 'program' | 'skill'>;
   limit: number;
@@ -260,6 +361,14 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
         .groupBy(skillLevels.skillId)
     : [];
   const levelCountBy = new Map(levelCounts.map((r) => [r.skillId, Number(r.n)]));
+  const progressRows =
+    skillIds.length && f.userId
+      ? await db
+          .select({ skillId: skillProgress.skillId, n: skillProgress.unlockedLevels })
+          .from(skillProgress)
+          .where(and(eq(skillProgress.userId, f.userId), inArray(skillProgress.skillId, skillIds)))
+      : [];
+  const unlockedBy = new Map(progressRows.map((r) => [r.skillId, r.n]));
 
   const media = await resolveMediaUrls(db, env, [
     ...wRows.map((w) => w.thumbnailAssetId),
@@ -273,7 +382,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
       ...(wTags.get(w.id) ?? { muscles: [], equipment: [] }),
     })),
     programs: pRows.map((p) => programCard(p, url(media, p.thumbnailAssetId))),
-    skills: sRows.map((s) => skillCard(s, url(media, s.thumbnailAssetId), levelCountBy.get(s.id) ?? 0)),
+    skills: sRows.map((s) => skillCard(s, url(media, s.thumbnailAssetId), levelCountBy.get(s.id) ?? 0, unlockedBy.get(s.id) ?? 1)),
   };
 }
 
@@ -302,6 +411,7 @@ appRoute.use('/logs', requireAccess);
 appRoute.get('/home', async (c) => {
   const db = c.get('db');
   const cat = await loadCatalog(db, c.env, {
+    userId: c.get('user')!.id,
     types: ['workout', 'program', 'skill'],
     limit: 12,
   });
@@ -358,7 +468,7 @@ appRoute.get('/browse', async (c) => {
         ? ['workout']
         : ['workout', 'program', 'skill'];
 
-  const cat = await loadCatalog(c.get('db'), c.env, { q, types, limit: 30, muscle, equipment: equipmentSlug });
+  const cat = await loadCatalog(c.get('db'), c.env, { userId: c.get('user')!.id, q, types, limit: 30, muscle, equipment: equipmentSlug });
   const rows = [
     { title: 'Rutinas', layout: 'row', items: cat.workouts },
     { title: 'Programas', layout: 'poster', items: cat.programs },
@@ -655,6 +765,9 @@ appRoute.get('/skills/:id', async (c) => {
     ...levels.map((l) => l.thumbnailAssetId),
     ...wRows.map((w) => w.thumbnailAssetId),
   ]);
+  const userId = c.get('user')!.id;
+  const unlocked = await unlockedLevels(db, userId, s.id);
+  const marks = await bestMarks(db, userId, [...new Set(levels.flatMap((l) => l.unlockGoals.map((g) => g.exerciseId)))]);
 
   return c.json({
     id: s.id,
@@ -663,14 +776,18 @@ appRoute.get('/skills/:id', async (c) => {
     description: s.description,
     difficulty: s.difficulty,
     thumbnailUrl: url(media, s.thumbnailAssetId),
-    levels: levels.map((l) => {
+    unlockedLevels: unlocked,
+    levels: levels.map((l, i) => {
       const w = wBy.get(l.workoutId);
       return {
         id: l.id,
         position: l.position,
         name: l.name,
         description: l.description,
-        unlockGoals: l.unlockGoals ?? [],
+        // Goals carry the user's best mark so the app can show "7 de 10".
+        unlockGoals: (l.unlockGoals ?? []).map((g) => ({ ...g, best: bestFor(g, marks), met: goalMet(g, marks) })),
+        locked: i >= unlocked,
+        completed: i < unlocked - 1,
         thumbnailUrl: url(media, l.thumbnailAssetId),
         workout: w ? workoutSummary(w, url(media, w.thumbnailAssetId)) : null,
       };
@@ -719,6 +836,7 @@ appRoute.post('/logs', async (c) => {
         loadKg: r.loadKg != null ? Math.round(r.loadKg) : null,
       })),
     );
+    await advanceSkills(db, user.id, [...new Set(input.results.map((r) => r.exerciseId))]);
   }
 
   return c.json({ id: log.id }, 201);

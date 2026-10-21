@@ -1,7 +1,8 @@
 import { Catalog } from './catalog';
 import { describe, expect, it } from 'vitest';
 import { completionsAt } from './completion';
-import { parseRutina, toWorkoutInput, hasErrors } from './parse';
+import { goalsFrom, parseRutina, toWorkoutInput, hasErrors } from './parse';
+import { splitSections } from './sections';
 import { serializeRutina } from './serialize';
 import type { CatalogExercise } from './types';
 
@@ -679,5 +680,42 @@ describe('typos and partial names', () => {
     // Written exactly (name or alias): resolved, nothing to say.
     expect(parse('10 push ups').diagnostics).toEqual([]);
     expect(parse('10 push ups').blocks[0]!.items[0]!.match?.id).toBe('pushup');
+  });
+});
+
+describe('Objetivo section (skills)', () => {
+  it('turns each line into a goal: reps, time, distance, or a load for N reps', () => {
+    const p = parse(`3 rondas
+  10 burpees
+
+Objetivo
+  20 burpees
+  plancha 60s
+  400 m carrera
+  sentadilla 5x5 @100 kg
+`);
+    expect(hasErrors(p)).toBe(false);
+    expect(goalsFrom(p)).toEqual([
+      { exerciseId: 'burpee', exerciseName: 'Burpees', metric: 'reps', value: 20, reps: null },
+      { exerciseId: 'plank', exerciseName: 'Plancha', metric: 'time_seconds', value: 60, reps: null },
+      { exerciseId: 'run', exerciseName: 'Carrera', metric: 'distance_meters', value: 400, reps: null },
+      { exerciseId: 'squat', exerciseName: 'Sentadilla', metric: 'load_kg', value: 100, reps: 5 },
+    ]);
+    // The goals are not part of the training.
+    expect(toWorkoutInput(p).blocks.every((b) => b.section !== 'goal')).toBe(true);
+    expect(splitSections(`3 rondas\n  10 burpees\n\nObjetivo\n  20 burpees\n`).goal).toBe('20 burpees\n');
+  });
+  it('rejects structure and lines without an amount there', () => {
+    const p = parse(`Objetivo
+  AMRAP 10 min
+  3 rondas
+  burpees
+`);
+    expect(p.diagnostics.map((d) => [d.line, d.code])).toEqual([
+      [1, 'goal_structure'],
+      [2, 'goal_structure'],
+      [3, 'goal_needs_amount'],
+    ]);
+    expect(goalsFrom(p)).toEqual([]);
   });
 });

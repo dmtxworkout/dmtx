@@ -320,7 +320,7 @@ export function parseItemLine(
   original: string,
   line: number,
   ctx: Ctx,
-  opts: { format: WorkoutFormat | null },
+  opts: { format: WorkoutFormat | null; goal?: boolean },
 ): ParsedItem {
   const it = emptyItem(line);
   let s = foldKeep(original);
@@ -541,6 +541,7 @@ export function parseItemLine(
     it.workSeconds == null &&
     it.distanceMeters == null &&
     opts.format !== 'tabata' &&
+    !opts.goal &&
     !it.notes?.match(MAX_RE)
   ) {
     diag(ctx, {
@@ -766,7 +767,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
         return info('item');
       }
       if (/^\/\//.test(trimmed)) return info('note');
-      const it = parseItemLine(raw, i, ctx, { format: null });
+      const it = parseItemLine(raw, i, ctx, { format: null, goal: true });
       if (it.match && it.reps == null && it.workSeconds == null && it.distanceMeters == null && !it.loadPrescription) {
         diag(ctx, {
           line: i,

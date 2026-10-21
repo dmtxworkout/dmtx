@@ -17,7 +17,7 @@
 2. ~~**Taxonomy**~~ — built (2026-10-21): `/api/taxonomy` CRUD, the **Músculos y equipo** screen, muscle/equipment pickers in the exercise form, and the app derives each rutina's tags ("Trabaja" / "Equipo") from its exercises and filters Explorar by them (`/app/filters`, `/app/browse?muscle=&equipment=`). Muscle groups were dropped the same day: one flat list of muscles is enough.
 3. **Add DB indexes** — FKs, `subscriptions.next_charge_date`, `status`, `deleted_at` on hot paths (none defined yet).
 4. **Workouts (rutinas)** — format picker + per-format config forms + block/item builder. Add `@dmtx/core` for the format/goal engines (`meetsGoal`, timer configs) shared with mobile.
-5. **Programs, Skills, Collections** — same golden-path pattern.
+5. **Programs, Collections** — same golden-path pattern. ~~Skills~~ built (2026-10-21): levels written in the rutina editor with an **Objetivo** section; the app unlocks levels from logged sessions (see data-model.md).
 6. **Media library** — R2 upload UI + a transcoding pipeline (source → HLS variants in R2 → `media_assets.variants`).
 7. **Billing** — the self-managed engine (SetupIntent, Cron + Queue charge run, dunning, webhooks) + subscription-management & reporting screens. See [billing.md](billing.md).
 8. **Production hardening** — CI (GitHub Actions + Turbo remote cache + Neon PR-branch migration check), subdomain cookie config, R2 CORS, deploys (Vercel + `wrangler deploy`).

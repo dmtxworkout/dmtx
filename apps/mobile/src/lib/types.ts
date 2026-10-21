@@ -193,8 +193,12 @@ export interface SkillLevel {
   position: number;
   name: string;
   description: string | null;
-  /** The marks that unlock the next level (empty on the last level). */
-  unlockGoals: SkillGoal[];
+  /** The marks that unlock the next level (empty on the last level), with the user's best so far. */
+  unlockGoals: (SkillGoal & { best: number | null; met: boolean })[];
+  /** Not reached yet: the previous level's goals are still open. */
+  locked: boolean;
+  /** Its goals were met: the next level is open. */
+  completed: boolean;
   thumbnailUrl: string | null;
   workout: WorkoutSummary | null;
 }
@@ -206,5 +210,7 @@ export interface SkillDetail {
   description: string | null;
   difficulty: Difficulty | null;
   thumbnailUrl: string | null;
+  /** 1 = only the first level is open. */
+  unlockedLevels: number;
   levels: SkillLevel[];
 }

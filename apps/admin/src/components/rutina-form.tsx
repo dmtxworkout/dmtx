@@ -1131,6 +1131,8 @@ export function RutinaForm({
               onChange={(e) => setTabDialog((d) => (d ? { ...d, label: e.target.value } : d))}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && tabDialog && (tabDialog.mode === 'rename' || tabDialog.label.trim())) {
+                  // The editor that opens next must not receive this Enter as a line break.
+                  e.preventDefault();
                   if (tabDialog.mode === 'add') addVariant(tabDialog.label.trim());
                   else renameTab(tabDialog.index, tabDialog.label.trim());
                   setTabDialog(null);

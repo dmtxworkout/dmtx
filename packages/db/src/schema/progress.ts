@@ -1,8 +1,9 @@
-import { doublePrecision, index, integer, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { doublePrecision, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { measurementTypeEnum, primaryId, timestamps, workoutFormatEnum } from './_shared';
 import { user } from './auth';
 import { workouts } from './workouts';
 import { exercises } from './exercises';
+import { skills } from './skills';
 
 /**
  * One workout session performed by a user. Names are snapshotted so history
@@ -51,4 +52,25 @@ export const setResults = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index('set_results_log_idx').on(t.workoutLogId)],
+);
+
+/**
+ * How far a user got in a skill: the number of levels unlocked (1 = only the
+ * first). Advanced by the server when a logged session meets the current
+ * level's goals.
+ */
+export const skillProgress = pgTable(
+  'skill_progress',
+  {
+    id: primaryId(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    skillId: uuid()
+      .notNull()
+      .references(() => skills.id, { onDelete: 'cascade' }),
+    unlockedLevels: integer().notNull().default(1),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex('skill_progress_user_skill_idx').on(t.userId, t.skillId)],
 );
