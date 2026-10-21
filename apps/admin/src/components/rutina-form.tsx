@@ -146,7 +146,7 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     title: 'Editor',
     rows: [
       { k: 'Sugerencias', v: 'aparecen al escribir y al saltar de línea; Tab acepta, Esc cierra' },
-      { k: 'Enter', v: 'en línea vacía solo salta de línea aunque haya sugerencias' },
+      { k: 'Enter', v: 'tras una cabecera indenta; en una línea vacía indentada sube un nivel por pulsación' },
       { k: 'Nombre de bloque o rutina', v: 'al inicio de línea inserta su contenido completo' },
       { k: 'Guardar bloque', v: 'selecciona dos líneas o más y pulsa la acción que aparece junto a la selección' },
       { k: 'Ejercicio desconocido', v: 'subrayado en rojo; "Crear ejercicio" lo añade al catálogo' },

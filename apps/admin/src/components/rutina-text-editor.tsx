@@ -732,8 +732,10 @@ export function RutinaTextEditor({
       };
     }
 
-    // Enter: after a group header indent the next line; on an empty indented
-    // line, close the group (drop the indent); otherwise keep the indentation.
+    // Enter: after a section / format / group header, indent the next line one
+    // level; on an empty indented line, dedent one level in place (so each
+    // Enter climbs out of one container, like leaving a Python block);
+    // otherwise keep the current indentation.
     const smartEnter = (view: EditorView) => {
       const { state } = view;
       const sel = state.selection.main;
@@ -742,14 +744,21 @@ export function RutinaTextEditor({
       const info = parsedRef.current.lines[line.number - 1];
       const indent = line.text.match(/^\s*/)?.[0] ?? '';
       const atEnd = sel.head === line.to;
+      if (line.text.trim() === '' && indent) {
+        const less = indent.slice(0, Math.max(0, indent.length - 2));
+        view.dispatch({
+          changes: { from: line.from, to: line.to, insert: less },
+          selection: { anchor: line.from + less.length },
+          userEvent: 'input.type',
+        });
+        startCompletion(view);
+        return true;
+      }
       let insert: string;
-      let from = sel.head;
+      const from = sel.head;
       if (atEnd && (info?.kind === 'group' || info?.kind === 'section' || info?.kind === 'format'))
         insert = `\n${indent}  `;
-      else if (line.text.trim() === '' && indent) {
-        from = line.from;
-        insert = '\n';
-      } else insert = `\n${atEnd ? indent : ''}`;
+      else insert = `\n${atEnd ? indent : ''}`;
       view.dispatch({
         changes: { from, to: sel.head, insert },
         selection: { anchor: from + insert.length },
