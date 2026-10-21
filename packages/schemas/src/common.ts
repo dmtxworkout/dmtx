@@ -40,3 +40,19 @@ export function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 }
+
+/**
+ * The PATCH schema for a create schema: every field optional and, crucially,
+ * WITHOUT the create defaults. `createSchema.partial()` keeps `.default([])`,
+ * so a `{ archived: true }` patch would arrive as `{ archived: true, cues: [],
+ * aliases: [], … }` and wipe the lists it never mentioned.
+ */
+export function updateSchemaOf<T extends z.ZodRawShape>(create: z.ZodObject<T>) {
+  const shape = Object.fromEntries(
+    Object.entries(create.shape).map(([key, field]) => {
+      const inner = field instanceof z.ZodDefault ? (field as z.ZodDefault<z.ZodTypeAny>).removeDefault() : (field as z.ZodTypeAny);
+      return [key, inner.optional()];
+    }),
+  ) as unknown as { [K in keyof T]: z.ZodOptional<T[K] extends z.ZodDefault<infer I> ? I : T[K]> };
+  return z.object(shape);
+}

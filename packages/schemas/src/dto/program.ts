@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { contentStatusSchema, difficultySchema, programTypeSchema } from '../enums';
-import { slugSchema, uuidSchema } from '../common';
+import { slugSchema, uuidSchema, updateSchemaOf } from '../common';
 
 export const programDayInputSchema = z.object({
   title: z.string().max(200).nullish(),
@@ -31,7 +31,7 @@ export const createProgramSchema = z.object({
 });
 export type CreateProgramInput = z.infer<typeof createProgramSchema>;
 
-export const updateProgramSchema = createProgramSchema.partial();
+export const updateProgramSchema = updateSchemaOf(createProgramSchema);
 export type UpdateProgramInput = z.infer<typeof updateProgramSchema>;
 
 // --- Responses ---------------------------------------------------------------

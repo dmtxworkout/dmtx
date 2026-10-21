@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { contentStatusSchema, difficultySchema } from '../enums';
 import { goalSchema } from '../goal';
-import { slugSchema, uuidSchema } from '../common';
+import { slugSchema, uuidSchema, updateSchemaOf } from '../common';
 
 export const skillLevelInputSchema = z.object({
   name: z.string().min(1).max(200),
@@ -22,7 +22,7 @@ export const createSkillSchema = z.object({
 });
 export type CreateSkillInput = z.infer<typeof createSkillSchema>;
 
-export const updateSkillSchema = createSkillSchema.partial();
+export const updateSkillSchema = updateSchemaOf(createSkillSchema);
 export type UpdateSkillInput = z.infer<typeof updateSkillSchema>;
 
 // --- Responses ---------------------------------------------------------------

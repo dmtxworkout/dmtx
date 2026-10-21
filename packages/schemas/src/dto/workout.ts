@@ -14,7 +14,7 @@ import { formatConfigSchema } from '../format-config';
 import { goalSchema } from '../goal';
 import { loadPrescriptionSchema } from '../load';
 import { tempoSchema } from '../tempo';
-import { slugSchema, uuidSchema } from '../common';
+import { slugSchema, updateSchemaOf, uuidSchema } from '../common';
 
 export const workoutItemInputSchema = z.object({
   kind: itemKindSchema.default('exercise'),
@@ -77,7 +77,7 @@ export const createWorkoutSchema = z.object({
 });
 export type CreateWorkoutInput = z.infer<typeof createWorkoutSchema>;
 
-export const updateWorkoutSchema = createWorkoutSchema.partial();
+export const updateWorkoutSchema = updateSchemaOf(createWorkoutSchema);
 export type UpdateWorkoutInput = z.infer<typeof updateWorkoutSchema>;
 
 // --- Responses ---------------------------------------------------------------

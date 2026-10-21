@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { difficultySchema, muscleRoleSchema } from '../enums';
 import { tempoSchema } from '../tempo';
-import { slugSchema, uuidSchema } from '../common';
+import { slugSchema, updateSchemaOf, uuidSchema } from '../common';
 
 export const exerciseMuscleInputSchema = z.object({
   muscleId: uuidSchema,
@@ -27,7 +27,7 @@ export const createExerciseSchema = z.object({
 });
 export type CreateExerciseInput = z.infer<typeof createExerciseSchema>;
 
-export const updateExerciseSchema = createExerciseSchema.partial().extend({
+export const updateExerciseSchema = updateSchemaOf(createExerciseSchema).extend({
   // true archives (hidden from suggestions and the default list), false restores.
   archived: z.boolean().optional(),
 });
