@@ -580,6 +580,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     onSuccess: ({ saved, savedVariants }) => {
       setVariants(savedVariants);
       setRemovedVariantIds([]);
+      setBaseline({ ...current, variants: savedVariants });
       qc.setQueryData(['workout', saved.id], { ...saved, variants: savedVariants.map((v) => ({ id: v.id, label: v.label })) });
       qc.invalidateQueries({ queryKey: ['workouts'] });
       qc.invalidateQueries({ queryKey: ['workout-refs'] });
@@ -588,6 +589,79 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
+
+  // ---- Unsaved changes (Shopify-style bar) ----------------------------------
+  // Everything "Guardar" sends, as one comparable snapshot. The baseline is
+  // taken once the editor is ready and again after each successful save.
+  type Snapshot = {
+    name: string;
+    description: string;
+    difficulty: typeof difficulty;
+    status: typeof status;
+    thumbnailAssetId: string | null;
+    videoAssetId: string | null;
+    baseLabel: string;
+    sections: SectionTexts;
+    variants: VariantTab[];
+  };
+  const current: Snapshot = {
+    name,
+    description,
+    difficulty,
+    status,
+    thumbnailAssetId,
+    videoAssetId,
+    baseLabel,
+    sections: sections ?? EMPTY_SECTIONS,
+    variants: tabs,
+  };
+  const [baseline, setBaseline] = useState<Snapshot | null>(null);
+  const currentRef = useRef(current);
+  currentRef.current = current;
+  useEffect(() => {
+    if (baseline === null && editorReady) setBaseline(currentRef.current);
+  }, [baseline, editorReady]);
+  const dirty = baseline !== null && (JSON.stringify(current) !== JSON.stringify(baseline) || removedVariantIds.length > 0);
+  const discard = () => {
+    if (!workout) {
+      router.push(basePath);
+      return;
+    }
+    if (!baseline) return;
+    setName(baseline.name);
+    setDescription(baseline.description);
+    setDifficulty(baseline.difficulty);
+    setStatus(baseline.status);
+    setThumbnailAssetId(baseline.thumbnailAssetId);
+    setVideoAssetId(baseline.videoAssetId);
+    setBaseLabel(baseline.baseLabel);
+    setSections(baseline.sections);
+    setVariants(baseline.variants);
+    setRemovedVariantIds([]);
+    setActiveTab((t) => Math.min(t, baseline.variants.length));
+    setServerError(null);
+  };
+  // ⌘S / Ctrl+S saves when there is something to save.
+  const doSaveRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (dirty) doSaveRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dirty]);
+  // Leaving the page with unsaved changes asks first (the browser's own prompt).
+  useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', onUnload);
+    return () => window.removeEventListener('beforeunload', onUnload);
+  }, [dirty]);
 
   const doSave = () => {
     setServerError(null);
@@ -616,9 +690,34 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     }
     save.mutate();
   };
+  doSaveRef.current = doSave;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      {/* Unsaved-changes bar: only while there is something to save */}
+      {dirty && (
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
+          <div className="pointer-events-auto flex items-center gap-1 rounded-full bg-ink p-1 pl-4 text-white shadow-[0_12px_32px_-8px_rgba(0,0,0,0.45)]">
+            <span className="mr-2 text-[13px] font-semibold">Cambios sin guardar</span>
+            <button
+              type="button"
+              onClick={discard}
+              disabled={save.isPending}
+              className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-white/85 hover:bg-white/15 hover:text-white disabled:opacity-50"
+            >
+              Descartar
+            </button>
+            <button
+              type="button"
+              onClick={doSave}
+              disabled={save.isPending || (type === 'structured' && !editorReady)}
+              className="rounded-full bg-white px-3.5 py-1.5 text-[13px] font-bold text-ink hover:bg-white/90 disabled:opacity-60"
+            >
+              {save.isPending ? es.app.saving : es.app.save}
+            </button>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <header className="flex items-start justify-between gap-6 border-b border-line bg-surface px-7 pb-4 pt-5">
         <div className="flex min-w-0 flex-col gap-1.5">
@@ -660,12 +759,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
           </Button>
           <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
             Ajustes
-          </Button>
-          <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
-            {es.app.cancel}
-          </Button>
-          <Button onClick={doSave} disabled={save.isPending || (type === 'structured' && !editorReady)}>
-            {save.isPending ? es.app.saving : es.app.save}
           </Button>
         </div>
       </header>
