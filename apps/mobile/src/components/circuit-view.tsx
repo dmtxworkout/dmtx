@@ -73,8 +73,8 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
   return (
     <>
       {blocksView.map((bv, i) => {
-        // A group (rounds, a label or several exercises) is boxed with a plain
-        // heading, so it is clear what repeats together and what sits outside.
+        // A group (rounds, a label or several exercises) is written like on the
+        // box whiteboard: "3 RONDAS:" then its movements indented with a bracket.
         const grouped = bv.rounds > 1 || !!bv.label || bv.items.length > 1;
         const rows = bv.items.map((it) =>
           it.kind === 'rest' ? (
@@ -119,22 +119,16 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
               </Text>
             ) : null}
             {grouped ? (
-              <View className="rounded-xl border border-line-2 bg-surface-2 px-3 py-2">
-                <View className="flex-row flex-wrap items-baseline gap-x-2 pb-1">
-                  <Text className="font-bold text-[15px] text-ink">
-                    {bv.rounds > 1 ? `${bv.rounds} rondas` : (bv.label ?? 'Bloque')}
-                  </Text>
-                  {bv.rounds > 1 && bv.label ? (
-                    <Text className="font-sans text-[13px] text-ink-3">· {bv.label}</Text>
-                  ) : null}
-                  <Text className="font-sans text-[13px] text-ink-3">
-                    {bv.rounds > 1 ? `repite estos ejercicios ${bv.rounds} veces` : 'seguidos'}
+              <View>
+                <View className="flex-row flex-wrap items-baseline gap-x-2 pb-0.5">
+                  <Text className="font-extrabold text-[15px] uppercase tracking-wide text-ink">
+                    {bv.rounds > 1 ? `${bv.rounds} rondas${bv.label ? ` · ${bv.label}` : ''}` : (bv.label ?? 'Bloque')}:
                   </Text>
                 </View>
                 {bv.note ? (
                   <Text className="pb-1 font-sans text-[13px] italic leading-5 text-ink-3">{bv.note}</Text>
                 ) : null}
-                <View className="border-l-2 border-accent/40 pl-3">{rows}</View>
+                <View className="border-l-2 border-line-2 pl-3">{rows}</View>
               </View>
             ) : (
               <View>

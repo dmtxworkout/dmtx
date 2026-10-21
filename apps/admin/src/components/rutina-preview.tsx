@@ -69,27 +69,26 @@ function Line({ item }: { item: PvItem }) {
 const cap = (t: string) => t.replace(/^\p{L}/u, (c) => c.toUpperCase());
 
 /**
- * Blocks at one nesting level. A part shows its header and then its blocks at
- * the same level; a group is a box with a plain heading ("3 rondas · repite
- * estos ejercicios 3 veces") holding its exercises or its own nested blocks;
- * loose exercises are plain lines. Boxes nest, so what is inside what is
- * always visible.
+ * Blocks at one nesting level, written the way a coach writes a WOD on the
+ * whiteboard: a header line ("3 RONDAS:", "AMRAP 12 MIN"), the movements
+ * listed one per line indented under it, and a thin bracket down the left of
+ * what belongs to the header. Nesting indents again. No boxes.
  */
 function Blocks({ blocks }: { blocks: PvBlock[] }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-2.5">
       {blocks.map((b, i) => {
         if (b.part) {
           return (
-            <div key={i} className="flex flex-col gap-2">
-              <div>
-                <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-dark">{b.part}</div>
-                {b.note && <div className="mt-1 text-[12px] italic leading-5 text-muted">{b.note}</div>}
+            <div key={i}>
+              <div className="text-[13px] font-extrabold uppercase tracking-[0.04em] text-accent-dark">{b.part}</div>
+              {b.note && <div className="text-[12px] italic leading-5 text-muted">{b.note}</div>}
+              <div className="mt-1 border-l-2 border-line-2 pl-3">
+                {!!b.blocks?.length && <Blocks blocks={b.blocks} />}
+                {b.items.map((it, j) => (
+                  <Line key={j} item={it} />
+                ))}
               </div>
-              {!!b.blocks?.length && <Blocks blocks={b.blocks} />}
-              {b.items.map((it, j) => (
-                <Line key={j} item={it} />
-              ))}
             </div>
           );
         }
@@ -106,24 +105,14 @@ function Blocks({ blocks }: { blocks: PvBlock[] }) {
           );
         }
         const title = b.title ? cap(b.title) : null;
+        const head = rounds != null ? `${rounds} rondas${title ? ` · ${title}` : ''}` : (title ?? 'Bloque');
         const nested = b.blocks?.length ? b.blocks : null;
         return (
-          <div key={i} className="rounded-lg border border-line-2 bg-surface-2/70 px-3 py-2">
-            <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
-              <span className="text-[13px] font-bold text-ink">{rounds != null ? `${rounds} rondas` : (title ?? 'Bloque')}</span>
-              {rounds != null && title && <span className="text-[12px] text-ink-3">· {title}</span>}
-              {rounds != null && <span className="text-[12px] text-muted">repite todo esto {rounds} veces</span>}
-              {rounds == null && !nested && b.items.length > 1 && (
-                <span className="text-[12px] text-muted">seguidos, sin descanso entre ellos</span>
-              )}
-            </div>
-            {b.note && <div className="mb-1 text-[12px] italic leading-5 text-muted">{b.note}</div>}
-            <div className="border-l-2 border-accent/40 pl-3">
-              {nested ? (
-                <Blocks blocks={nested} />
-              ) : (
-                b.items.map((it, j) => <Line key={j} item={it} />)
-              )}
+          <div key={i}>
+            <div className="text-[13px] font-extrabold uppercase tracking-[0.04em] text-ink">{head}:</div>
+            {b.note && <div className="text-[12px] italic leading-5 text-muted">{b.note}</div>}
+            <div className="mt-0.5 border-l-2 border-line-2 pl-3">
+              {nested ? <Blocks blocks={nested} /> : b.items.map((it, j) => <Line key={j} item={it} />)}
             </div>
           </div>
         );
@@ -135,8 +124,8 @@ function Blocks({ blocks }: { blocks: PvBlock[] }) {
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   const empty = !blocks.some((b) => b.items.length || b.blocks?.length);
   return (
-    <section className="px-4 py-3.5">
-      <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
+    <section>
+      <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
         {label}
       </div>
       {empty ? (
@@ -173,13 +162,11 @@ export function RutinaPreview({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-line-2 bg-surface">
-        <div className="border-b border-line-3 px-4 py-3">
-          <div className="truncate text-[15px] font-extrabold text-ink">{name || 'Rutina sin título'}</div>
-        </div>
+      <div>
+        <div className="mb-3 text-[20px] font-extrabold leading-tight tracking-tight text-ink">{name || 'Rutina sin título'}</div>
 
         {empty ? (
-          <div className="px-4 py-10 text-center">
+          <div className="py-8 text-center">
             <div className="text-[13px] font-semibold text-ink-3">Aún no hay nada que mostrar</div>
             <div className="mt-1 text-[12px] leading-snug text-muted">
               Añade ejercicios, un calentamiento o un enfriamiento y aparecerán aquí tal como los verá
@@ -187,11 +174,11 @@ export function RutinaPreview({
             </div>
           </div>
         ) : model.type === 'video' ? (
-          <div className="px-4 py-8 text-center text-[13px] text-ink-3">
+          <div className="py-8 text-center text-[13px] text-ink-3">
             {model.hasVideo ? 'Rutina en video' : 'Sube un video para esta rutina'}
           </div>
         ) : (
-          <div className="flex flex-col gap-5 px-4 py-4">
+          <div className="flex flex-col gap-6">
             {model.warmup && (
               <Section
                 label={`Calentamiento${model.warmup.formatLabel ? ` · ${model.warmup.formatLabel}` : ''}`}
