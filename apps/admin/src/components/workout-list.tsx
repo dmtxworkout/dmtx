@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS } from '@dmtx/schemas';
-import type { ContentStatus, WorkoutKind, WorkoutListItem } from '@dmtx/schemas';
+import type { ContentStatus, WorkoutListItem } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { formatDateEs } from '@/lib/utils';
@@ -27,9 +27,8 @@ const FORMAT_LABEL: Record<string, string> = {
 
 const COLS = 'grid-cols-[34px_58px_minmax(0,2fr)_120px_120px_120px_130px_34px] items-center gap-3 px-4';
 
-/** Shared list for rutinas and segments — identical UI, filtered by `kind`. */
+/** The rutinas list. */
 export function WorkoutList({
-  kind,
   basePath,
   title,
   newLabel,
@@ -38,7 +37,6 @@ export function WorkoutList({
   noun,
   searchPlaceholder,
 }: {
-  kind: WorkoutKind;
   basePath: string;
   title: string;
   newLabel: string;
@@ -54,8 +52,8 @@ export function WorkoutList({
   const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['workouts', kind, search],
-    queryFn: () => api.workouts.list({ search: search || undefined, pageSize: 100, kind }),
+    queryKey: ['workouts', 'list', search],
+    queryFn: () => api.workouts.list({ search: search || undefined, pageSize: 100 }),
     placeholderData: keepPreviousData,
   });
   const remove = useMutation({

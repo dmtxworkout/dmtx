@@ -29,7 +29,6 @@ export const es = {
     dashboard: 'Panel',
     exercises: 'Ejercicios',
     workouts: 'Rutinas',
-    segments: 'Segmentos',
     snippets: 'Bloques guardados',
     programs: 'Programas',
     skills: 'Habilidades',
@@ -154,13 +153,6 @@ export const es = {
       tabata: 'Tabata',
     },
     video: 'Video',
-  },
-  segments: {
-    title: 'Segmentos',
-    new: 'Nuevo segmento',
-    edit: 'Editar segmento',
-    empty: 'Aún no hay segmentos. Crea un calentamiento o enfriamiento reutilizable.',
-    subtitle: 'Calentamientos y enfriamientos reutilizables',
   },
   snippets: {
     title: 'Bloques guardados',

@@ -134,6 +134,13 @@
       "when": 1792555911495,
       "tag": "0018_smooth_nova",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792591823814,
+      "tag": "0019_many_nemesis",
+      "breakpoints": true
     }
   ]
 }

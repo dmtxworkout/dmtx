@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, Snippet, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, Snippet, Workout, WorkoutFormat } from '@dmtx/schemas';
 import {
   Catalog,
   formatDistance,
@@ -288,25 +288,21 @@ function previewFrom(
 
 export function RutinaForm({
   workout,
-  kind = 'rutina',
   snippet,
 }: {
   workout?: Workout;
-  kind?: WorkoutKind;
   /** A saved block: the same editor on one piece of text (null → a new block). */
   snippet?: Snippet | null;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
   // A saved block ("bloque guardado") is plain rutina text with a name: the
-  // same editor and preview, one tab, no versions, settings or status.
+  // same editor and preview, one tab (no warmup/cooldown), no versions,
+  // settings or status.
   const snippetMode = snippet !== undefined;
-  // A segment is a reusable warmup/cooldown piece: same editor, but no nested
-  // warmup/cooldown sections, and it lives under /segmentos.
-  const segmentMode = snippetMode || (workout?.kind ?? kind) === 'segment';
-  const basePath = snippetMode ? '/bloques' : segmentMode ? '/segmentos' : '/rutinas';
-  const listTitle = snippetMode ? es.snippets.title : segmentMode ? es.segments.title : es.workouts.title;
-  const newLabel = snippetMode ? 'Nuevo bloque' : segmentMode ? es.segments.new : es.workouts.new;
+  const basePath = snippetMode ? '/bloques' : '/rutinas';
+  const listTitle = snippetMode ? es.snippets.title : es.workouts.title;
+  const newLabel = snippetMode ? 'Nuevo bloque' : es.workouts.new;
   const isNew = snippetMode ? !snippet : !workout;
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
@@ -558,7 +554,6 @@ export function RutinaForm({
     return {
       name,
       description: description || null,
-      kind: segmentMode ? 'segment' : 'rutina',
       type,
       format: structure?.format ?? null,
       sourceText: structured ? tabText : null,
@@ -568,7 +563,7 @@ export function RutinaForm({
       videoAssetId: structured ? null : videoAssetId,
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
-      blocks: (structure?.blocks ?? []).map((b) => (segmentMode ? { ...b, section: 'main' as const } : b)),
+      blocks: structure?.blocks ?? [],
     };
   };
   const saveSnippet = useMutation({
@@ -606,7 +601,7 @@ export function RutinaForm({
       qc.setQueryData(['workout', saved.id], { ...saved, variants: savedVariants.map((v) => ({ id: v.id, label: v.label })) });
       qc.invalidateQueries({ queryKey: ['workouts'] });
       qc.invalidateQueries({ queryKey: ['workout-refs'] });
-      toast(segmentMode ? 'Segmento guardado' : 'Rutina guardada');
+      toast('Rutina guardada');
       if (!workout) router.replace(`${basePath}/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
@@ -844,7 +839,7 @@ export function RutinaForm({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
-              {(segmentMode ? (['main'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
+              {(snippetMode ? (['main'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
                 const empty = !activeSections[sec].trim();
                 return (
                   <div
@@ -892,7 +887,7 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
-              {!segmentMode && (
+              {!snippetMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
                     type="button"
@@ -1098,10 +1093,10 @@ export function RutinaForm({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim()) setCreateOpen(false);
               }}
-              placeholder={segmentMode ? 'p. ej. Calentamiento general' : 'p. ej. Murph'}
+              placeholder={snippetMode ? 'p. ej. Core express' : 'p. ej. Murph'}
             />
           </div>
-          {!segmentMode && (
+          {!snippetMode && (
             <div>
               <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.type}</div>
               <div className="grid grid-cols-2 gap-2">
@@ -1259,7 +1254,7 @@ export function RutinaForm({
                 </div>
               </div>
 
-              {!segmentMode && (
+              {!snippetMode && (
                 <div className="flex flex-col gap-2.5">
                   <MonoLabel>{es.workouts.type}</MonoLabel>
                   <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">

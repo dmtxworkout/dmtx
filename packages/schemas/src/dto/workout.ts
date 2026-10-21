@@ -8,7 +8,6 @@ import {
   itemKindSchema,
   measurementTypeSchema,
   workoutFormatSchema,
-  workoutKindSchema,
   workoutTypeSchema,
 } from '../enums';
 import { formatConfigSchema } from '../format-config';
@@ -59,7 +58,6 @@ export const createWorkoutSchema = z.object({
   name: z.string().min(1).max(200),
   slug: slugSchema.optional(),
   description: z.string().max(5000).nullish(),
-  kind: workoutKindSchema.default('rutina'),
   type: workoutTypeSchema,
   format: workoutFormatSchema.nullish(),
   difficulty: difficultySchema,
@@ -106,7 +104,6 @@ export const workoutSchema = z.object({
   slug: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  kind: workoutKindSchema,
   type: workoutTypeSchema,
   format: workoutFormatSchema.nullable(),
   difficulty: difficultySchema,

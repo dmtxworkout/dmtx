@@ -4,7 +4,6 @@ import { es } from '@/i18n/es';
 export default function RutinasPage() {
   return (
     <WorkoutList
-      kind="rutina"
       basePath="/rutinas"
       title={es.workouts.title}
       newLabel={es.workouts.new}
