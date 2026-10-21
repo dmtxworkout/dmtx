@@ -64,7 +64,9 @@ export const ITEM_KIND = ['exercise', 'rest'] as const;
 export const itemKindSchema = enumOf(ITEM_KIND);
 export type ItemKind = z.infer<typeof itemKindSchema>;
 
-export const BLOCK_KIND = ['group', 'rest'] as const;
+// A block is a group of items, a rest, or a PART: a format (AMRAP/EMOM/…) holding
+// the blocks under it.
+export const BLOCK_KIND = ['group', 'rest', 'part'] as const;
 export const blockKindSchema = enumOf(BLOCK_KIND);
 export type BlockKind = z.infer<typeof blockKindSchema>;
 

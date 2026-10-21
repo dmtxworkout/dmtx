@@ -49,6 +49,9 @@ export const workouts = pgTable('workouts', {
   cooldownWorkoutId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'set null' }),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   videoDurationSeconds: integer(),
+  // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.
+  variantOfId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'cascade' }),
+  variantLabel: text(),
   status: contentStatusEnum().notNull().default('draft'),
   ...publishable,
   ...timestamps,
@@ -61,8 +64,13 @@ export const workoutBlocks = pgTable('workout_blocks', {
   workoutId: uuid()
     .notNull()
     .references(() => workouts.id, { onDelete: 'cascade' }),
+  // A part's children point at it; top-level blocks have no parent.
+  parentBlockId: uuid().references((): AnyPgColumn => workoutBlocks.id, { onDelete: 'cascade' }),
   position: integer().notNull().default(0),
   kind: blockKindEnum().notNull().default('group'),
+  // A part (kind 'part') plays on its own format; null for ordinary blocks.
+  format: workoutFormatEnum(),
+  formatConfig: jsonb().$type<FormatConfig>(),
   section: blockSectionEnum().notNull().default('main'),
   type: blockTypeEnum().notNull().default('single'),
   rounds: integer(),

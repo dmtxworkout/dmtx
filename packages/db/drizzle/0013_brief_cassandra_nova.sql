@@ -1,0 +1,1 @@
+ALTER TABLE "exercises" ADD COLUMN "aliases" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -2,6 +2,7 @@ import { createHttp, type HttpClientOptions } from './http';
 import { exercisesApi } from './exercises';
 import { mediaApi } from './media';
 import { workoutsApi } from './workouts';
+import { snippetsApi } from './snippets';
 import { programsApi } from './programs';
 import { skillsApi } from './skills';
 import { subscriptionsApi } from './subscriptions';
@@ -17,6 +18,7 @@ export function createApiClient(options: HttpClientOptions) {
     exercises: exercisesApi(http),
     media: mediaApi(http),
     workouts: workoutsApi(http),
+    snippets: snippetsApi(http),
     programs: programsApi(http),
     skills: skillsApi(http),
     subscriptions: subscriptionsApi(http),

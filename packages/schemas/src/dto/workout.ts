@@ -36,16 +36,24 @@ export const workoutItemInputSchema = z.object({
 });
 export type WorkoutItemInput = z.infer<typeof workoutItemInputSchema>;
 
-export const workoutBlockInputSchema = z.object({
+const workoutBlockInputBase = z.object({
   kind: blockKindSchema.default('group'),
   section: blockSectionSchema.default('main'),
   type: blockTypeSchema.default('single'),
   rounds: z.number().int().positive().nullish(),
   label: z.string().max(200).nullish(),
   notes: z.string().max(2000).nullish(),
+  // A part (kind 'part') carries its own format + timing and holds `blocks`.
+  format: workoutFormatSchema.nullish(),
+  formatConfig: formatConfigSchema.nullish(),
   items: z.array(workoutItemInputSchema).default([]),
 });
-export type WorkoutBlockInput = z.infer<typeof workoutBlockInputSchema>;
+export type WorkoutBlockInput = z.infer<typeof workoutBlockInputBase> & { blocks: WorkoutBlockInput[] };
+type WorkoutBlockInputIn = z.input<typeof workoutBlockInputBase> & { blocks?: WorkoutBlockInputIn[] };
+export const workoutBlockInputSchema: z.ZodType<WorkoutBlockInput, WorkoutBlockInputIn> =
+  workoutBlockInputBase.extend({
+    blocks: z.lazy(() => z.array(workoutBlockInputSchema)).default([]),
+  }) as unknown as z.ZodType<WorkoutBlockInput, WorkoutBlockInputIn>;
 
 export const createWorkoutSchema = z.object({
   name: z.string().min(1).max(200),
@@ -72,6 +80,10 @@ export const createWorkoutSchema = z.object({
   // this one. Mutually exclusive with inline blocks of that section.
   warmupWorkoutId: uuidSchema.nullish(),
   cooldownWorkoutId: uuidSchema.nullish(),
+  // Variants ("RX" / "Escalada" / "Principiante"): a variant is a full rutina
+  // row linked to its base. Lists hide variants; the base's detail lists them.
+  variantOfId: uuidSchema.nullish(),
+  variantLabel: z.string().max(60).nullish(),
   blocks: z.array(workoutBlockInputSchema).default([]),
 });
 export type CreateWorkoutInput = z.infer<typeof createWorkoutSchema>;
@@ -81,7 +93,7 @@ export type UpdateWorkoutInput = z.infer<typeof updateWorkoutSchema>;
 
 // --- Responses ---------------------------------------------------------------
 export const workoutItemSchema = workoutItemInputSchema.extend({ id: uuidSchema });
-export const workoutBlockSchema = z.object({
+const workoutBlockBase = z.object({
   id: uuidSchema,
   kind: blockKindSchema,
   section: blockSectionSchema,
@@ -89,8 +101,14 @@ export const workoutBlockSchema = z.object({
   rounds: z.number().nullable(),
   label: z.string().nullable(),
   notes: z.string().nullable(),
+  format: workoutFormatSchema.nullable(),
+  formatConfig: formatConfigSchema.nullable(),
   items: z.array(workoutItemSchema),
 });
+export type WorkoutBlock = z.infer<typeof workoutBlockBase> & { blocks: WorkoutBlock[] };
+export const workoutBlockSchema: z.ZodType<WorkoutBlock> = workoutBlockBase.extend({
+  blocks: z.lazy(() => z.array(workoutBlockSchema)),
+}) as unknown as z.ZodType<WorkoutBlock>;
 
 export const workoutSchema = z.object({
   id: uuidSchema,
@@ -114,6 +132,10 @@ export const workoutSchema = z.object({
   cooldownFormatConfig: formatConfigSchema.nullable(),
   warmupWorkoutId: uuidSchema.nullable(),
   cooldownWorkoutId: uuidSchema.nullable(),
+  variantOfId: uuidSchema.nullable(),
+  variantLabel: z.string().nullable(),
+  /** For a base rutina: its variants in creation order. Empty for a variant. */
+  variants: z.array(z.object({ id: uuidSchema, label: z.string() })),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
   blocks: z.array(workoutBlockSchema),
@@ -130,5 +152,6 @@ export const workoutListItemSchema = workoutSchema.omit({
   cooldownFormatConfig: true,
   warmupWorkoutId: true,
   cooldownWorkoutId: true,
+  variants: true,
 });
 export type WorkoutListItem = z.infer<typeof workoutListItemSchema>;

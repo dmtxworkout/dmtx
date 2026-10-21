@@ -18,6 +18,7 @@ export const exercises = pgTable('exercises', {
   name: text().notNull(),
   description: text(),
   cues: jsonb().$type<string[]>().notNull().default([]),
+  aliases: jsonb().$type<string[]>().notNull().default([]),
   difficulty: difficultyEnum().notNull(),
   isUnilateral: boolean().notNull().default(false),
   defaultTempo: jsonb().$type<Tempo>(),

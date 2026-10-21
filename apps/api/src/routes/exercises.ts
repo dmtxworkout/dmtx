@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import { exerciseEquipment, exerciseMuscles, exercises } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import {
@@ -26,6 +26,7 @@ function serializeBase(row: ExerciseRow) {
     name: row.name,
     description: row.description,
     cues: row.cues,
+    aliases: row.aliases,
     difficulty: row.difficulty,
     isUnilateral: row.isUnilateral,
     defaultTempo: row.defaultTempo ?? null,
@@ -76,7 +77,13 @@ exercisesRoute.openapi(
     const { page, pageSize, search } = c.req.valid('query');
     const where = and(
       isNull(exercises.deletedAt),
-      search ? ilike(exercises.name, `%${search}%`) : undefined,
+      search
+        ? or(
+            ilike(exercises.name, `%${search}%`),
+            // aliases is a jsonb string[]; match any alias by text.
+            sql`${exercises.aliases}::text ilike ${`%${search}%`}`,
+          )
+        : undefined,
     );
     const [rows, [totals]] = await Promise.all([
       db
@@ -150,6 +157,7 @@ exercisesRoute.openapi(
         name: input.name,
         description: input.description ?? null,
         cues: input.cues,
+        aliases: input.aliases,
         difficulty: input.difficulty,
         isUnilateral: input.isUnilateral,
         defaultTempo: input.defaultTempo ?? null,
@@ -206,6 +214,7 @@ exercisesRoute.openapi(
         ...(input.slug !== undefined ? { slug: input.slug } : {}),
         ...(input.description !== undefined ? { description: input.description ?? null } : {}),
         ...(input.cues !== undefined ? { cues: input.cues } : {}),
+        ...(input.aliases !== undefined ? { aliases: input.aliases } : {}),
         ...(input.difficulty !== undefined ? { difficulty: input.difficulty } : {}),
         ...(input.isUnilateral !== undefined ? { isUnilateral: input.isUnilateral } : {}),
         ...(input.defaultTempo !== undefined ? { defaultTempo: input.defaultTempo ?? null } : {}),

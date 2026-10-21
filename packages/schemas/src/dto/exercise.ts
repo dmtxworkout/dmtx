@@ -15,6 +15,9 @@ export const createExerciseSchema = z.object({
   slug: slugSchema.optional(),
   description: z.string().max(5000).nullish(),
   cues: z.array(z.string().min(1).max(500)).default([]),
+  // Alternate names the rutina text editor also matches (e.g. "Power Clean" for
+  // "Cargada de potencia", or common abbreviations).
+  aliases: z.array(z.string().min(1).max(200)).default([]),
   difficulty: difficultySchema,
   isUnilateral: z.boolean().default(false),
   defaultTempo: tempoSchema.nullish(),
@@ -36,6 +39,7 @@ export const exerciseSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   cues: z.array(z.string()),
+  aliases: z.array(z.string()),
   difficulty: difficultySchema,
   isUnilateral: z.boolean(),
   defaultTempo: tempoSchema.nullable(),

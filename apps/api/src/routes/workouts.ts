@@ -57,9 +57,25 @@ function base(w: WorkoutRow) {
     thumbnailAssetId: w.thumbnailAssetId,
     videoAssetId: w.videoAssetId,
     videoDurationSeconds: w.videoDurationSeconds,
+    variantOfId: w.variantOfId,
+    variantLabel: w.variantLabel,
     createdAt: w.createdAt.toISOString(),
     updatedAt: w.updatedAt.toISOString(),
   };
+}
+
+/** Rows → nested blocks: top-level blocks with their children (parts) in `blocks`. */
+export function nestBlocks<T extends { id: string; parentBlockId: string | null; position: number }>(
+  rows: T[],
+): (T & { blocks: T[] })[] {
+  const byParent = new Map<string | null, T[]>();
+  for (const r of rows) {
+    const arr = byParent.get(r.parentBlockId) ?? [];
+    arr.push(r);
+    byParent.set(r.parentBlockId, arr);
+  }
+  const sorted = (xs: T[] | undefined) => [...(xs ?? [])].sort((a, b) => a.position - b.position);
+  return sorted(byParent.get(null)).map((b) => ({ ...b, blocks: sorted(byParent.get(b.id)) }));
 }
 
 async function loadFull(db: Database, w: WorkoutRow) {
@@ -82,8 +98,16 @@ async function loadFull(db: Database, w: WorkoutRow) {
     arr.push(it);
     byBlock.set(it.blockId, arr);
   }
+  const variants = w.variantOfId
+    ? []
+    : await db
+        .select({ id: workouts.id, label: workouts.variantLabel })
+        .from(workouts)
+        .where(and(eq(workouts.variantOfId, w.id), isNull(workouts.deletedAt)))
+        .orderBy(workouts.createdAt);
   return {
     ...base(w),
+    variants: variants.map((v) => ({ id: v.id, label: v.label ?? '' })),
     formatConfig: w.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
     warmupFormat: w.warmupFormat ?? null,
@@ -92,26 +116,41 @@ async function loadFull(db: Database, w: WorkoutRow) {
     cooldownFormatConfig: w.cooldownFormatConfig ?? null,
     warmupWorkoutId: w.warmupWorkoutId,
     cooldownWorkoutId: w.cooldownWorkoutId,
-    blocks: blocks.map((b: BlockRow) => ({
-      id: b.id,
-      kind: b.kind,
-      section: b.section,
-      type: b.type,
-      rounds: b.rounds,
-      label: b.label,
-      notes: b.notes,
-      items: (byBlock.get(b.id) ?? []).map(serializeItem),
+    blocks: nestBlocks(blocks).map((b) => ({
+      ...serializeBlock(b, byBlock),
+      blocks: b.blocks.map((c) => ({ ...serializeBlock(c, byBlock), blocks: [] })),
     })),
   };
 }
 
-async function insertBlocks(db: Database, workoutId: string, blocks: WorkoutBlockInput[]) {
+function serializeBlock(b: BlockRow, byBlock: Map<string, ItemRow[]>) {
+  return {
+    id: b.id,
+    kind: b.kind,
+    section: b.section,
+    type: b.type,
+    rounds: b.rounds,
+    label: b.label,
+    notes: b.notes,
+    format: b.format ?? null,
+    formatConfig: b.formatConfig ?? null,
+    items: (byBlock.get(b.id) ?? []).map(serializeItem),
+  };
+}
+
+async function insertBlocks(
+  db: Database,
+  workoutId: string,
+  blocks: WorkoutBlockInput[],
+  parentBlockId: string | null = null,
+) {
   for (let i = 0; i < blocks.length; i += 1) {
     const b = blocks[i]!;
     const [block] = await db
       .insert(workoutBlocks)
       .values({
         workoutId,
+        parentBlockId,
         position: i,
         kind: b.kind,
         section: b.section,
@@ -119,8 +158,11 @@ async function insertBlocks(db: Database, workoutId: string, blocks: WorkoutBloc
         rounds: b.rounds ?? null,
         label: b.label ?? null,
         notes: b.notes ?? null,
+        format: b.kind === 'part' ? (b.format ?? null) : null,
+        formatConfig: b.kind === 'part' ? (b.formatConfig ?? null) : null,
       })
       .returning({ id: workoutBlocks.id });
+    if (block && b.blocks?.length) await insertBlocks(db, workoutId, b.blocks, block.id);
     if (block && b.items.length) {
       await db.insert(workoutItems).values(
         b.items.map((it, j) => ({
@@ -145,6 +187,23 @@ async function insertBlocks(db: Database, workoutId: string, blocks: WorkoutBloc
   }
 }
 
+/** A slug nobody else has: the base slug, else base-2, base-3, … */
+async function uniqueSlug(db: Database, wanted: string): Promise<string> {
+  const taken = new Set(
+    (
+      await db
+        .select({ slug: workouts.slug })
+        .from(workouts)
+        .where(ilike(workouts.slug, `${wanted}%`))
+    ).map((r) => r.slug),
+  );
+  if (!taken.has(wanted)) return wanted;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${wanted}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 export const workoutsRoute = createApp();
 workoutsRoute.use('*', requireAdmin);
 
@@ -166,6 +225,7 @@ workoutsRoute.openapi(
     const { page, pageSize, search, kind } = c.req.valid('query');
     const where = and(
       isNull(workouts.deletedAt),
+      isNull(workouts.variantOfId),
       kind ? eq(workouts.kind, kind) : undefined,
       search ? ilike(workouts.name, `%${search}%`) : undefined,
     );
@@ -221,10 +281,13 @@ workoutsRoute.openapi(
     const db = c.get('db');
     const input = c.req.valid('json');
     const structured = input.type === 'structured';
+    // Variants share the base name; their slug carries the level label.
+    const wantedSlug =
+      input.slug ?? slugify(input.variantOfId ? `${input.name} ${input.variantLabel ?? 'variante'}` : input.name);
     const [row] = await db
       .insert(workouts)
       .values({
-        slug: input.slug ?? slugify(input.name),
+        slug: await uniqueSlug(db, wantedSlug),
         name: input.name,
         description: input.description ?? null,
         kind: input.kind,
@@ -244,6 +307,8 @@ workoutsRoute.openapi(
         cooldownFormatConfig: structured ? (input.cooldownFormatConfig ?? null) : null,
         warmupWorkoutId: structured ? (input.warmupWorkoutId ?? null) : null,
         cooldownWorkoutId: structured ? (input.cooldownWorkoutId ?? null) : null,
+        variantOfId: input.variantOfId ?? null,
+        variantLabel: input.variantLabel ?? null,
       })
       .returning();
     if (!row) throw new Error('No se pudo crear la rutina');
@@ -296,6 +361,8 @@ workoutsRoute.openapi(
     if (input.warmupWorkoutId !== undefined) set.warmupWorkoutId = input.warmupWorkoutId ?? null;
     if (input.cooldownWorkoutId !== undefined)
       set.cooldownWorkoutId = input.cooldownWorkoutId ?? null;
+    if (input.variantOfId !== undefined) set.variantOfId = input.variantOfId ?? null;
+    if (input.variantLabel !== undefined) set.variantLabel = input.variantLabel ?? null;
 
     const [row] = await db
       .update(workouts)
@@ -332,6 +399,8 @@ workoutsRoute.openapi(
       .where(and(eq(workouts.id, id), isNull(workouts.deletedAt)))
       .returning({ id: workouts.id });
     if (!row) return c.json({ error: 'No encontrado' }, 404);
+    // Variants go with their base.
+    await db.update(workouts).set({ deletedAt: new Date() }).where(eq(workouts.variantOfId, id));
     return c.body(null, 204);
   },
 );

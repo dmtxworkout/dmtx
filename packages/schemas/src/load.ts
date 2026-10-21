@@ -10,6 +10,9 @@ export const loadPrescriptionSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('absolute'),
     value: z.number().min(0),
+    // CrossFit-style dual prescription ("@135/95 lb"): `value` is the men's / default
+    // load, `womenValue` the women's. Same unit for both.
+    womenValue: z.number().min(0).optional(),
     unit: z.enum(['kg', 'lb']),
   }),
   z.object({

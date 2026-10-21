@@ -16,6 +16,7 @@ import {
 import type { Database } from '@dmtx/db';
 import { createWorkoutLogSchema } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
+import { nestBlocks } from './workouts';
 import { resolveMediaUrls } from '../lib/media';
 import { resolveEntitlement } from '../lib/entitlement';
 import { requireAccess, requireUser } from '../middleware/auth';
@@ -132,6 +133,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               eq(workouts.status, 'published'),
               eq(workouts.kind, 'rutina'),
               isNull(workouts.deletedAt),
+              isNull(workouts.variantOfId),
               like ? ilike(workouts.name, like) : undefined,
             ),
           )
@@ -258,6 +260,17 @@ appRoute.get('/workouts/:id', async (c) => {
     .where(and(eq(workouts.id, id), eq(workouts.status, 'published'), isNull(workouts.deletedAt)))
     .limit(1);
   if (!w) return c.json({ error: 'No encontrado' }, 404);
+
+  // Variants of a base rutina (RX / Escalada / …) so the app can offer a level.
+  const variantRows = w.variantOfId
+    ? []
+    : await db
+        .select({ id: workouts.id, label: workouts.variantLabel })
+        .from(workouts)
+        .where(
+          and(eq(workouts.variantOfId, w.id), eq(workouts.status, 'published'), isNull(workouts.deletedAt)),
+        )
+        .orderBy(workouts.createdAt);
 
   // Warmup/cooldown may be a referenced rutina; pull its blocks too and re-tag
   // them with that section so the player treats it uniformly. A set reference
@@ -396,6 +409,9 @@ appRoute.get('/workouts/:id', async (c) => {
     cooldownFormat: w.cooldownFormat ?? cooldownSeg?.format ?? null,
     cooldownFormatConfig: w.cooldownFormatConfig ?? cooldownSeg?.formatConfig ?? null,
     scoringGoal: w.scoringGoal ?? null,
+    variantOfId: w.variantOfId,
+    variantLabel: w.variantLabel,
+    variants: variantRows.map((v) => ({ id: v.id, label: v.label ?? '' })),
     lastLog: lastLog
       ? {
           roundsCompleted: lastLog.roundsCompleted,
@@ -404,7 +420,15 @@ appRoute.get('/workouts/:id', async (c) => {
           completedAt: lastLog.completedAt ? lastLog.completedAt.toISOString() : null,
         }
       : null,
-    blocks: blocks.map((b) => ({
+    blocks: nestBlocks(blocks).map((b) => ({
+      ...appBlock(b),
+      blocks: b.blocks.map((c) => ({ ...appBlock(c), blocks: [] })),
+    })),
+  });
+
+  type AppBlockRow = (typeof blocks)[number];
+  function appBlock(b: AppBlockRow) {
+    return {
       id: b.id,
       kind: b.kind,
       section: b.section,
@@ -412,6 +436,8 @@ appRoute.get('/workouts/:id', async (c) => {
       label: b.label,
       rounds: b.rounds,
       notes: b.notes,
+      format: b.format ?? null,
+      formatConfig: b.formatConfig ?? null,
       items: (itemsByBlock.get(b.id) ?? []).map((it) => {
         const ex = it.exerciseId ? exBy.get(it.exerciseId) : undefined;
         return {
@@ -444,8 +470,8 @@ appRoute.get('/workouts/:id', async (c) => {
             : null,
         };
       }),
-    })),
-  });
+    };
+  }
 });
 
 // GET /api/app/programs/:id — full program.
