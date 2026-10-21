@@ -127,8 +127,8 @@ interface CatalogFilter {
 type Tags = { muscles: string[]; equipment: string[] };
 
 /**
- * The tags of each rutina, derived from its exercises: their primary muscles
- * and the equipment they need. One query each for
+ * The tags of each rutina, derived from its exercises: their muscles and the
+ * equipment they need. One query each for
  * a whole page of rutinas.
  */
 async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<string, Tags>> {
@@ -139,7 +139,7 @@ async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<stri
       .selectDistinct({ workoutId: workoutBlocks.workoutId, name: muscles.name, position: muscles.position })
       .from(workoutItems)
       .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
-      .innerJoin(exerciseMuscles, and(eq(exerciseMuscles.exerciseId, workoutItems.exerciseId), eq(exerciseMuscles.role, 'primary')))
+      .innerJoin(exerciseMuscles, eq(exerciseMuscles.exerciseId, workoutItems.exerciseId))
       .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
       .where(inArray(workoutBlocks.workoutId, workoutIds)),
     db
@@ -166,7 +166,7 @@ async function workoutIdsByTags(db: Database, f: { muscle?: string; equipment?: 
       .selectDistinct({ workoutId: workoutBlocks.workoutId })
       .from(workoutItems)
       .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
-      .innerJoin(exerciseMuscles, and(eq(exerciseMuscles.exerciseId, workoutItems.exerciseId), eq(exerciseMuscles.role, 'primary')))
+      .innerJoin(exerciseMuscles, eq(exerciseMuscles.exerciseId, workoutItems.exerciseId))
       .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
       .where(f.muscle ? eq(muscles.slug, f.muscle) : ilike(muscles.name, `%${f.q}%`));
     if (f.muscle) sets.push(rows.map((r) => r.workoutId));
@@ -326,7 +326,7 @@ appRoute.get('/filters', async (c) => {
       .from(workoutItems)
       .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
       .innerJoin(workouts, eq(workouts.id, workoutBlocks.workoutId))
-      .innerJoin(exerciseMuscles, and(eq(exerciseMuscles.exerciseId, workoutItems.exerciseId), eq(exerciseMuscles.role, 'primary')))
+      .innerJoin(exerciseMuscles, eq(exerciseMuscles.exerciseId, workoutItems.exerciseId))
       .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
       .where(live),
     db

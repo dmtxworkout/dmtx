@@ -2,7 +2,6 @@ import { jsonb, pgTable, primaryKey, text, uuid, timestamp } from 'drizzle-orm/p
 import type { Tempo } from '@dmtx/schemas';
 import {
   difficultyEnum,
-  muscleRoleEnum,
   primaryId,
   publishable,
   softDelete,
@@ -39,7 +38,6 @@ export const exerciseMuscles = pgTable(
     muscleId: uuid()
       .notNull()
       .references(() => muscles.id, { onDelete: 'restrict' }),
-    role: muscleRoleEnum().notNull(),
   },
   (t) => [primaryKey({ columns: [t.exerciseId, t.muscleId] })],
 );

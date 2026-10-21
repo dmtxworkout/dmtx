@@ -43,7 +43,7 @@ function serializeBase(row: ExerciseRow) {
 async function loadRelations(db: Database, id: string) {
   const [ms, eq_] = await Promise.all([
     db
-      .select({ muscleId: exerciseMuscles.muscleId, role: exerciseMuscles.role })
+      .select({ muscleId: exerciseMuscles.muscleId })
       .from(exerciseMuscles)
       .where(eq(exerciseMuscles.exerciseId, id)),
     db
@@ -52,7 +52,7 @@ async function loadRelations(db: Database, id: string) {
       .where(eq(exerciseEquipment.exerciseId, id)),
   ]);
   return {
-    muscles: ms,
+    muscleIds: ms.map((m) => m.muscleId),
     equipmentIds: eq_.map((e) => e.equipmentId),
   };
 }
@@ -135,7 +135,7 @@ exercisesRoute.openapi(
     const [ms, eqs] = ids.length
       ? await Promise.all([
           db
-            .select({ exerciseId: exerciseMuscles.exerciseId, muscleId: exerciseMuscles.muscleId, role: exerciseMuscles.role })
+            .select({ exerciseId: exerciseMuscles.exerciseId, muscleId: exerciseMuscles.muscleId })
             .from(exerciseMuscles)
             .where(inArray(exerciseMuscles.exerciseId, ids)),
           db
@@ -146,7 +146,7 @@ exercisesRoute.openapi(
       : [[], []];
     const data = rows.map((r) => ({
       ...serializeBase(r),
-      muscles: ms.filter((m) => m.exerciseId === r.id).map((m) => ({ muscleId: m.muscleId, role: m.role })),
+      muscleIds: ms.filter((m) => m.exerciseId === r.id).map((m) => m.muscleId),
       equipmentIds: eqs.filter((e) => e.exerciseId === r.id).map((e) => e.equipmentId),
     }));
     return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
@@ -195,31 +195,16 @@ exercisesRoute.openapi(
         return c.json({ done: ok.length, refused }, 200);
       }
       case 'add_muscles': {
-        if (!input.muscles.length) break;
+        if (!input.muscleIds.length) break;
         const existing = await db
           .select({ exerciseId: exerciseMuscles.exerciseId, muscleId: exerciseMuscles.muscleId })
           .from(exerciseMuscles)
           .where(inArray(exerciseMuscles.exerciseId, ids));
         const has = new Set(existing.map((e) => `${e.exerciseId}:${e.muscleId}`));
-        // A muscle marked principal here becomes the principal: the old one steps down.
-        const newPrimaries = input.muscles.filter((m) => m.role === 'primary').map((m) => m.muscleId);
-        if (newPrimaries.length) {
-          await db
-            .update(exerciseMuscles)
-            .set({ role: 'secondary' })
-            .where(and(inArray(exerciseMuscles.exerciseId, ids), eq(exerciseMuscles.role, 'primary')));
-        }
         const values = ids.flatMap((exerciseId) =>
-          input.muscles.filter((m) => !has.has(`${exerciseId}:${m.muscleId}`)).map((m) => ({ exerciseId, muscleId: m.muscleId, role: m.role })),
+          input.muscleIds.filter((muscleId) => !has.has(`${exerciseId}:${muscleId}`)).map((muscleId) => ({ exerciseId, muscleId })),
         );
         if (values.length) await db.insert(exerciseMuscles).values(values);
-        // Already-tagged muscles that were marked principal still take the role.
-        for (const muscleId of newPrimaries) {
-          await db
-            .update(exerciseMuscles)
-            .set({ role: 'primary' })
-            .where(and(inArray(exerciseMuscles.exerciseId, ids), eq(exerciseMuscles.muscleId, muscleId)));
-        }
         await db.update(exercises).set({ updatedAt: now }).where(inArray(exercises.id, ids));
         break;
       }
@@ -347,10 +332,8 @@ exercisesRoute.openapi(
       })
       .returning();
     if (!row) throw new Error('No se pudo crear el ejercicio');
-    if (input.muscles.length) {
-      await db.insert(exerciseMuscles).values(
-        input.muscles.map((m) => ({ exerciseId: row.id, muscleId: m.muscleId, role: m.role })),
-      );
+    if (input.muscleIds.length) {
+      await db.insert(exerciseMuscles).values(input.muscleIds.map((muscleId) => ({ exerciseId: row.id, muscleId })));
     }
     if (input.equipmentIds.length) {
       await db
@@ -358,7 +341,7 @@ exercisesRoute.openapi(
         .values(input.equipmentIds.map((equipmentId) => ({ exerciseId: row.id, equipmentId })));
     }
     return c.json(
-      { ...serializeBase(row), muscles: input.muscles, equipmentIds: input.equipmentIds },
+      { ...serializeBase(row), muscleIds: input.muscleIds, equipmentIds: input.equipmentIds },
       201,
     );
   },
@@ -412,12 +395,10 @@ exercisesRoute.openapi(
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
 
-    if (input.muscles !== undefined) {
+    if (input.muscleIds !== undefined) {
       await db.delete(exerciseMuscles).where(eq(exerciseMuscles.exerciseId, id));
-      if (input.muscles.length) {
-        await db.insert(exerciseMuscles).values(
-          input.muscles.map((m) => ({ exerciseId: id, muscleId: m.muscleId, role: m.role })),
-        );
+      if (input.muscleIds.length) {
+        await db.insert(exerciseMuscles).values(input.muscleIds.map((muscleId) => ({ exerciseId: id, muscleId })));
       }
     }
     if (input.equipmentIds !== undefined) {

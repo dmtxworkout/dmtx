@@ -1,12 +1,12 @@
 'use client';
 
-// Pickers for an exercise's tags, in the style of Shopify's product tags: the
+// Pickers for an exercise's tags (muscles, equipment), in the style of Shopify's product tags: the
 // field shows the chosen tags and an "Agregar" button that opens a popover
 // where existing tags are searched and ticked, and a name that doesn't exist
 // yet is created right there ("Agregar «…»").
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Equipment, ExerciseMuscleInput, Muscle, MuscleRole, Taxonomy } from '@dmtx/schemas';
+import type { Equipment, Muscle, Taxonomy } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -203,52 +203,37 @@ function Chip({ children, className }: { children: ReactNode; className?: string
 
 // --- Muscles -----------------------------------------------------------------
 
-export function MusclePicker({ value, onChange }: { value: ExerciseMuscleInput[]; onChange: (v: ExerciseMuscleInput[]) => void }) {
+export function MusclePicker({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
   const { data } = useTaxonomy();
   const cache = useTaxonomyCache();
   const muscles = data?.muscles ?? [];
-  const selected = useMemo(() => new Set(value.map((v) => v.muscleId)), [value]);
-
-  const add = (muscleId: string) => onChange([...value, { muscleId, role: value.length ? 'secondary' : 'primary' }]);
-  const remove = (muscleId: string) => onChange(value.filter((v) => v.muscleId !== muscleId));
-  const toggle = (id: string) => (selected.has(id) ? remove(id) : add(id));
-  const setRole = (muscleId: string, role: MuscleRole) => onChange(value.map((v) => (v.muscleId === muscleId ? { ...v, role } : v)));
+  const selected = useMemo(() => new Set(value), [value]);
+  const toggle = (id: string) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <TagPopover
-        addLabel="Agregar músculos"
-        placeholder="Buscar o agregar músculos"
-        sections={[{ items: muscles }]}
-        selected={selected}
-        onToggle={toggle}
-        onCreate={async (name) => {
-          const m: Muscle = await api.taxonomy.createMuscle({ name });
-          cache.patch((t) => ({ ...t, muscles: [...t.muscles, m] }));
-          add(m.id);
-        }}
-        chips={value.map((v) => {
-          const m = muscles.find((x) => x.id === v.muscleId);
-          return (
-            <Chip key={v.muscleId} className={v.role === 'primary' ? 'border-accent bg-accent-tint text-accent-dark' : 'border-line-2 bg-surface-2 text-ink-2'}>
-              <span className="font-semibold">{m?.name ?? '…'}</span>
-              <button
-                type="button"
-                onClick={() => setRole(v.muscleId, v.role === 'primary' ? 'secondary' : 'primary')}
-                className="rounded-full px-1 font-mono text-[10px] uppercase tracking-[0.08em] opacity-80 hover:opacity-100"
-                title="Cambiar entre principal y secundario"
-              >
-                {v.role === 'primary' ? 'principal' : 'secundario'}
-              </button>
-              <button type="button" onClick={() => remove(v.muscleId)} className="rounded-full px-1 text-faint-2 hover:text-accent-dark" aria-label={`Quitar ${m?.name ?? ''}`}>
-                ✕
-              </button>
-            </Chip>
-          );
-        })}
-      />
-      <p className="text-[11px] leading-snug text-muted">El primero es el principal; pulsa la etiqueta de un músculo para cambiar principal / secundario.</p>
-    </div>
+    <TagPopover
+      addLabel="Agregar músculos"
+      placeholder="Buscar o agregar músculos"
+      sections={[{ items: muscles }]}
+      selected={selected}
+      onToggle={toggle}
+      onCreate={async (name) => {
+        const m: Muscle = await api.taxonomy.createMuscle({ name });
+        cache.patch((t) => ({ ...t, muscles: [...t.muscles, m] }));
+        onChange([...value, m.id]);
+      }}
+      chips={value.map((id) => {
+        const m = muscles.find((x) => x.id === id);
+        return (
+          <Chip key={id} className="border-line-2 bg-surface-2 text-ink-2">
+            <span className="font-semibold">{m?.name ?? '…'}</span>
+            <button type="button" onClick={() => toggle(id)} className="rounded-full px-1 text-faint-2 hover:text-accent-dark" aria-label={`Quitar ${m?.name ?? ''}`}>
+              ✕
+            </button>
+          </Chip>
+        );
+      })}
+    />
   );
 }
 

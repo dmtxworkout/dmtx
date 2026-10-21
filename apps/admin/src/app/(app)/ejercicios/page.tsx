@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { BulkExerciseInput, ExerciseMuscleInput } from '@dmtx/schemas';
+import type { BulkExerciseInput } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn, formatDateEs } from '@/lib/utils';
@@ -33,7 +33,7 @@ export default function ExercisesPage() {
   const [archived, setArchived] = useState<Archived>('false');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulk, setBulk] = useState<Bulk | null>(null);
-  const [muscles, setMuscles] = useState<ExerciseMuscleInput[]>([]);
+  const [muscleIds, setMuscleIds] = useState<string[]>([]);
   const [equipmentIds, setEquipmentIds] = useState<string[]>([]);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
@@ -53,7 +53,7 @@ export default function ExercisesPage() {
 
   // Tags the selected exercises carry, for the "Quitar…" dialogs.
   const removable = useMemo(() => {
-    const ms = new Set(chosen.flatMap((e) => e.muscles.map((m) => m.muscleId)));
+    const ms = new Set(chosen.flatMap((e) => e.muscleIds));
     const eqs = new Set(chosen.flatMap((e) => e.equipmentIds));
     return {
       muscles: (taxonomy?.muscles ?? []).filter((m) => ms.has(m.id)),
@@ -62,7 +62,7 @@ export default function ExercisesPage() {
   }, [chosen, taxonomy]);
 
   const openBulk = (b: Bulk) => {
-    setMuscles([]);
+    setMuscleIds([]);
     setEquipmentIds([]);
     setTicked(new Set());
     setBulk(b);
@@ -163,12 +163,12 @@ export default function ExercisesPage() {
                   Agregar equipo
                 </Button>
                 {archived !== 'true' && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => run.mutate({ action: 'archive', muscles: [], muscleIds: [], equipmentIds: [] })} disabled={run.isPending}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => run.mutate({ action: 'archive', muscleIds: [], equipmentIds: [] })} disabled={run.isPending}>
                     Archivar
                   </Button>
                 )}
                 {archived !== 'false' && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => run.mutate({ action: 'restore', muscles: [], muscleIds: [], equipmentIds: [] })} disabled={run.isPending}>
+                  <Button type="button" variant="outline" size="sm" onClick={() => run.mutate({ action: 'restore', muscleIds: [], equipmentIds: [] })} disabled={run.isPending}>
                     Restaurar
                   </Button>
                 )}
@@ -243,11 +243,7 @@ export default function ExercisesPage() {
                     {e.description && <div className="truncate font-mono text-[11px] text-muted">{e.description}</div>}
                   </div>
                   <div className="min-w-0 truncate text-[13px] text-ink-2">
-                    {e.muscles
-                      .filter((m) => m.role === 'primary')
-                      .map((m) => muscleName(m.muscleId))
-                      .filter(Boolean)
-                      .join(', ') || <span className="text-faint-2">—</span>}
+                    {e.muscleIds.map(muscleName).filter(Boolean).join(', ') || <span className="text-faint-2">—</span>}
                   </div>
                   <span className="text-[13px] text-ink-2">{es.difficulty[e.difficulty]}</span>
                   <span>{e.archivedAt && <Badge tone="archived">Archivado</Badge>}</span>
@@ -269,21 +265,20 @@ export default function ExercisesPage() {
         <div className="flex flex-col gap-4 p-5">
           <p className="text-[13px] text-ink-2">
             A {selected.size === 1 ? '1 ejercicio' : `${selected.size} ejercicios`}. Lo que ya tengan se mantiene.
-            {bulk === 'add_muscles' && ' Un músculo marcado como principal pasa a ser el principal de todos.'}
           </p>
-          {bulk === 'add_muscles' ? <MusclePicker value={muscles} onChange={setMuscles} /> : <EquipmentPicker value={equipmentIds} onChange={setEquipmentIds} />}
+          {bulk === 'add_muscles' ? <MusclePicker value={muscleIds} onChange={setMuscleIds} /> : <EquipmentPicker value={equipmentIds} onChange={setEquipmentIds} />}
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setBulk(null)}>
               {es.app.cancel}
             </Button>
             <Button
               type="button"
-              disabled={run.isPending || (bulk === 'add_muscles' ? muscles.length === 0 : equipmentIds.length === 0)}
+              disabled={run.isPending || (bulk === 'add_muscles' ? muscleIds.length === 0 : equipmentIds.length === 0)}
               onClick={() =>
                 run.mutate(
                   bulk === 'add_muscles'
-                    ? { action: 'add_muscles', muscles, muscleIds: [], equipmentIds: [] }
-                    : { action: 'add_equipment', muscles: [], muscleIds: [], equipmentIds },
+                    ? { action: 'add_muscles', muscleIds, equipmentIds: [] }
+                    : { action: 'add_equipment', muscleIds: [], equipmentIds },
                 )
               }
             >
@@ -327,8 +322,8 @@ export default function ExercisesPage() {
               onClick={() =>
                 run.mutate(
                   bulk === 'remove_muscles'
-                    ? { action: 'remove_muscles', muscles: [], muscleIds: [...ticked], equipmentIds: [] }
-                    : { action: 'remove_equipment', muscles: [], muscleIds: [], equipmentIds: [...ticked] },
+                    ? { action: 'remove_muscles', muscleIds: [...ticked], equipmentIds: [] }
+                    : { action: 'remove_equipment', muscleIds: [], equipmentIds: [...ticked] },
                 )
               }
             >
@@ -348,7 +343,7 @@ export default function ExercisesPage() {
             <Button type="button" variant="outline" onClick={() => setBulk(null)}>
               {es.app.cancel}
             </Button>
-            <Button type="button" disabled={run.isPending} onClick={() => run.mutate({ action: 'delete', muscles: [], muscleIds: [], equipmentIds: [] })}>
+            <Button type="button" disabled={run.isPending} onClick={() => run.mutate({ action: 'delete', muscleIds: [], equipmentIds: [] })}>
               {run.isPending ? es.app.saving : es.app.delete}
             </Button>
           </div>

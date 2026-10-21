@@ -1,13 +1,7 @@
 import { z } from 'zod';
-import { difficultySchema, muscleRoleSchema } from '../enums';
+import { difficultySchema } from '../enums';
 import { tempoSchema } from '../tempo';
 import { slugSchema, updateSchemaOf, uuidSchema } from '../common';
-
-export const exerciseMuscleInputSchema = z.object({
-  muscleId: uuidSchema,
-  role: muscleRoleSchema,
-});
-export type ExerciseMuscleInput = z.infer<typeof exerciseMuscleInputSchema>;
 
 /** Payload to create an exercise. `slug` is derived from `name` when omitted. */
 export const createExerciseSchema = z.object({
@@ -22,7 +16,7 @@ export const createExerciseSchema = z.object({
   defaultTempo: tempoSchema.nullish(),
   demoVideoAssetId: uuidSchema.nullish(),
   thumbnailAssetId: uuidSchema.nullish(),
-  muscles: z.array(exerciseMuscleInputSchema).default([]),
+  muscleIds: z.array(uuidSchema).default([]),
   equipmentIds: z.array(uuidSchema).default([]),
 });
 export type CreateExerciseInput = z.infer<typeof createExerciseSchema>;
@@ -40,7 +34,6 @@ export type UpdateExerciseInput = z.infer<typeof updateExerciseSchema>;
 export const bulkExerciseSchema = z.object({
   ids: z.array(uuidSchema).min(1).max(500),
   action: z.enum(['archive', 'restore', 'delete', 'add_muscles', 'remove_muscles', 'add_equipment', 'remove_equipment']),
-  muscles: z.array(exerciseMuscleInputSchema).default([]),
   muscleIds: z.array(uuidSchema).default([]),
   equipmentIds: z.array(uuidSchema).default([]),
 });
@@ -67,7 +60,7 @@ export const exerciseSchema = z.object({
   archivedAt: z.iso.datetime().nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
-  muscles: z.array(exerciseMuscleInputSchema),
+  muscleIds: z.array(uuidSchema),
   equipmentIds: z.array(uuidSchema),
 });
 export type Exercise = z.infer<typeof exerciseSchema>;

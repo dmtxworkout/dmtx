@@ -245,7 +245,7 @@ taxonomyRoute.openapi(
   },
 );
 
-/** The primary muscles and the equipment behind a set of exercises (a rutina's tags). */
+/** The muscles and the equipment behind a set of exercises (a rutina's tags). */
 export async function tagsForExercises(db: Database, exerciseIds: string[]) {
   if (!exerciseIds.length) return { muscles: [] as { slug: string; name: string }[], equipment: [] as { slug: string; name: string }[] };
   const [g, e] = await Promise.all([
@@ -253,7 +253,7 @@ export async function tagsForExercises(db: Database, exerciseIds: string[]) {
       .selectDistinct({ slug: muscles.slug, name: muscles.name, position: muscles.position })
       .from(exerciseMuscles)
       .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
-      .where(and(inArray(exerciseMuscles.exerciseId, exerciseIds), eq(exerciseMuscles.role, 'primary'))),
+      .where(inArray(exerciseMuscles.exerciseId, exerciseIds)),
     db
       .selectDistinct({ slug: equipment.slug, name: equipment.name, position: equipment.position })
       .from(exerciseEquipment)

@@ -7,7 +7,7 @@ import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 import { DIFFICULTY, difficultySchema } from '@dmtx/schemas';
-import type { CreateExerciseInput, Exercise, ExerciseMuscleInput } from '@dmtx/schemas';
+import type { CreateExerciseInput, Exercise } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
@@ -146,7 +146,7 @@ export function ExerciseForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [cues, setCues] = useState<string[]>(exercise?.cues ?? []);
   const [aliases, setAliases] = useState<string[]>(exercise?.aliases ?? []);
-  const [muscles, setMuscles] = useState<ExerciseMuscleInput[]>(exercise?.muscles ?? []);
+  const [muscleIds, setMuscleIds] = useState<string[]>(exercise?.muscleIds ?? []);
   const [equipmentIds, setEquipmentIds] = useState<string[]>(exercise?.equipmentIds ?? []);
 
   const form = useForm<FormValues>({
@@ -162,18 +162,18 @@ export function ExerciseForm({
     values: FormValues;
     cues: string[];
     aliases: string[];
-    muscles: ExerciseMuscleInput[];
+    muscleIds: string[];
     equipmentIds: string[];
     thumbnailAssetId: string | null;
     demoVideoAssetId: string | null;
   };
   const watched = form.watch();
-  const current: Snapshot = { values: watched, cues, aliases, muscles, equipmentIds, thumbnailAssetId, demoVideoAssetId };
+  const current: Snapshot = { values: watched, cues, aliases, muscleIds, equipmentIds, thumbnailAssetId, demoVideoAssetId };
   const [baseline, setBaseline] = useState<Snapshot>(() => ({
     values: exercise ? toDefaults(exercise) : { ...emptyValues, name: initialName ?? '' },
     cues: exercise?.cues ?? [],
     aliases: exercise?.aliases ?? [],
-    muscles: exercise?.muscles ?? [],
+    muscleIds: exercise?.muscleIds ?? [],
     equipmentIds: exercise?.equipmentIds ?? [],
     thumbnailAssetId: exercise?.thumbnailAssetId ?? null,
     demoVideoAssetId: exercise?.demoVideoAssetId ?? null,
@@ -187,7 +187,7 @@ export function ExerciseForm({
     form.reset(baseline.values);
     setCues(baseline.cues);
     setAliases(baseline.aliases);
-    setMuscles(baseline.muscles);
+    setMuscleIds(baseline.muscleIds);
     setEquipmentIds(baseline.equipmentIds);
     setThumbnailAssetId(baseline.thumbnailAssetId);
     setDemoVideoAssetId(baseline.demoVideoAssetId);
@@ -204,7 +204,7 @@ export function ExerciseForm({
         difficulty: values.difficulty,
         thumbnailAssetId,
         demoVideoAssetId,
-        muscles,
+        muscleIds,
         equipmentIds,
       };
       if (exercise) return api.exercises.update(exercise.id, base);
@@ -223,7 +223,7 @@ export function ExerciseForm({
         values: toDefaults(saved),
         cues: saved.cues,
         aliases: saved.aliases,
-        muscles: saved.muscles,
+        muscleIds: saved.muscleIds,
         equipmentIds: saved.equipmentIds,
         thumbnailAssetId: saved.thumbnailAssetId,
         demoVideoAssetId: saved.demoVideoAssetId,
@@ -412,7 +412,7 @@ export function ExerciseForm({
                 <CardTitle>Músculos</CardTitle>
               </CardHeader>
               <CardContent className="py-4">
-                <MusclePicker value={muscles} onChange={setMuscles} />
+                <MusclePicker value={muscleIds} onChange={setMuscleIds} />
               </CardContent>
             </Card>
             <Card className="overflow-visible">

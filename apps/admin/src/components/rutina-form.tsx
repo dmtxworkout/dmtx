@@ -337,7 +337,7 @@ export function RutinaForm({
     [exList],
   );
   const catalogReady = !!exList;
-  /** What the editor's hover card says about an exercise: primary muscles and equipment. */
+  /** What the editor's hover card says about an exercise: its muscles and equipment. */
   const describeExercise = (id: string) => {
     const ex = exList?.data.find((e) => e.id === id);
     if (!ex) return null;
@@ -345,7 +345,7 @@ export function RutinaForm({
     const equipmentName = (eid: string) => taxonomy?.equipment.find((e) => e.id === eid)?.name;
     return {
       name: ex.name,
-      muscles: ex.muscles.filter((m) => m.role === 'primary').map((m) => muscleName(m.muscleId)).filter((n): n is string => !!n),
+      muscles: ex.muscleIds.map(muscleName).filter((n): n is string => !!n),
       equipment: ex.equipmentIds.map(equipmentName).filter((n): n is string => !!n),
       archived: !!ex.archivedAt,
     };

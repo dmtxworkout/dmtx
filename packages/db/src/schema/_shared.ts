@@ -14,7 +14,6 @@ import {
   MEASUREMENT_TYPE,
   MEDIA_KIND,
   MEDIA_PROCESSING_STATUS,
-  MUSCLE_ROLE,
   PAYMENT_STATUS,
   PROGRAM_TYPE,
   SUBSCRIPTION_STATUS,
@@ -26,7 +25,6 @@ import {
 export const contentStatusEnum = pgEnum('content_status', CONTENT_STATUS);
 export const difficultyEnum = pgEnum('difficulty', DIFFICULTY);
 export const measurementTypeEnum = pgEnum('measurement_type', MEASUREMENT_TYPE);
-export const muscleRoleEnum = pgEnum('muscle_role', MUSCLE_ROLE);
 export const workoutTypeEnum = pgEnum('workout_type', WORKOUT_TYPE);
 export const workoutFormatEnum = pgEnum('workout_format', WORKOUT_FORMAT);
 export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);

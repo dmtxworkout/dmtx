@@ -24,10 +24,6 @@ export const MEASUREMENT_TYPE = ['reps', 'time', 'distance'] as const;
 export const measurementTypeSchema = enumOf(MEASUREMENT_TYPE);
 export type MeasurementType = z.infer<typeof measurementTypeSchema>;
 
-export const MUSCLE_ROLE = ['primary', 'secondary'] as const;
-export const muscleRoleSchema = enumOf(MUSCLE_ROLE);
-export type MuscleRole = z.infer<typeof muscleRoleSchema>;
-
 
 // --- Workouts (rutinas) ------------------------------------------------------
 export const WORKOUT_TYPE = ['structured', 'video'] as const;
