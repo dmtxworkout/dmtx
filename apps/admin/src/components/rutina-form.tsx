@@ -1,24 +1,28 @@
 'use client';
 
+// Rutina editor. The structure (format, sections, blocks, exercises) is written
+// as text in the rutina notation and parsed live by @dmtx/core; everything
+// else (name, status, difficulty, media) lives in the header + settings drawer.
 import { useRouter } from 'next/navigation';
-import { Fragment, useEffect, useState, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CONTENT_STATUS, DIFFICULTY, WORKOUT_FORMAT } from '@dmtx/schemas';
-import type {
-  BlockSection,
-  BlockType,
-  CreateWorkoutInput,
-  FormatConfig,
-  LoadPrescription,
-  MeasurementType,
-  Tempo,
-  TempoPhase,
-  Workout,
-  WorkoutFormat,
-  WorkoutKind,
-  WorkoutListItem,
-} from '@dmtx/schemas';
-import type { ExerciseListItem } from '@dmtx/api-client';
+import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
+import {
+  Catalog,
+  formatDistance,
+  formatDuration,
+  formatHeader,
+  loadText,
+  parseRutina,
+  serializeRutina,
+  tempoText,
+  toWorkoutInput,
+  type CompletionExtra,
+  type ParsedBlock,
+  type ParsedItem,
+  type ParsedRutina,
+} from '@dmtx/core';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
@@ -28,9 +32,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { Select } from '@/components/ui/select';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
-import { MediaThumb } from '@/components/media-thumb';
-import { EntityPicker } from '@/components/entity-picker';
 import { toast } from '@/components/ui/toast';
+import { RutinaTextEditor, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import {
   RutinaPreview,
   type PvBlock,
@@ -48,391 +51,251 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   for_time: 'Por tiempo',
   circuit: 'Circuito',
 };
-const ALL_FORMATS = Object.keys(FORMAT_LABEL) as WorkoutFormat[];
 
-// One-liners shown on the format cards in the create wizard.
-const FORMAT_DESC: Record<WorkoutFormat, string> = {
-  amrap: 'Rondas máximas en un tiempo límite.',
-  emom: 'Un ejercicio por intervalo (cada minuto).',
-  tabata: 'Intervalos fijos de trabajo y descanso.',
-  strength: 'Series × reps con carga y descanso.',
-  chipper: 'Una lista larga, una vez, lo más rápido.',
-  for_time: 'Completa el trabajo lo antes posible.',
-  circuit: 'Vueltas a un circuito de estaciones.',
+
+const SECTION_TITLE: Record<'warmup' | 'cooldown', string> = {
+  warmup: 'Calentamiento',
+  cooldown: 'Enfriamiento',
 };
+const indentOf = (l: string) => l.length - l.trimStart().length;
 
-// Timing config per format. `duration` renders as min:sec, `seconds` as a
-// plain seconds box, `count` as an integer. All persist as their raw number in
-// formatCfg (seconds for duration/seconds, the integer for count).
-type CfgKind = 'duration' | 'seconds' | 'count';
-type CfgField = { key: string; label: string; kind: CfgKind };
-const FORMAT_FIELDS: Record<WorkoutFormat, CfgField[]> = {
-  amrap: [{ key: 'totalSeconds', label: 'Duración total', kind: 'duration' }],
-  emom: [
-    { key: 'intervalSeconds', label: 'Cada', kind: 'duration' },
-    { key: 'rounds', label: 'Rondas', kind: 'count' },
-  ],
-  tabata: [
-    { key: 'rounds', label: 'Rondas', kind: 'count' },
-    { key: 'workSeconds', label: 'Trabajo', kind: 'seconds' },
-    { key: 'restSeconds', label: 'Descanso', kind: 'seconds' },
-  ],
-  strength: [],
-  chipper: [{ key: 'timeCapSeconds', label: 'Tiempo límite', kind: 'duration' }],
-  for_time: [
-    { key: 'rounds', label: 'Rondas', kind: 'count' },
-    { key: 'timeCapSeconds', label: 'Tiempo límite', kind: 'duration' },
-  ],
-  circuit: [
-    { key: 'rounds', label: 'Rondas', kind: 'count' },
-    { key: 'restBetweenRoundsSeconds', label: 'Descanso/ronda', kind: 'seconds' },
-    { key: 'timeCapSeconds', label: 'Tiempo límite', kind: 'duration' },
-  ],
-};
+const PLACEHOLDER = `Calentamiento
+  5 min remo suave
 
-// Plain-language explainer so the per-exercise fields make sense for the format.
-const FORMAT_HELP: Record<WorkoutFormat, string> = {
-  amrap: 'Repite todos los bloques, en orden, hasta que se acabe el tiempo. Usa "Rondas" del bloque para sub-secciones (p. ej. un bloque de "3 rondas de…").',
-  emom: 'Cada intervalo haces un ejercicio y descansas lo que sobre. Los ejercicios rotan por los intervalos; "Rondas" es cuántos intervalos en total.',
-  tabata: 'Trabajo/descanso fijos por N rondas (global). Los ejercicios rotan; sólo indica cuáles y su carga.',
-  strength: 'Series × reps con carga y descanso entre series.',
-  chipper: 'Haz cada ejercicio una vez, en orden, lo más rápido posible.',
-  for_time: 'Completa el trabajo prescrito lo antes posible (opcional: tiempo límite).',
-  circuit: 'Vueltas al circuito; las reps son por estación (las rondas se definen arriba).',
-};
+AMRAP 12 min
+  10 burpees
+  15 sentadillas
+  plancha 30s
 
-/** Which per-exercise columns a format shows. Only strength uses sets + rest-per-set. */
-function itemColumns(format: WorkoutFormat) {
-  const strength = format === 'strength';
-  return { showSets: strength, showRest: strength, showTarget: format !== 'tabata' };
-}
+  3 rondas
+    10 flexiones de pecho
+    descanso 1 min`;
 
-
-type TargetField = 'reps' | 'workSeconds' | 'distanceMeters';
-/** The prescription field follows the exercise's own measurement type. */
-function targetField(m?: MeasurementType): TargetField {
-  if (m === 'time') return 'workSeconds';
-  if (m === 'distance') return 'distanceMeters';
-  return 'reps';
-}
-// Per-item measurement toggle (overrides the exercise's default type).
-const MEASURES: { v: MeasurementType; label: string }[] = [
-  { v: 'reps', label: 'reps' },
-  { v: 'time', label: 'seg' },
-  { v: 'distance', label: 'dist' },
+// Complete reference shown in the right column.
+type GuideRow = { k: string; v: string };
+const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
+  {
+    title: 'Estructura',
+    rows: [
+      { k: 'AMRAP 12 min', v: 'una parte: su formato y, indentado debajo, su contenido. Puede haber varias partes seguidas' },
+      { k: '41 burpees', v: 'un ejercicio por línea: cantidad + nombre' },
+      { k: '3 rondas:', v: 'bloque; sus ejercicios van indentados debajo y se cierra con línea en blanco' },
+      { k: 'Superserie:', v: 'bloque tipo superserie (admite "Superserie 3 rondas:")' },
+      { k: '3 rondas, descanso 1 min:', v: 'descanso al final de cada ronda' },
+      { k: 'descanso 90s', v: 'descanso suelto entre ejercicios' },
+      { k: 'Calentamiento · Enfriamiento', v: 'secciones opcionales: lo indentado debajo pertenece a ellas; al volver a la columna 0 sigue la rutina' },
+      { k: 'Sangría', v: 'como en Python: lo indentado va dentro de la línea de arriba (sección, formato o bloque)' },
+      { k: '// nota', v: 'comentario de línea completa' },
+    ],
+  },
+  {
+    title: 'Formatos',
+    rows: [
+      { k: 'AMRAP 12 min', v: 'máximas rondas en el tiempo' },
+      { k: 'EMOM 10 min · EMOM 10 x 90s', v: 'cada intervalo un ejercicio; "min 2:" fija el intervalo' },
+      { k: 'Tabata 8 x 20/10', v: 'rondas × trabajo/descanso (los ejercicios no llevan cantidad)' },
+      { k: 'For time · For time cap 20 min', v: 'lo más rápido posible, con tope opcional' },
+      { k: 'For time 5 rondas', v: 'rondas del total' },
+      { k: 'Chipper cap 25 min', v: 'lista completada una vez' },
+      { k: 'Fuerza', v: 'series × reps con carga y descanso' },
+      { k: 'Circuito 3 rondas descanso 1 min', v: 'vueltas al circuito' },
+    ],
+  },
+  {
+    title: 'Cantidades',
+    rows: [
+      { k: '41 burpees · burpees x41', v: 'repeticiones' },
+      { k: 'flexiones 3x5 · 3 series de 5', v: 'series × repeticiones' },
+      { k: 'plancha 30s · 1 min · 1:30', v: 'tiempo' },
+      { k: '3x45s plancha', v: 'series × tiempo' },
+      { k: '400 m carrera · remo 1 km', v: 'distancia' },
+      { k: '4x400 m carrera', v: 'series × distancia' },
+      { k: 'plancha max · al fallo', v: 'sin cantidad fija' },
+    ],
+  },
+  {
+    title: 'Carga',
+    rows: [
+      { k: '@60 kg · 60 kg', v: 'carga absoluta (kg por defecto)' },
+      { k: '@135/95 lb', v: 'hombres / mujeres' },
+      { k: '@80%', v: '% del 1RM' },
+      { k: '@RPE 8', v: 'esfuerzo percibido' },
+      { k: '+20 kg', v: 'añadido al peso corporal' },
+      { k: '@corporal', v: 'solo peso corporal' },
+    ],
+  },
+  {
+    title: 'Tempo',
+    rows: [
+      { k: 'tempo 0-3-1-1', v: 'hold arriba · negativa · hold abajo · positiva' },
+      { k: 'tempo 0-3-0-X', v: 'X = explosivo' },
+      { k: '@0311', v: 'forma corta' },
+    ],
+  },
+  {
+    title: 'Modificadores',
+    rows: [
+      { k: 'c/lado · por lado', v: 'cantidad por cada lado' },
+      { k: 'desc 90s', v: 'descanso entre series (Fuerza)' },
+      { k: 'min 2: 10 burpees', v: 'intervalo en EMOM' },
+      { k: '// despacio', v: 'nota que ve el usuario' },
+    ],
+  },
+  {
+    title: 'Editor',
+    rows: [
+      { k: 'Sugerencias', v: 'aparecen al escribir y al saltar de línea; Tab acepta, Esc cierra' },
+      { k: 'Enter', v: 'en línea vacía solo salta de línea aunque haya sugerencias' },
+      { k: 'Nombre de bloque o rutina', v: 'al inicio de línea inserta su contenido completo' },
+      { k: 'Guardar bloque', v: 'selecciona dos líneas o más y pulsa la acción que aparece junto a la selección' },
+      { k: 'Ejercicio desconocido', v: 'subrayado en rojo; "Crear ejercicio" lo añade al catálogo' },
+    ],
+  },
 ];
 
-// Tempo is set per rutina item (not on the exercise): a push-up is a push-up;
-// whether it's tempo depends on the workout. Stored as the item's tempoOverride.
-const TEMPO_PHASES = ['holdTop', 'eccentric', 'holdBottom', 'concentric'] as const;
-// Short phase labels for the compact tempo popover (arriba·baja·abajo·sube).
-const TEMPO_SHORT: Record<(typeof TEMPO_PHASES)[number], string> = {
-  holdTop: 'arriba',
-  eccentric: 'baja',
-  holdBottom: 'abajo',
-  concentric: 'sube',
-};
-type TempoStr = Record<(typeof TEMPO_PHASES)[number], string>;
-const emptyTempo = (): TempoStr => ({ holdTop: '', eccentric: '', holdBottom: '', concentric: '' });
+// ---- Text helpers ----------------------------------------------------------
 
-function parsePhase(v: string): TempoPhase | null {
-  const t = v.trim();
-  if (!t) return null;
-  if (t.toUpperCase() === 'X') return 'X';
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.round(n) : null;
-}
-function buildTempo(t: TempoStr): Tempo | null {
-  const phases = TEMPO_PHASES.map((p) => parsePhase(t[p]));
-  if (phases.every((p) => p === null)) return null;
-  const [holdTop, eccentric, holdBottom, concentric] = phases.map((p) => p ?? 0);
-  return { holdTop, eccentric, holdBottom, concentric } as Tempo;
-}
-const tempoStrFrom = (t?: Tempo | null): TempoStr =>
-  t
-    ? {
-        holdTop: String(t.holdTop),
-        eccentric: String(t.eccentric),
-        holdBottom: String(t.holdBottom),
-        concentric: String(t.concentric),
+const SECTION_LINE =
+  /^\s*(calentamiento|warm ?-?up|enfriamiento|cool ?-?down|vuelta a la calma|principal|main|rutina|wod)\s*:?\s*$/i;
+const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const sectionOf = (line: string): BlockSection | null => {
+  const m = fold(line).match(SECTION_LINE);
+  if (!m) return null;
+  const k = m[1]!.replace(/\s+/g, ' ');
+  if (k.startsWith('calent') || k.startsWith('warm')) return 'warmup';
+  if (k.startsWith('enfri') || k.startsWith('cool') || k.startsWith('vuelta')) return 'cooldown';
+  return 'main';
+};
+
+/**
+ * Replace (or append) a warmup/cooldown section with `body` lines, written
+ * Python-style: the title, then the body indented under it.
+ */
+function replaceSection(text: string, section: 'warmup' | 'cooldown', body: string[]): string {
+  const lines = text.replace(/\s+$/, '').split('\n');
+  const start = lines.findIndex((l) => sectionOf(l) === section);
+  // The existing section's end: an indented section ends on dedent, a flat
+  // (legacy, colon style) one at the next header.
+  let end = lines.length;
+  if (start >= 0) {
+    const headIndent = indentOf(lines[start]!);
+    const firstContent = lines.slice(start + 1).find((l) => l.trim());
+    const indentMode = firstContent != null && indentOf(firstContent) > headIndent;
+    for (let k = start + 1; k < lines.length; k += 1) {
+      const l = lines[k]!;
+      if (!l.trim()) continue;
+      const shallow = indentOf(l) <= headIndent;
+      if ((sectionOf(l) !== null && shallow) || (indentMode && shallow)) {
+        end = k;
+        break;
       }
-    : emptyTempo();
-/** Compact label like "1·2·0·X"; null when unset. */
-const tempoLabel = (t: TempoStr): string | null =>
-  TEMPO_PHASES.some((p) => t[p].trim()) ? TEMPO_PHASES.map((p) => t[p].trim() || '0').join('·') : null;
-
-type ItemKind = 'exercise' | 'rest';
-type ItemState = {
-  key: string;
-  kind: ItemKind;
-  exerciseId: string;
-  measure: MeasurementType | ''; // '' inherits the exercise's default
-  sets: string;
-  reps: string;
-  workSeconds: string; // rest items store their duration here
-  distanceMeters: string;
-  rest: string;
-  carga: string;
-  tempo: TempoStr;
-};
-
-const emptyItem = (exerciseId: string): ItemState => ({
-  key: uid(),
-  kind: 'exercise',
-  exerciseId,
-  measure: '',
-  sets: '',
-  reps: '',
-  workSeconds: '',
-  distanceMeters: '',
-  rest: '',
-  carga: '',
-  tempo: emptyTempo(),
-});
-const restItem = (): ItemState => ({ ...emptyItem(''), kind: 'rest' });
-
-// 'single' is a builder-only kind: a loose exercise done once. It persists as a
-// group block with one item and no rounds; on reload we detect it the same way.
-type BlockKind = 'single' | 'group' | 'rest';
-type BlockState = {
-  key: string;
-  kind: BlockKind;
-  section: BlockSection;
-  name: string;
-  type: BlockType;
-  rounds: string;
-  items: ItemState[];
-};
-
-const emptyBlock = (): BlockState => ({
-  key: uid(),
-  kind: 'group',
-  section: 'main',
-  name: '',
-  type: 'single',
-  rounds: '',
-  items: [],
-});
-
-/** A loose exercise: one exercise, done once (no block wrapper). */
-const singleBlock = (exerciseId: string, section: BlockSection = 'main'): BlockState => ({
-  ...emptyBlock(),
-  kind: 'single',
-  section,
-  items: [emptyItem(exerciseId)],
-});
-
-/** A loose rest: a rest-kind block holding a single rest item. */
-const restBlock = (): BlockState => ({ ...emptyBlock(), kind: 'rest', items: [restItem()] });
-
-const uid = () => crypto.randomUUID();
-const num = (s: string): number | null => {
-  const t = s.trim();
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? Math.round(n) : null;
-};
-
-function loadToStr(l?: LoadPrescription | null): string {
-  if (!l) return '';
-  if (l.type === 'absolute') return String(l.value);
-  if (l.type === 'percent_1rm') return `${l.value}%`;
-  if (l.type === 'rpe') return `RPE ${l.value}`;
-  return '';
-}
-function strToLoad(s: string): LoadPrescription | null {
-  const t = s.trim();
-  if (!t) return null;
-  if (t.endsWith('%')) {
-    const v = Number(t.slice(0, -1));
-    return Number.isFinite(v) ? { type: 'percent_1rm', value: v } : null;
-  }
-  const rpe = t.match(/rpe\s*(\d+(?:\.\d+)?)/i);
-  if (rpe) return { type: 'rpe', value: Number(rpe[1]) };
-  const n = Number(t);
-  return Number.isFinite(n) ? { type: 'absolute', value: n, unit: 'kg' } : null;
-}
-
-function buildFormatConfig(format: WorkoutFormat, cfg: Record<string, string>): FormatConfig {
-  const n = (k: string, d = 0) => {
-    const x = Number(cfg[k]);
-    return Number.isFinite(x) && x > 0 ? Math.round(x) : d;
-  };
-  switch (format) {
-    case 'amrap':
-      return { format, configVersion: 1, totalSeconds: n('totalSeconds', 600) };
-    case 'emom':
-      return { format, configVersion: 1, intervalSeconds: n('intervalSeconds', 60), rounds: n('rounds', 10) };
-    case 'tabata':
-      return {
-        format,
-        configVersion: 1,
-        workSeconds: n('workSeconds', 20),
-        restSeconds: Math.max(0, Number(cfg.restSeconds) || 10),
-        rounds: n('rounds', 8),
-      };
-    case 'strength':
-      return { format, configVersion: 1 };
-    case 'chipper': {
-      const t = n('timeCapSeconds');
-      return { format, configVersion: 1, ...(t > 0 ? { timeCapSeconds: t } : {}) };
-    }
-    case 'for_time': {
-      const t = n('timeCapSeconds');
-      const r = n('rounds');
-      return { format, configVersion: 1, ...(t > 0 ? { timeCapSeconds: t } : {}), ...(r > 0 ? { rounds: r } : {}) };
-    }
-    case 'circuit': {
-      const r = n('rounds');
-      const rest = n('restBetweenRoundsSeconds');
-      const t = n('timeCapSeconds');
-      return {
-        format,
-        configVersion: 1,
-        ...(r > 0 ? { rounds: r } : {}),
-        ...(rest > 0 ? { restBetweenRoundsSeconds: rest } : {}),
-        ...(t > 0 ? { timeCapSeconds: t } : {}),
-      };
     }
   }
-}
-
-const mmss = (t: number) => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
-
-// Compact timing summary shown after the format name, e.g. "10 min" (AMRAP) or
-// "5:00 × 5" (EMOM). Whole-minute durations read as "N min".
-function formatHeadline(format: WorkoutFormat, cfg: Record<string, string>): string {
-  const n = (k: string) => {
-    const v = Number(cfg[k]);
-    return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
-  };
-  const dur = (s: number) => (s % 60 === 0 ? `${s / 60} min` : mmss(s));
-  const join = (...parts: string[]) => parts.filter(Boolean).join(' · ');
-  switch (format) {
-    case 'amrap':
-      return n('totalSeconds') ? dur(n('totalSeconds')) : '';
-    case 'emom':
-      return [n('intervalSeconds') ? mmss(n('intervalSeconds')) : '', n('rounds') ? `× ${n('rounds')}` : '']
-        .filter(Boolean)
-        .join(' ');
-    case 'tabata':
-      return [n('rounds') ? `${n('rounds')} ×` : '', n('workSeconds') || n('restSeconds') ? `${n('workSeconds')}s/${n('restSeconds')}s` : '']
-        .filter(Boolean)
-        .join(' ');
-    case 'chipper':
-      return n('timeCapSeconds') ? `límite ${dur(n('timeCapSeconds'))}` : '';
-    case 'for_time':
-      return join(n('rounds') ? `${n('rounds')} rondas` : '', n('timeCapSeconds') ? `límite ${dur(n('timeCapSeconds'))}` : '');
-    case 'circuit':
-      return join(n('rounds') ? `${n('rounds')} rondas` : '', n('restBetweenRoundsSeconds') ? `desc ${n('restBetweenRoundsSeconds')}s` : '');
-    default:
-      return '';
+  const block = [SECTION_TITLE[section], ...body.map((l) => (l.trim() ? `  ${l}` : l))];
+  if (start >= 0) {
+    return [...lines.slice(0, start), ...block, '', ...lines.slice(end)].join('\n').replace(/\n{3,}/g, '\n\n');
   }
+  if (section === 'warmup') return [...block, '', ...lines].join('\n');
+  return [...lines, '', ...block].join('\n') + '\n';
 }
 
-// Convert API workout blocks into editable builder state. `forceSection` re-tags
-// them (used to import a segment's blocks as inline warmup/cooldown), otherwise
-// each block keeps its own section.
-function apiBlocksToState(blocks: Workout['blocks'], forceSection?: BlockSection): BlockState[] {
-  return blocks.map((b) => ({
-    key: uid(),
-    // A group with a single exercise and no rounds reads back as a loose exercise.
-    kind:
-      b.kind === 'rest'
-        ? 'rest'
-        : b.items.length === 1 && b.items[0]?.kind === 'exercise' && (b.rounds ?? 1) <= 1
-          ? 'single'
-          : 'group',
-    section: forceSection ?? b.section ?? 'main',
-    name: b.label ?? '',
-    type: b.type,
-    rounds: b.rounds?.toString() ?? '',
-    items: b.items.map((it) => ({
-      key: uid(),
-      kind: it.kind,
-      exerciseId: it.exerciseId ?? '',
-      measure: it.measure ?? '',
-      sets: it.sets?.toString() ?? '',
-      reps: it.reps?.toString() ?? '',
-      workSeconds: it.workSeconds?.toString() ?? '',
-      distanceMeters: it.distanceMeters?.toString() ?? '',
-      rest: it.restBetweenSeconds?.toString() ?? '',
-      carga: loadToStr(it.loadPrescription),
-      tempo: tempoStrFrom(it.tempoOverride),
-    })),
-  }));
-}
-function initBlocks(w?: Workout): BlockState[] {
-  return w ? apiBlocksToState(w.blocks) : [];
-}
-// A FormatConfig object → the editable string-keyed record the config boxes use.
-function cfgFrom(c: unknown): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (c && typeof c === 'object')
-    for (const [k, v] of Object.entries(c))
-      if (k !== 'format' && k !== 'configVersion' && typeof v === 'number') out[k] = String(v);
-  return out;
-}
-function initCfg(w?: Workout): Record<string, string> {
-  return cfgFrom(w?.formatConfig);
+/** A segment's blocks as section body lines (its format header + items). */
+function segmentBody(src: Workout, catalog: Catalog): string[] {
+  const text = serializeRutina(
+    {
+      format: src.format ?? 'for_time',
+      formatConfig: src.formatConfig,
+      blocks: src.blocks.map((b) => ({ ...b, section: 'main' as const })),
+    },
+    catalog,
+  );
+  const lines = text.replace(/\s+$/, '').split('\n');
+  // Drop the serialized main header when the segment has no format of its own.
+  return src.format ? lines : lines.slice(1);
 }
 
-const boxCls =
-  'h-[30px] w-full rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
-
-// Anchor a floating (fixed-position) menu to a trigger, flipping it above the
-// trigger when there isn't room for `estHeight` px below it in the viewport.
-function menuAnchor(el: HTMLElement, estHeight: number) {
-  const r = el.getBoundingClientRect();
-  const spaceBelow = window.innerHeight - r.bottom;
-  const up = spaceBelow < estHeight + 16 && r.top > spaceBelow;
-  return { left: r.left + r.width / 2, top: up ? r.top - 6 : r.bottom + 6, up };
+/** Initial text for an existing rutina; a new one starts empty (the placeholder shows the way). */
+function initialText(workout: Workout | undefined, catalog: Catalog): string {
+  if (!workout) return '';
+  if (workout.type !== 'structured') return '';
+  return serializeRutina(workout, catalog);
 }
 
-// Serialize builder blocks into API payload. `fmt` decides which prescription
-// fields are kept (e.g. tabata has no target/sets/rest columns).
-function blocksToPayload(blockList: BlockState[], fmt: WorkoutFormat): CreateWorkoutInput['blocks'] {
-  const cols = itemColumns(fmt);
-  const toItem = (it: ItemState) => {
-    const rest = it.kind === 'rest';
-    return {
-      kind: it.kind,
-      exerciseId: rest ? null : it.exerciseId,
-      measure: rest ? null : it.measure || 'reps',
-      sets: rest ? null : cols.showSets ? num(it.sets) : null,
-      reps: rest ? null : num(it.reps),
-      workSeconds: num(it.workSeconds),
-      distanceMeters: rest ? null : num(it.distanceMeters),
-      restBetweenSeconds: rest ? null : cols.showRest ? num(it.rest) : null,
-      loadPrescription: rest ? null : strToLoad(it.carga),
-      tempoOverride: rest ? null : buildTempo(it.tempo),
-      perSide: false,
-    };
+// ---- Preview model from the parse result -------------------------------------
+
+function pvItem(it: ParsedItem): PvItem {
+  if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds };
+  const sets = it.sets && it.sets > 1 ? it.sets : null;
+  let prefix: string | null = null;
+  if (it.measure === 'time' && it.workSeconds != null) prefix = formatDuration(it.workSeconds);
+  else if (it.measure === 'distance' && it.distanceMeters != null)
+    prefix = formatDistance(it.distanceMeters);
+  else if (it.reps != null) prefix = String(it.reps);
+  if (sets && prefix) prefix = `${sets}×${prefix}`;
+  else if (sets) prefix = `${sets} series`;
+  const load = loadText(it.loadPrescription).replace(/^@/, '');
+  const tempo = tempoText(it.tempoOverride).replace(/^tempo /, '');
+  return {
+    kind: 'exercise',
+    prefix,
+    name: it.match?.name ?? it.rawName ?? '…',
+    load: load || null,
+    tempo: tempo ? tempo.replace(/-/g, '·') : null,
+    perSide: it.perSide,
+    note: it.notes,
   };
-  return blockList.map((b) => ({
-    kind: b.kind === 'single' ? 'group' : b.kind,
-    section: b.section,
-    type: b.type,
-    label: b.kind === 'single' ? null : b.name.trim() || null,
-    rounds: b.kind === 'single' ? null : num(b.rounds),
-    items: b.items.map(toItem),
-  }));
 }
+const pvBlock = (b: ParsedBlock): PvBlock => ({
+  title: b.label,
+  rounds: b.rounds,
+  items: b.items.map(pvItem),
+});
+/** Parts become a header entry followed by their blocks. */
+const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] =>
+  blocks.flatMap((b) =>
+    b.kind === 'part'
+      ? [
+          { title: null, rounds: null, items: [], part: b.format ? formatHeader(b.format.format, b.format) : 'Parte' },
+          ...(b.children ?? []).map(pvBlock),
+        ]
+      : [pvBlock(b)],
+  );
+
+function previewFrom(
+  parsed: ParsedRutina,
+  type: 'structured' | 'video',
+  hasVideo: boolean,
+): PvModel {
+  // Parts carry the format headers inside the list, so the section labels are plain.
+  const section = (s: 'warmup' | 'cooldown'): PvSection | null => {
+    const blocks = parsed.blocks.filter((b) => b.section === s);
+    if (!blocks.length) return null;
+    return { name: null, formatLabel: null, blocks: pvBlocks(blocks) };
+  };
+  return {
+    type,
+    hasVideo,
+    formatLabel: type === 'structured' ? 'Rutina' : 'Video',
+    headline: '',
+    warmup: section('warmup'),
+    main: pvBlocks(parsed.blocks.filter((b) => b.section === 'main')),
+    cooldown: section('cooldown'),
+  };
+}
+
+// ---- Component --------------------------------------------------------------
 
 export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; kind?: WorkoutKind }) {
   const router = useRouter();
   const qc = useQueryClient();
   // A segment is a reusable warmup/cooldown piece: same editor, but no nested
-  // warmup/cooldown slots, and it lives under /segmentos.
+  // warmup/cooldown sections, and it lives under /segmentos.
   const segmentMode = (workout?.kind ?? kind) === 'segment';
   const basePath = segmentMode ? '/segmentos' : '/rutinas';
   const listTitle = segmentMode ? es.segments.title : es.workouts.title;
   const newLabel = segmentMode ? es.segments.new : es.workouts.new;
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
-  // Per-input validation errors, keyed `${itemKey}:${field}`, to highlight the
-  // exact box that's wrong (e.g. reps set to 0).
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const [name, setName] = useState(workout?.name ?? '');
   const [description, setDescription] = useState(workout?.description ?? '');
@@ -442,925 +305,264 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     workout?.estimatedDurationSeconds ? String(Math.round(workout.estimatedDurationSeconds / 60)) : '',
   );
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
-  const [format, setFormat] = useState<WorkoutFormat>(workout?.format ?? 'amrap');
-  // New workouts start in a guided wizard (type → format → name); existing ones
-  // skip straight to the builder.
-  const [wizardStep, setWizardStep] = useState<'type' | 'format' | 'name' | 'done'>(
-    workout ? 'done' : segmentMode ? 'format' : 'type',
+  // New workouts start in a guided wizard (type → name); existing ones skip
+  // straight to the editor. The format is whatever the text says.
+  const [wizardStep, setWizardStep] = useState<'type' | 'name' | 'done'>(
+    workout ? 'done' : segmentMode ? 'name' : 'type',
   );
-  const [formatCfg, setFormatCfg] = useState<Record<string, string>>(initCfg(workout));
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
-  const [blocks, setBlocks] = useState<BlockState[]>(() => initBlocks(workout));
-  const [pickerBlock, setPickerBlock] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // "Guardar como segmento" modal: the section being promoted + editable name.
-  const [promoteModal, setPromoteModal] = useState<{
-    section: 'warmup' | 'cooldown';
-    blockList: BlockState[];
-    name: string;
-  } | null>(null);
-  const [addMenu, setAddMenu] = useState<{ top: number; left: number; up: boolean } | null>(null);
-  // Reusable warmup/cooldown: reference another rutina instead of inline blocks.
-  const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(
-    workout?.warmupWorkoutId ?? null,
-  );
-  const [cooldownWorkoutId, setCooldownWorkoutId] = useState<string | null>(
-    workout?.cooldownWorkoutId ?? null,
-  );
-  // Each section (warmup/cooldown) runs on its own format, copied from the source
-  // segment on import and editable in place (null = a plain sequential list).
-  const [sectionFmt, setSectionFmt] = useState<Record<'warmup' | 'cooldown', WorkoutFormat | null>>({
-    warmup: workout?.warmupFormat ?? null,
-    cooldown: workout?.cooldownFormat ?? null,
-  });
-  const [sectionCfg, setSectionCfg] = useState<Record<'warmup' | 'cooldown', Record<string, string>>>({
-    warmup: cfgFrom(workout?.warmupFormatConfig),
-    cooldown: cfgFrom(workout?.cooldownFormatConfig),
-  });
-  const setSecFmt = (section: 'warmup' | 'cooldown', f: WorkoutFormat | null) =>
-    setSectionFmt((s) => ({ ...s, [section]: f }));
-  const setSecCfgKey = (section: 'warmup' | 'cooldown', k: string, v: string) =>
-    setSectionCfg((s) => ({ ...s, [section]: { ...s[section], [k]: v } }));
-  // Which section's rutina picker is open, and its empty-slot add menu.
-  const [rutinaPicker, setRutinaPicker] = useState<'warmup' | 'cooldown' | null>(null);
-  const [slotMenu, setSlotMenu] = useState<{
-    section: 'warmup' | 'cooldown';
-    top: number;
-    left: number;
-    up: boolean;
-  } | null>(null);
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  // Anchored floating tempo editor (key of the open item + viewport position).
-  const [tempoMenu, setTempoMenu] = useState<{
-    key: string;
-    top: number;
-    left: number;
-    up: boolean;
-  } | null>(null);
-  const [nameEditKey, setNameEditKey] = useState<string | null>(null);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
-  // Item drag-and-drop (reorder exercises/rests within a block).
-  const [dragItem, setDragItem] = useState<{ bk: string; i: number } | null>(null);
-  const [overItem, setOverItem] = useState<{ bk: string; i: number } | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideQuery, setGuideQuery] = useState('');
+  const [snippetModal, setSnippetModal] = useState<{ name: string; text: string } | null>(null);
+  const editorApi = useRef<RutinaEditorApi | null>(null);
+  const [newExercise, setNewExercise] = useState<{ name: string; difficulty: Workout['difficulty'] } | null>(null);
+  // Legacy rutinas may still reference a warmup/cooldown rutina; once loaded it
+  // is folded into the text so everything is editable in place.
+  const [warmupWorkoutId, setWarmupWorkoutId] = useState<string | null>(workout?.warmupWorkoutId ?? null);
+  const [cooldownWorkoutId, setCooldownWorkoutId] = useState<string | null>(workout?.cooldownWorkoutId ?? null);
+  const editorHost = useRef<HTMLDivElement>(null);
 
   const { data: exList } = useQuery({
     queryKey: ['exercises', 'all'],
     queryFn: () => api.exercises.list({ pageSize: 500 }),
   });
-  const exercise = (id: string) => exList?.data.find((e) => e.id === id);
+  const catalog = useMemo(
+    () => new Catalog((exList?.data ?? []).map((e) => ({ id: e.id, name: e.name, aliases: e.aliases }))),
+    [exList],
+  );
+  const catalogReady = !!exList;
 
-  // Type and format define the data shape, so they're frozen once chosen (in
-  // the wizard for new workouts, or always for existing ones).
-  const locked = Boolean(workout) || wizardStep === 'done';
+  // The rutina text. Seeded once the catalog is available (names come from it).
+  const [text, setText] = useState<string | null>(null);
+  useEffect(() => {
+    if (text === null && catalogReady && wizardStep === 'done') {
+      setText(initialText(workout, catalog));
+    }
+  }, [text, catalogReady, wizardStep, workout, catalog]);
 
-  const setCfg = (k: string, v: string) => setFormatCfg((c) => ({ ...c, [k]: v }));
-  const updateBlock = (key: string, patch: Partial<BlockState>) =>
-    setBlocks((bs) => bs.map((b) => (b.key === key ? { ...b, ...patch } : b)));
-  const toggleCollapse = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
-  const duplicateBlock = (index: number) =>
-    setBlocks((bs) => {
-      const b = bs[index];
-      if (!b) return bs;
-      const copy: BlockState = {
-        ...b,
-        key: uid(),
-        name: b.name ? `${b.name} (copia)` : '',
-        items: b.items.map((it) => ({ ...it, key: uid() })),
-      };
-      const next = [...bs];
-      next.splice(index + 1, 0, copy);
-      return next;
-    });
-  const dropBlock = (target: number) => {
-    setBlocks((bs) => {
-      if (dragIndex === null || dragIndex === target) return bs;
-      const copy = [...bs];
-      const [moved] = copy.splice(dragIndex, 1);
-      if (moved) copy.splice(target, 0, moved);
-      return copy;
-    });
-    setDragIndex(null);
-    setOverIndex(null);
+  // Variants (RX / Escalada / …): one tab each, after the base tab. Each is a
+  // full rutina row linked to this one; loaded (and serialized) once the
+  // catalog is ready, saved/created/removed alongside the base on "Guardar".
+  type VariantTab = { id: string | null; label: string; text: string };
+  const [baseLabel, setBaseLabel] = useState(workout?.variantLabel ?? '');
+  const [variants, setVariants] = useState<VariantTab[] | null>(workout?.variants?.length ? null : []);
+  const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState(0); // 0 = base, n = variants[n-1]
+  const [tabDialog, setTabDialog] = useState<{ mode: 'add' | 'rename'; index: number; label: string } | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<{ index: number; label: string } | null>(null);
+  useEffect(() => {
+    if (variants !== null || !catalogReady || !workout?.variants?.length) return;
+    let cancelled = false;
+    Promise.all(workout.variants.map((v) => api.workouts.get(v.id)))
+      .then((rows) => {
+        if (cancelled) return;
+        setVariants(rows.map((w) => ({ id: w.id, label: w.variantLabel ?? '', text: serializeRutina(w, catalog) })));
+      })
+      .catch((e) => setServerError(e instanceof Error ? e.message : es.app.error));
+    return () => {
+      cancelled = true;
+    };
+  }, [variants, catalogReady, workout, catalog]);
+  const tabs = variants ?? [];
+  const activeVariant = activeTab > 0 ? tabs[activeTab - 1] : undefined;
+  const value = activeVariant ? activeVariant.text : (text ?? '');
+  const setValue = (v: string) => {
+    if (activeTab === 0) setText(v);
+    else setVariants((vs) => (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, text: v } : t)));
   };
-  const updateItem = (bk: string, ik: string, patch: Partial<ItemState>) => {
-    setBlocks((bs) =>
-      bs.map((b) =>
-        b.key === bk ? { ...b, items: b.items.map((it) => (it.key === ik ? { ...it, ...patch } : it)) } : b,
-      ),
-    );
-    // Editing a field clears its validation error.
-    setFieldErrors((fe) => {
-      const keys = Object.keys(patch);
-      if (!keys.some((k) => fe[`${ik}:${k}`])) return fe;
-      const next = { ...fe };
-      for (const k of keys) delete next[`${ik}:${k}`];
-      return next;
-    });
+  const editorReady = text !== null && variants !== null;
+  const addVariant = (label: string) => {
+    setVariants((vs) => [...(vs ?? []), { id: null, label, text: value }]);
+    setActiveTab(tabs.length + 1);
   };
-  const fieldErr = (key: string, field: string) => Boolean(fieldErrors[`${key}:${field}`]);
-  const errRing = 'border-red-400 bg-red-50 focus:border-red-400';
-  // Reorder items within a single block (drops are constrained to the block).
-  const moveItem = (bk: string, target: number) => {
-    setBlocks((bs) =>
-      bs.map((b) => {
-        if (b.key !== bk || !dragItem || dragItem.bk !== bk || dragItem.i === target) return b;
-        const items = [...b.items];
-        const [moved] = items.splice(dragItem.i, 1);
-        if (moved) items.splice(target, 0, moved);
-        return { ...b, items };
-      }),
-    );
-    setDragItem(null);
-    setOverItem(null);
+  const removeVariant = (index: number) => {
+    const v = tabs[index];
+    if (!v) return;
+    if (v.id) setRemovedVariantIds((ids) => [...ids, v.id!]);
+    setVariants((vs) => (vs ?? []).filter((_, i) => i !== index));
+    setActiveTab((t) => (t > index + 1 ? t - 1 : t === index + 1 ? 0 : t));
   };
+  const renameTab = (index: number, label: string) => {
+    if (index === 0) setBaseLabel(label);
+    else setVariants((vs) => (vs ?? []).map((t, i) => (i === index - 1 ? { ...t, label } : t)));
+  };
+  // Undo/redo buttons follow the editor's history (re-rendered on every change).
+  const canUndo = editorApi.current?.canUndo() ?? false;
+  const canRedo = editorApi.current?.canRedo() ?? false;
 
+  const parsed = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
+  const format = parsed.main?.format ?? 'for_time';
+
+  const previewModel = useMemo(
+    () => previewFrom(parsed, type, type === 'video' && !!videoAssetId),
+    [parsed, type, videoAssetId],
+  );
+
+  const guideSections = useMemo(() => {
+    const q = fold(guideQuery.trim());
+    if (!q) return GUIDE_SECTIONS;
+    return GUIDE_SECTIONS.map((sec) => ({
+      ...sec,
+      rows: sec.rows.filter((r) => fold(r.k).includes(q) || fold(r.v).includes(q) || fold(sec.title).includes(q)),
+    })).filter((sec) => sec.rows.length > 0);
+  }, [guideQuery]);
+
+  const mainFormats = parsed.blocks
+    .filter((b) => b.section === 'main' && b.kind === 'part' && b.format)
+    .map((b) => FORMAT_LABEL[b.format!.format]);
   const metaLine = [
-    type === 'video' ? 'Video' : FORMAT_LABEL[format],
+    type === 'video' ? 'Video' : mainFormats.length ? mainFormats.join(' + ') : FORMAT_LABEL[format],
     durationMin ? `${durationMin} min` : null,
     es.difficulty[difficulty],
   ]
     .filter(Boolean)
     .join(' · ');
 
-  // Per-exercise columns adapt to the selected format.
-  const cols = itemColumns(format);
-  const warmupBlocks = blocks.filter((b) => b.section === 'warmup');
-  const mainBlocks = blocks.filter((b) => (b.section ?? 'main') === 'main');
-  const cooldownBlocks = blocks.filter((b) => b.section === 'cooldown');
-  const itemGtc = [
-    'minmax(0,1fr)', // name
-    cols.showSets && '56px', // series
-    cols.showTarget && '66px', // medida
-    cols.showTarget && '72px', // objetivo
-    '74px', // carga
-    cols.showRest && '60px', // descanso
-    '72px', // tempo
-    '26px', // delete
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  const addExerciseTo = (blockKey: string) => setPickerBlock(blockKey);
-  const removeBlock = (key: string) => setBlocks((bs) => bs.filter((x) => x.key !== key));
-
-  // Drag grip that reorders a top-level entry (loose exercise / rest / block).
-  const blockDragHandle = (bi: number) => (
-    <span
-      draggable
-      onDragStart={(e) => {
-        setDragIndex(bi);
-        e.dataTransfer.effectAllowed = 'move';
-      }}
-      onDragEnd={() => {
-        setDragIndex(null);
-        setOverIndex(null);
-      }}
-      onClick={(e) => e.stopPropagation()}
-      className="cursor-grab select-none px-0.5 font-mono text-[15px] leading-none text-faint hover:text-ink-3 active:cursor-grabbing"
-      title="Arrastra para reordenar"
-    >
-      ⠿
-    </span>
-  );
-
-  // Item header + row, reused by the flat list and the block editor.
-  const itemHeader = () => (
-    <div
-      className="grid gap-3 border-b border-[#f4f1eb] px-3.5 py-2 font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-muted-2"
-      style={{ gridTemplateColumns: itemGtc }}
-    >
-      <span>{es.pick.exercise.replace('Elegir ', '')}</span>
-      {cols.showSets && <span className="text-center">{es.workouts.sets}</span>}
-      {cols.showTarget && <span className="text-center">Medida</span>}
-      {cols.showTarget && <span className="text-center">Objetivo</span>}
-      <span className="text-center">Carga</span>
-      {cols.showRest && <span className="text-center">Descanso</span>}
-      <span className="text-center">Tempo</span>
-      <span />
-    </div>
-  );
-
-  const removeItem = (bk: string, key: string) =>
-    setBlocks((bs) =>
-      bs.map((b) => (b.key === bk ? { ...b, items: b.items.filter((x) => x.key !== key) } : b)),
-    );
-
-  // Drag handle used to reorder an item within its block.
-  const dragHandle = (bk: string, i: number) => (
-    <span
-      draggable
-      onDragStart={(e) => {
-        setDragItem({ bk, i });
-        e.dataTransfer.effectAllowed = 'move';
-      }}
-      onDragEnd={() => {
-        setDragItem(null);
-        setOverItem(null);
-      }}
-      className="cursor-grab select-none px-0.5 font-mono text-[14px] leading-none text-faint hover:text-ink-3 active:cursor-grabbing"
-      title="Arrastra para reordenar"
-    >
-      ⠿
-    </span>
-  );
-
-  // The exercise controls (thumb, name, measure, objetivo, carga, rest, tempo),
-  // reused by a nested block item and by a loose top-level exercise. `handle`
-  // is the drag grip to show; `onDelete` removes the item or the whole entry.
-  const exerciseFields = (bk: string, it: ItemState, handle: ReactNode, onDelete: () => void) => {
-    const ex = exercise(it.exerciseId);
-    const measure: MeasurementType = it.measure || 'reps';
-    const tf = targetField(measure);
-    const tLabel = tempoLabel(it.tempo);
-    const showTempo = measure !== 'distance';
-    return (
-      <>
-        <div className="grid items-center gap-3 px-3.5 py-2" style={{ gridTemplateColumns: itemGtc }}>
-          <div className="flex min-w-0 items-center gap-2">
-            {handle}
-            {ex?.thumbnailAssetId ? (
-              <MediaThumb assetId={ex.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
-            ) : (
-              <div
-                className="h-9 w-[58px] shrink-0 rounded-md"
-                style={{ background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' }}
-              />
-            )}
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{ex?.name ?? '…'}</div>
-              {/* When there's no Medida column (e.g. tabata), keep a read-only hint. */}
-              {!cols.showTarget && ex && (
-                <div className="truncate font-mono text-[11px] text-muted">{es.measurement[measure]}</div>
-              )}
-            </div>
-          </div>
-          {cols.showSets && (
-            <input
-              value={it.sets}
-              onChange={(e) => updateItem(bk, it.key, { sets: e.target.value })}
-              className={cn(boxCls, fieldErr(it.key, 'sets') && errRing)}
-            />
-          )}
-          {cols.showTarget && (
-            <select
-              value={measure}
-              onChange={(e) => updateItem(bk, it.key, { measure: e.target.value as MeasurementType })}
-              className="h-[30px] w-full cursor-pointer appearance-none rounded-[7px] border border-[#e6e2d9] bg-surface-3 px-2 text-center font-mono text-[12px] font-medium uppercase text-ink-2 focus:border-accent/40 focus:outline-none"
-            >
-              {MEASURES.map((m) => (
-                <option key={m.v} value={m.v}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          )}
-          {cols.showTarget && (
-            <input
-              value={it[tf]}
-              placeholder="0"
-              onChange={(e) => updateItem(bk, it.key, { [tf]: e.target.value })}
-              className={cn(boxCls, fieldErr(it.key, tf) && errRing)}
-            />
-          )}
-          <input
-            value={it.carga}
-            onChange={(e) => updateItem(bk, it.key, { carga: e.target.value })}
-            className={boxCls}
-          />
-          {cols.showRest && (
-            <input
-              value={it.rest}
-              placeholder="seg"
-              onChange={(e) => updateItem(bk, it.key, { rest: e.target.value })}
-              className={boxCls}
-            />
-          )}
-          {showTempo ? (
-            <button
-              type="button"
-              onClick={(e) => {
-                const r = e.currentTarget.getBoundingClientRect();
-                const spaceBelow = window.innerHeight - r.bottom;
-                const up = spaceBelow < 128 && r.top > spaceBelow;
-                setTempoMenu(
-                  tempoMenu?.key === it.key
-                    ? null
-                    : { key: it.key, left: r.left, top: up ? r.top - 6 : r.bottom + 6, up },
-                );
-              }}
-              title="Tempo"
-              className={cn(
-                'flex h-[30px] w-full items-center justify-center gap-1 rounded-[7px] border font-mono text-[12px] font-medium focus:outline-none',
-                tLabel
-                  ? 'border-accent/40 bg-accent/10 text-accent-dark'
-                  : 'border-[#e6e2d9] bg-surface-3 text-muted hover:border-accent/40',
-              )}
-            >
-              <span className="truncate">{tLabel ?? '—'}</span>
-            </button>
-          ) : (
-            <span />
-          )}
-          <button
-            type="button"
-            onClick={onDelete}
-            className="text-center text-faint-2 hover:text-accent-dark"
-          >
-            ✕
-          </button>
-        </div>
-        {showTempo && tempoMenu?.key === it.key && (
-          <>
-            <div className="fixed inset-0 z-30" onClick={() => setTempoMenu(null)} />
-            <div
-              className="fixed z-40 rounded-xl border border-line-2 bg-surface p-3 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
-              style={{
-                top: tempoMenu.top,
-                left: tempoMenu.left,
-                transform: tempoMenu.up ? 'translateY(-100%)' : undefined,
-              }}
-            >
-              <div className="flex items-end gap-2">
-                {TEMPO_PHASES.map((phase) => (
-                  <label key={phase} className="flex flex-col items-center gap-1">
-                    <span className="font-mono text-[9px] font-medium uppercase tracking-[0.06em] text-muted-2">
-                      {TEMPO_SHORT[phase]}
-                    </span>
-                    <input
-                      value={it.tempo[phase]}
-                      placeholder="0"
-                      onChange={(e) =>
-                        updateItem(bk, it.key, { tempo: { ...it.tempo, [phase]: e.target.value } })
-                      }
-                      className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="mt-2.5 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => updateItem(bk, it.key, { tempo: emptyTempo() })}
-                  className="font-mono text-[10px] font-medium text-accent-dark hover:underline"
-                >
-                  Limpiar
-                </button>
-              </div>
-            </div>
-          </>
-        )}
-      </>
-    );
-  };
-
-  const itemRow = (bk: string, it: ItemState, i: number) => {
-    const isDragging = dragItem?.bk === bk && dragItem?.i === i;
-    const isDropTarget =
-      dragItem?.bk === bk && dragItem.i !== i && overItem?.bk === bk && overItem?.i === i;
-    const dnd = {
-      onDragOver: (e: DragEvent) => {
-        if (!dragItem || dragItem.bk !== bk) return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (!(overItem?.bk === bk && overItem?.i === i)) setOverItem({ bk, i });
-      },
-      onDrop: (e: DragEvent) => {
-        if (!dragItem || dragItem.bk !== bk) return;
-        e.preventDefault();
-        e.stopPropagation();
-        moveItem(bk, i);
-      },
-    };
-    if (it.kind === 'rest') {
-      return (
-        <div
-          key={it.key}
-          {...dnd}
-          className={cn(
-            'flex items-center gap-2 border-b border-[#f4f1eb] px-3.5 py-2',
-            isDragging && 'opacity-40',
-            isDropTarget && 'border-t-2 border-t-accent',
-          )}
-        >
-          {dragHandle(bk, i)}
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
-            Descanso
-          </span>
-          <input
-            value={it.workSeconds}
-            placeholder="0"
-            onChange={(e) => updateItem(bk, it.key, { workSeconds: e.target.value })}
-            className={cn(
-              'h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]',
-              fieldErr(it.key, 'workSeconds') && errRing,
-            )}
-          />
-          <span className="font-mono text-[11px] text-muted">seg</span>
-          <button
-            type="button"
-            onClick={() => removeItem(bk, it.key)}
-            className="ml-auto inline-flex items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
-          >
-            ✕
-          </button>
-        </div>
-      );
-    }
-    return (
-      <div
-        key={it.key}
-        {...dnd}
-        className={cn(
-          'border-b border-[#f4f1eb]',
-          isDragging && 'opacity-40',
-          isDropTarget && 'border-t-2 border-t-accent',
-        )}
-      >
-        {exerciseFields(bk, it, dragHandle(bk, i), () => removeItem(bk, it.key))}
-      </div>
-    );
-  };
-
-  const addButton = (label: string, onClick: () => void) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex h-[30px] items-center rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
-    >
-      {label}
-    </button>
-  );
-  const addRestItem = (bk: string) =>
-    setBlocks((bs) => bs.map((b) => (b.key === bk ? { ...b, items: [...b.items, restItem()] } : b)));
-
-  // Warmup / cooldown: a simple list of exercises (optional, skippable, untracked).
-  const looseSection = (secBlocks: BlockState[], section: 'warmup' | 'cooldown', title: string) => (
-    <div className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface-2/40 p-2.5">
-      <div className="flex items-center gap-2 px-1 pt-0.5">
-        <MonoLabel>{title}</MonoLabel>
-        <span className="font-mono text-[10px] text-muted">· opcional · no cuenta para resultados</span>
-        <span className="flex-1" />
-        <button
-          type="button"
-          onClick={() => setRutinaPicker(section)}
-          title="Cambiar por otro segmento"
-          className="inline-flex items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 3 4 7l4 4" />
-            <path d="M4 7h16" />
-            <path d="m16 21 4-4-4-4" />
-            <path d="M20 17H4" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          onClick={() => promoteToRutina(section, secBlocks)}
-          disabled={saveAsRutina.isPending}
-          title="Guardar como segmento reutilizable"
-          className="inline-flex items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-accent-dark disabled:opacity-50"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h7" />
-            <line x1="16" y1="5" x2="22" y2="5" />
-            <line x1="19" y1="2" x2="19" y2="8" />
-          </svg>
-        </button>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-1">
-        <span className={cfgLabel}>Formato</span>
-        <select
-          value={sectionFmt[section] ?? ''}
-          onChange={(e) => setSecFmt(section, (e.target.value || null) as WorkoutFormat | null)}
-          className="h-[30px] rounded-[7px] border border-[#e6e2d9] bg-surface-3 px-2 font-mono text-[12px] font-medium focus:border-accent/40 focus:outline-none"
-        >
-          <option value="">Lista simple</option>
-          {ALL_FORMATS.map((f) => (
-            <option key={f} value={f}>
-              {FORMAT_LABEL[f]}
-            </option>
-          ))}
-        </select>
-        {sectionFmt[section]
-          ? FORMAT_FIELDS[sectionFmt[section]!].map((f, i) => (
-              <Fragment key={f.key}>
-                {i > 0 && <span className="h-5 w-px bg-line-2" />}
-                {configField(f, sectionCfg[section], (k, v) => setSecCfgKey(section, k, v))}
-              </Fragment>
-            ))
-          : null}
-      </div>
-      {secBlocks.map((b) =>
-        b.items[0] ? (
-          <div key={b.key} className="rounded-lg bg-surface">
-            {exerciseFields(b.key, b.items[0], null, () => removeBlock(b.key))}
-          </div>
-        ) : null,
-      )}
-      <button
-        type="button"
-        onClick={() => setPickerBlock(section === 'warmup' ? '__warmup__' : '__cooldown__')}
-        className="inline-flex h-[30px] items-center self-start rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-3 text-[13px] font-semibold text-ink-3 hover:bg-surface-2"
-      >
-        {es.workouts.addExercise}
-      </button>
-    </div>
-  );
-
-  // Names/thumbs for the referenced warmup/cooldown chips (and picker source).
-  const refListQ = useQuery({
-    queryKey: ['workout-refs'],
-    queryFn: () => api.workouts.list({ pageSize: 100 }).then((r) => r.data),
-  });
-
-  // Referenced warmup/cooldown rutinas, resolved so the preview can show their
-  // exercises (shares the ['workout', id] cache with the editor).
+  // Legacy warmup/cooldown references fold into the text once loaded.
   const warmupQ = useQuery({
     queryKey: ['workout', warmupWorkoutId],
     queryFn: () => api.workouts.get(warmupWorkoutId!),
-    enabled: !!warmupWorkoutId,
+    enabled: !!warmupWorkoutId && catalogReady && text !== null,
   });
   const cooldownQ = useQuery({
     queryKey: ['workout', cooldownWorkoutId],
     queryFn: () => api.workouts.get(cooldownWorkoutId!),
-    enabled: !!cooldownWorkoutId,
+    enabled: !!cooldownWorkoutId && catalogReady && text !== null,
   });
+  useEffect(() => {
+    if (warmupWorkoutId && warmupQ.data) {
+      setText((t) => replaceSection(t ?? '', 'warmup', segmentBody(warmupQ.data, catalog)));
+      setWarmupWorkoutId(null);
+    }
+  }, [warmupWorkoutId, warmupQ.data, catalog]);
+  useEffect(() => {
+    if (cooldownWorkoutId && cooldownQ.data) {
+      setText((t) => replaceSection(t ?? '', 'cooldown', segmentBody(cooldownQ.data, catalog)));
+      setCooldownWorkoutId(null);
+    }
+  }, [cooldownWorkoutId, cooldownQ.data, catalog]);
 
-  // Copy a segment's exercises into the builder as inline warmup/cooldown blocks
-  // (editable), replacing whatever that section currently holds. Flattened to one
-  // exercise per row (the warmup/cooldown slot lists loose exercises).
-  const importSection = (section: 'warmup' | 'cooldown', src: Workout) => {
-    const rows = apiBlocksToState(src.blocks)
-      .flatMap((b) => b.items)
-      .map((it) => ({
-        ...emptyBlock(),
-        kind: (it.kind === 'rest' ? 'rest' : 'single') as BlockState['kind'],
-        section,
-        items: [it],
-      }));
-    setBlocks((bs) => [...bs.filter((b) => b.section !== section), ...rows]);
-    // Carry the segment's own format into the section so it plays on its own
-    // terms (a warmup AMRAP, a stretch list, …), independent of the main rutina.
-    setSecFmt(section, src.format ?? null);
-    setSectionCfg((s) => ({ ...s, [section]: cfgFrom(src.formatConfig) }));
-    if (section === 'warmup') setWarmupWorkoutId(null);
-    else setCooldownWorkoutId(null);
+
+  // ---- Saved blocks + other rutinas as suggestions ---------------------------
+  const snippetsQ = useQuery({
+    queryKey: ['snippets', 'all'],
+    queryFn: () => api.snippets.list({ pageSize: 200 }),
+  });
+  const rutinasQ = useQuery({
+    queryKey: ['workouts', 'suggest'],
+    queryFn: () => api.workouts.list({ pageSize: 200 }),
+  });
+  const extras = useMemo<CompletionExtra[]>(
+    () => [
+      { kind: 'snippet', items: (snippetsQ.data?.data ?? []).map((sn) => ({ id: sn.id, name: sn.name })) },
+      {
+        kind: 'rutina',
+        items: (rutinasQ.data?.data ?? [])
+          .filter((w) => w.id !== workout?.id && w.type === 'structured')
+          .map((w) => ({ id: w.id, name: w.name })),
+      },
+    ],
+    [snippetsQ.data, rutinasQ.data, workout?.id],
+  );
+  const insertBlock = async (kind: 'snippet' | 'rutina', id: string): Promise<string | null> => {
+    if (kind === 'snippet') return snippetsQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
+    const src = await api.workouts.get(id);
+    // Another rutina's main content, without its format header.
+    const lines = serializeRutina(
+      { format: src.format ?? 'for_time', formatConfig: src.formatConfig, blocks: src.blocks.filter((b) => b.section === 'main') },
+      catalog,
+    )
+      .replace(/\s+$/, '')
+      .split('\n');
+    return lines.slice(1).join('\n');
   };
-  const importSegment = useMutation({
-    mutationFn: async ({ section, id }: { section: 'warmup' | 'cooldown'; id: string }) => ({
-      section,
-      src: await api.workouts.get(id),
-    }),
-    onSuccess: ({ section, src }) => {
-      importSection(section, src);
-      toast(section === 'warmup' ? 'Calentamiento importado' : 'Enfriamiento importado');
+  const createSnippet = useMutation({
+    mutationFn: (args: { name: string; text: string }) => api.snippets.create(args),
+    onSuccess: (sn) => {
+      qc.invalidateQueries({ queryKey: ['snippets'] });
+      setSnippetModal(null);
+      toast(`Bloque guardado: ${sn.name}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
 
-  // Legacy rutinas may still hold a warmup/cooldown *reference*; once resolved,
-  // fold it into inline editable blocks so everything is editable in place.
-  useEffect(() => {
-    if (warmupWorkoutId && warmupQ.data) importSection('warmup', warmupQ.data);
-  }, [warmupWorkoutId, warmupQ.data]);
-  useEffect(() => {
-    if (cooldownWorkoutId && cooldownQ.data) importSection('cooldown', cooldownQ.data);
-  }, [cooldownWorkoutId, cooldownQ.data]);
-
-  // ---- Live "as the athlete sees it" preview model -------------------------
-  const pvPrefix = (measure: MeasurementType, tv: number | null, sets: number | null) => {
-    if (measure === 'time') return tv ? `${tv}s` : null;
-    if (measure === 'distance') return tv ? `${tv}m` : null;
-    return sets && tv ? `${sets}×${tv}` : tv ? `${tv}` : sets ? `${sets} series` : null;
-  };
-  const bItemToPv = (it: ItemState): PvItem => {
-    if (it.kind === 'rest') return { kind: 'rest', seconds: num(it.workSeconds) };
-    const measure = it.measure || 'reps';
-    return {
-      kind: 'exercise',
-      prefix: pvPrefix(measure, num(it[targetField(measure)]), num(it.sets)),
-      name: exercise(it.exerciseId)?.name ?? '…',
-      load: it.carga.trim() || null,
-      tempo: tempoLabel(it.tempo),
-    };
-  };
-  const bBlockToPv = (b: BlockState): PvBlock => ({
-    title: b.kind === 'single' ? null : b.name.trim() || null,
-    rounds: b.kind === 'single' ? null : num(b.rounds),
-    items: b.items.map(bItemToPv),
-  });
-  type ApiBlock = Workout['blocks'][number];
-  const aItemToPv = (it: ApiBlock['items'][number]): PvItem => {
-    if (it.kind === 'rest') return { kind: 'rest', seconds: it.workSeconds ?? null };
-    const measure = it.measure ?? 'reps';
-    const tv = measure === 'time' ? it.workSeconds : measure === 'distance' ? it.distanceMeters : it.reps;
-    return {
-      kind: 'exercise',
-      prefix: pvPrefix(measure, tv ?? null, it.sets ?? null),
-      name: exercise(it.exerciseId ?? '')?.name ?? '…',
-      load: loadToStr(it.loadPrescription) || null,
-      tempo: it.tempoOverride ? tempoLabel(tempoStrFrom(it.tempoOverride)) : null,
-    };
-  };
-  const aBlockToPv = (b: ApiBlock): PvBlock => ({
-    title: b.label,
-    rounds: b.rounds,
-    items: b.items.map(aItemToPv),
-  });
-  // A section's own format shown next to its label, e.g. "AMRAP · 5 min".
-  const secFmtLabel = (section: 'warmup' | 'cooldown'): string | null => {
-    const f = sectionFmt[section];
-    if (!f) return null;
-    const h = formatHeadline(f, sectionCfg[section]);
-    return `${FORMAT_LABEL[f]}${h ? ` · ${h}` : ''}`;
-  };
-  const refSection = (
-    id: string | null,
-    data: Workout | undefined,
-    inline: BlockState[],
-    section: 'warmup' | 'cooldown',
-  ): PvSection | null => {
-    if (id) {
-      const name = data?.name ?? refListQ.data?.find((w) => w.id === id)?.name ?? '…';
-      const f = data?.format;
-      return {
-        name,
-        formatLabel: f ? `${FORMAT_LABEL[f]}${formatHeadline(f, cfgFrom(data?.formatConfig)) ? ` · ${formatHeadline(f, cfgFrom(data?.formatConfig))}` : ''}` : null,
-        blocks: (data?.blocks ?? []).map(aBlockToPv),
-      };
-    }
-    if (inline.length) return { name: null, formatLabel: secFmtLabel(section), blocks: inline.map(bBlockToPv) };
-    return null;
-  };
-  const previewModel: PvModel = {
-    type,
-    hasVideo: type === 'video' && !!videoAssetId,
-    formatLabel: type === 'structured' ? FORMAT_LABEL[format] : 'Video',
-    headline: type === 'structured' ? formatHeadline(format, formatCfg) : '',
-    warmup: refSection(warmupWorkoutId, warmupQ.data, warmupBlocks, 'warmup'),
-    main: mainBlocks.map(bBlockToPv),
-    cooldown: refSection(cooldownWorkoutId, cooldownQ.data, cooldownBlocks, 'cooldown'),
-  };
-
-  // Promote inline warmup/cooldown blocks into a standalone reusable rutina,
-  // then reference it (dropping the now-migrated inline blocks).
-  const saveAsRutina = useMutation({
-    mutationFn: async (args: { section: 'warmup' | 'cooldown'; name: string; blockList: BlockState[] }) => {
-      const created = await api.workouts.create({
+  // ---- Create a missing exercise straight from a diagnostic -----------------
+  const createExercise = useMutation({
+    mutationFn: (args: { name: string; difficulty: Workout['difficulty'] }) =>
+      api.exercises.create({
         name: args.name,
-        kind: 'segment',
-        type: 'structured',
-        format: 'circuit',
-        difficulty,
+        difficulty: args.difficulty,
         status: 'draft',
-        formatConfig: null,
-        blocks: blocksToPayload(
-          args.blockList.map((b) => ({ ...b, section: 'main' as const })),
-          'circuit',
-        ),
-      });
-      return { section: args.section, id: created.id };
-    },
-    onSuccess: ({ section, id }) => {
-      if (section === 'warmup') setWarmupWorkoutId(id);
-      else setCooldownWorkoutId(id);
-      setBlocks((bs) => bs.filter((b) => b.section !== section));
-      qc.invalidateQueries({ queryKey: ['workout-refs'] });
-      qc.invalidateQueries({ queryKey: ['workouts'] });
-      toast('Segmento creado');
+        cues: [],
+        aliases: [],
+        isUnilateral: false,
+        muscles: [],
+        equipmentIds: [],
+      }),
+    onSuccess: (ex) => {
+      qc.invalidateQueries({ queryKey: ['exercises'] });
+      setNewExercise(null);
+      toast(`Ejercicio creado: ${ex.name}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
+  const titleCase = (s: string) => s.trim().replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-  const promoteToRutina = (section: 'warmup' | 'cooldown', blockList: BlockState[]) => {
-    const suggested = `${name.trim() || 'Rutina'} · ${section === 'warmup' ? 'Calentamiento' : 'Enfriamiento'}`;
-    setPromoteModal({ section, blockList, name: suggested });
+  // ---- Save -----------------------------------------------------------------
+  // The payload for one tab's text; metadata is shared by base and variants.
+  const payloadFor = (tabText: string, variant: { ofId: string; label: string } | null): CreateWorkoutInput => {
+    const structured = type === 'structured';
+    const structure = structured ? toWorkoutInput(parseRutina(tabText, { catalog })) : null;
+    return {
+      name,
+      description: description || null,
+      kind: segmentMode ? 'segment' : 'rutina',
+      type,
+      format: structure?.format ?? null,
+      difficulty,
+      estimatedDurationSeconds: durationMin ? Math.max(1, Number(durationMin)) * 60 : null,
+      status,
+      thumbnailAssetId,
+      videoAssetId: structured ? null : videoAssetId,
+      formatConfig: structure?.formatConfig ?? null,
+      warmupFormat: segmentMode ? null : (structure?.warmupFormat ?? null),
+      warmupFormatConfig: segmentMode ? null : (structure?.warmupFormatConfig ?? null),
+      cooldownFormat: segmentMode ? null : (structure?.cooldownFormat ?? null),
+      cooldownFormatConfig: segmentMode ? null : (structure?.cooldownFormatConfig ?? null),
+      warmupWorkoutId: null,
+      cooldownWorkoutId: null,
+      variantOfId: variant?.ofId ?? null,
+      variantLabel: variant ? variant.label : baseLabel.trim() || null,
+      blocks: (structure?.blocks ?? []).map((b) => (segmentMode ? { ...b, section: 'main' as const } : b)),
+    };
   };
-  const confirmPromote = () => {
-    if (!promoteModal || !promoteModal.name.trim()) return;
-    saveAsRutina.mutate({
-      section: promoteModal.section,
-      name: promoteModal.name.trim(),
-      blockList: promoteModal.blockList,
-    });
-    setPromoteModal(null);
-  };
-
-  const stripe = { background: 'repeating-linear-gradient(135deg,#eeeae2 0 5px,#e4dfd5 5px 10px)' };
-
-  // A warmup/cooldown slot: referenced rutina, inline blocks, or empty placeholder.
-  const sectionSlot = (secBlocks: BlockState[], section: 'warmup' | 'cooldown', title: string) => {
-    const refId = section === 'warmup' ? warmupWorkoutId : cooldownWorkoutId;
-    const setRef = section === 'warmup' ? setWarmupWorkoutId : setCooldownWorkoutId;
-
-    // 1) A referenced reusable rutina.
-    if (refId) {
-      const w = refListQ.data?.find((x) => x.id === refId);
-      return (
-        <div className="flex items-center gap-3 rounded-xl border border-line-2 bg-surface-2/40 p-2.5">
-          <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
-            {title}
-          </span>
-          {w?.thumbnailAssetId ? (
-            <MediaThumb assetId={w.thumbnailAssetId} className="h-9 w-[58px] shrink-0 rounded-md" />
-          ) : (
-            <div className="h-9 w-[58px] shrink-0 rounded-md" style={stripe} />
-          )}
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{w?.name ?? '…'}</div>
-            <div className="font-mono text-[10px] text-muted">rutina reutilizable · no cuenta para resultados</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setRutinaPicker(section)}
-            className="shrink-0 rounded-md px-2 py-1 font-mono text-[11px] font-medium text-ink-3 hover:bg-surface-3"
-          >
-            Cambiar
-          </button>
-          <button
-            type="button"
-            onClick={() => setRef(null)}
-            className="shrink-0 rounded-md px-2 py-1 font-mono text-[11px] font-medium text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
-          >
-            Quitar
-          </button>
-        </div>
-      );
-    }
-
-    // 2) Inline-built content (swap / save-as-segment live in the section header).
-    if (secBlocks.length > 0) {
-      return looseSection(secBlocks, section, title);
-    }
-
-    // 3) Empty → a placeholder with a small choose-source menu.
-    return (
-      <div>
-        <button
-          type="button"
-          onClick={(e) =>
-            setSlotMenu(
-              slotMenu?.section === section
-                ? null
-                : { section, ...menuAnchor(e.currentTarget, 116) },
-            )
-          }
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-2/30 py-3 text-ink-3 hover:bg-surface-2 hover:text-ink-2"
-        >
-          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-2">
-            {title}
-          </span>
-          <span className="text-[13px] font-semibold">+ Añadir</span>
-        </button>
-        {slotMenu?.section === section && (
-          <>
-            <div className="fixed inset-0 z-30" onClick={() => setSlotMenu(null)} />
-            <div
-              className="fixed z-40 w-64 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
-              style={{
-                left: slotMenu.left,
-                top: slotMenu.top,
-                transform: slotMenu.up ? 'translate(-50%,-100%)' : 'translate(-50%,0)',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setRutinaPicker(section);
-                  setSlotMenu(null);
-                }}
-                className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
-              >
-                <span className="text-[13px] font-semibold text-ink">Importar un segmento</span>
-                <span className="font-mono text-[10px] text-muted">Copia sus ejercicios para editarlos</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPickerBlock(section === 'warmup' ? '__warmup__' : '__cooldown__');
-                  setSlotMenu(null);
-                }}
-                className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
-              >
-                <span className="text-[13px] font-semibold text-ink">Crear aquí</span>
-                <span className="font-mono text-[10px] text-muted">Añade ejercicios solo para esta rutina</span>
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
-
   const save = useMutation({
-    mutationFn: () => {
-      const structured = type === 'structured';
-      // A set reference overrides inline blocks of that section.
-      const kept = blocks.filter(
-        (b) =>
-          !(b.section === 'warmup' && warmupWorkoutId) &&
-          !(b.section === 'cooldown' && cooldownWorkoutId),
-      );
-      // A section keeps its own format only when it actually has inline content.
-      const secFmt = (section: 'warmup' | 'cooldown') =>
-        kept.some((b) => b.section === section) ? sectionFmt[section] : null;
-      const payload: CreateWorkoutInput = {
-        name,
-        description: description || null,
-        kind: segmentMode ? 'segment' : 'rutina',
-        type,
-        format: structured ? format : null,
-        difficulty,
-        estimatedDurationSeconds: durationMin ? Math.max(1, Number(durationMin)) * 60 : null,
-        status,
-        thumbnailAssetId,
-        videoAssetId: structured ? null : videoAssetId,
-        formatConfig: structured ? buildFormatConfig(format, formatCfg) : null,
-        warmupFormat: structured ? secFmt('warmup') : null,
-        warmupFormatConfig:
-          structured && secFmt('warmup')
-            ? buildFormatConfig(secFmt('warmup')!, sectionCfg.warmup)
-            : null,
-        cooldownFormat: structured ? secFmt('cooldown') : null,
-        cooldownFormatConfig:
-          structured && secFmt('cooldown')
-            ? buildFormatConfig(secFmt('cooldown')!, sectionCfg.cooldown)
-            : null,
-        warmupWorkoutId: structured ? warmupWorkoutId : null,
-        cooldownWorkoutId: structured ? cooldownWorkoutId : null,
-        blocks: structured ? blocksToPayload(kept, format) : [],
-      };
-      return workout ? api.workouts.update(workout.id, payload) : api.workouts.create(payload);
+    mutationFn: async () => {
+      const basePayload = payloadFor(text ?? '', null);
+      const saved = workout ? await api.workouts.update(workout.id, basePayload) : await api.workouts.create(basePayload);
+      // Variants: create the new ones, update the rest, drop the removed.
+      const savedVariants: VariantTab[] = [];
+      for (const v of tabs) {
+        const p = payloadFor(v.text, { ofId: saved.id, label: v.label });
+        const row = v.id ? await api.workouts.update(v.id, p) : await api.workouts.create(p);
+        savedVariants.push({ id: row.id, label: v.label, text: v.text });
+      }
+      await Promise.all(removedVariantIds.map((id) => api.workouts.remove(id)));
+      return { saved, savedVariants };
     },
-    onSuccess: (saved) => {
-      // Keep the freshly-saved detail in cache so re-opening this rutina shows
-      // the update immediately (queries have a 30s staleTime).
-      qc.setQueryData(['workout', saved.id], saved);
+    onSuccess: ({ saved, savedVariants }) => {
+      setVariants(savedVariants);
+      setRemovedVariantIds([]);
+      qc.setQueryData(['workout', saved.id], { ...saved, variants: savedVariants.map((v) => ({ id: v.id, label: v.label })) });
       qc.invalidateQueries({ queryKey: ['workouts'] });
       qc.invalidateQueries({ queryKey: ['workout-refs'] });
       toast(segmentMode ? 'Segmento guardado' : 'Rutina guardada');
-      // A brand-new item moves to its edit page so the next save updates it
-      // (instead of creating another); edits just stay put.
       if (!workout) router.replace(`${basePath}/${saved.id}`);
     },
     onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
   });
-
-  // Renders one timing-config field (duration min:sec, plain seconds, or count).
-  // Compact, inline "Cada [5] min [0] seg · Rondas [5]" config bar.
-  const cfgBox =
-    'h-[30px] w-12 rounded-[7px] border border-[#e6e2d9] bg-surface-3 text-center font-mono text-[13px] font-medium focus:border-accent/40 focus:outline-none';
-  const cfgLabel = 'font-mono text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3';
-  const cfgUnit = 'font-mono text-[11px] text-muted';
-  const configField = (
-    f: CfgField,
-    cfg: Record<string, string> = formatCfg,
-    setKey: (k: string, v: string) => void = setCfg,
-  ) => {
-    if (f.kind === 'duration') {
-      const total = Math.max(0, Math.round(Number(cfg[f.key]) || 0));
-      const min = Math.floor(total / 60);
-      const sec = total % 60;
-      const setDur = (m: number, s: number) =>
-        setKey(f.key, String(Math.max(0, m) * 60 + Math.max(0, s)));
-      return (
-        <div key={f.key} className="flex items-center gap-2">
-          <span className={cfgLabel}>{f.label}</span>
-          <input
-            inputMode="numeric"
-            value={min ? String(min) : ''}
-            placeholder="0"
-            onChange={(e) => setDur(Math.round(Number(e.target.value) || 0), sec)}
-            className={cfgBox}
-          />
-          <span className={cfgUnit}>min</span>
-          <input
-            inputMode="numeric"
-            value={sec ? String(sec) : ''}
-            placeholder="0"
-            onChange={(e) => setDur(min, Math.round(Number(e.target.value) || 0))}
-            className={cfgBox}
-          />
-          <span className={cfgUnit}>seg</span>
-        </div>
-      );
-    }
-    return (
-      <div key={f.key} className="flex items-center gap-2">
-        <span className={cfgLabel}>{f.label}</span>
-        <input
-          inputMode="numeric"
-          value={cfg[f.key] ?? ''}
-          placeholder="0"
-          onChange={(e) => setKey(f.key, e.target.value)}
-          className={cfgBox}
-        />
-        {f.kind === 'seconds' && <span className={cfgUnit}>seg</span>}
-      </div>
-    );
-  };
 
   const doSave = () => {
     setServerError(null);
@@ -1369,64 +571,28 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       return;
     }
     setNameError(false);
-
-    // Catch the values the API would reject (positive-only fields set to 0 or
-    // less) up front, so we can point at the exact box instead of "Datos
-    // inválidos".
     if (type === 'structured') {
-      const cols = itemColumns(format);
-      const kept = blocks.filter(
-        (b) =>
-          !(b.section === 'warmup' && warmupWorkoutId) &&
-          !(b.section === 'cooldown' && cooldownWorkoutId),
-      );
-      const errs: Record<string, string> = {};
-      let firstMsg: string | null = null;
-      let firstBlock: string | null = null;
-      const bad = (raw: string) => raw.trim() !== '' && (num(raw) ?? 0) <= 0;
-      const flag = (bKey: string, itKey: string, field: string, msg: string) => {
-        errs[`${itKey}:${field}`] = msg;
-        if (!firstMsg) {
-          firstMsg = msg;
-          firstBlock = bKey;
+      const all = [{ label: baseLabel.trim() || 'Principal', text: text ?? '' }, ...tabs];
+      for (let i = 0; i < all.length; i += 1) {
+        const p = parseRutina(all[i]!.text, { catalog });
+        const n = p.diagnostics.filter((d) => d.severity === 'error').length;
+        if (n > 0) {
+          setActiveTab(i);
+          setServerError(
+            (n === 1 ? 'Hay 1 línea con error' : `Hay ${n} líneas con error`) +
+              (all.length > 1 ? ` en «${all[i]!.label}»` : '') +
+              '. Corrígelo antes de guardar.',
+          );
+          return;
         }
-      };
-      for (const b of kept) {
-        for (const it of b.items) {
-          if (it.kind === 'rest') {
-            if (bad(it.workSeconds))
-              flag(b.key, it.key, 'workSeconds', 'El descanso debe ser mayor que 0 segundos.');
-          } else {
-            const exName = exercise(it.exerciseId)?.name ?? 'Un ejercicio';
-            if (cols.showSets && bad(it.sets))
-              flag(b.key, it.key, 'sets', `«${exName}»: las series deben ser mayores que 0.`);
-            if (cols.showTarget) {
-              const tf = targetField(it.measure || 'reps');
-              if (bad(it[tf]))
-                flag(b.key, it.key, tf, `«${exName}»: el objetivo debe ser mayor que 0.`);
-            }
-          }
-        }
-      }
-      if (firstMsg) {
-        setFieldErrors(errs);
-        setServerError(firstMsg);
-        if (firstBlock) setCollapsed((c) => ({ ...c, [firstBlock!]: false }));
-        return;
       }
     }
-
-    setFieldErrors({});
     save.mutate();
   };
 
   // ---- Create wizard (new workouts only): type → format → name -------------
   const selectType = (t: 'structured' | 'video') => {
     setType(t);
-    setWizardStep(t === 'video' ? 'name' : 'format');
-  };
-  const selectFormat = (f: WorkoutFormat) => {
-    setFormat(f);
     setWizardStep('name');
   };
   const finishWizard = () => {
@@ -1439,18 +605,8 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   };
 
   if (wizardStep !== 'done') {
-    const stepTotal = segmentMode ? 2 : type === 'video' ? 2 : 3;
-    const stepNum = segmentMode
-      ? wizardStep === 'format'
-        ? 1
-        : 2
-      : wizardStep === 'type'
-        ? 1
-        : wizardStep === 'format'
-          ? 2
-          : type === 'video'
-            ? 2
-            : 3;
+    const stepTotal = segmentMode ? 1 : 2;
+    const stepNum = segmentMode ? 1 : wizardStep === 'type' ? 1 : 2;
     return (
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between gap-6 border-b border-line bg-surface px-7 py-4">
@@ -1479,10 +635,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 <div className="grid gap-3 sm:grid-cols-2">
                   {(
                     [
-                      {
-                        v: 'structured',
-                        desc: 'Bloques de ejercicios con series, reps, tiempo o distancia.',
-                      },
+                      { v: 'structured', desc: 'Ejercicios con series, reps, tiempo o distancia.' },
                       { v: 'video', desc: 'Una sola clase en video, sin pasos.' },
                     ] as const
                   ).map((o) => (
@@ -1500,7 +653,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
               </>
             )}
 
-            {wizardStep === 'format' && (
+            {wizardStep === 'name' && (
               <>
                 {!segmentMode && (
                   <button
@@ -1511,37 +664,12 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                     ← Atrás
                   </button>
                 )}
-                <h1 className="mb-1 text-2xl font-bold tracking-tight">Elige el formato</h1>
-                <p className="mb-6 text-sm text-ink-3">Define cómo se estructura y cronometra la rutina.</p>
-                <div className="grid gap-2.5 sm:grid-cols-2">
-                  {WORKOUT_FORMAT.map((f) => (
-                    <button
-                      key={f}
-                      type="button"
-                      onClick={() => selectFormat(f)}
-                      className="flex flex-col gap-1 rounded-xl border border-line-2 bg-surface p-3.5 text-left hover:border-accent hover:bg-accent-tint/30"
-                    >
-                      <span className="text-sm font-bold text-accent-dark">{FORMAT_LABEL[f]}</span>
-                      <span className="text-[12.5px] leading-snug text-ink-3">{FORMAT_DESC[f]}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {wizardStep === 'name' && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setWizardStep(type === 'video' ? 'type' : 'format')}
-                  className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
-                >
-                  ← Atrás
-                </button>
-                <h1 className="mb-1 text-2xl font-bold tracking-tight">Nombra tu {segmentMode ? 'segmento' : 'rutina'}</h1>
+                <h1 className="mb-1 text-2xl font-bold tracking-tight">
+                  Nombra tu {segmentMode ? 'segmento' : 'rutina'}
+                </h1>
                 <p className="mb-5 text-sm text-ink-3">
                   {es.workouts.types[type]}
-                  {type === 'structured' ? ` · ${FORMAT_LABEL[format]}` : ''}
+                  {type === 'structured' ? ' · el formato se escribe en la primera línea de cada parte' : ''}
                 </p>
                 <Input
                   autoFocus
@@ -1570,6 +698,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       </div>
     );
   }
+
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -1609,27 +738,16 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" onClick={() => setGuideOpen(true)}>
+            Guía
+          </Button>
           <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="mr-1.5"
-            >
-              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
             Ajustes
           </Button>
           <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
             {es.app.cancel}
           </Button>
-          <Button onClick={doSave} disabled={save.isPending}>
+          <Button onClick={doSave} disabled={save.isPending || (type === 'structured' && !editorReady)}>
             {save.isPending ? es.app.saving : es.app.save}
           </Button>
         </div>
@@ -1639,336 +757,259 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         <p className="mx-7 mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-accent-dark">{serverError}</p>
       )}
 
-      {/* Single scrollable two-column area */}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex flex-col lg:flex-row lg:items-start">
-          {/* Left: exercises / blocks (or video) */}
-          <div className="flex min-w-0 flex-1 flex-col gap-3.5 px-7 py-5">
-          {type === 'structured' ? (
-            <>
-              <h2 className="text-[15px] font-bold">Contenido</h2>
-
-              <div className="flex items-start gap-2 rounded-lg border border-accent/20 bg-accent-tint/30 px-3 py-2.5">
-                <span className="mt-px font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
-                  {FORMAT_LABEL[format]}
-                </span>
-                <p className="text-[12.5px] leading-snug text-ink-2">{FORMAT_HELP[format]}</p>
-              </div>
-
-              {FORMAT_FIELDS[format].length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 rounded-xl border border-line-2 bg-surface px-4 py-2.5">
-                  {FORMAT_FIELDS[format].map((f, i) => (
-                    <Fragment key={f.key}>
-                      {i > 0 && <span className="h-5 w-px bg-line-2" />}
-                      {configField(f)}
-                    </Fragment>
-                  ))}
-                </div>
-              )}
-
-              {!segmentMode && sectionSlot(warmupBlocks, 'warmup', 'Calentamiento')}
-
-              {mainBlocks.map((b) => {
-                const bi = blocks.indexOf(b);
-                const isCollapsed = collapsed[b.key];
-                const r = num(b.rounds);
-                const isDropTarget = dragIndex !== null && dragIndex !== bi && overIndex === bi;
-                return (
-                  <div
-                    key={b.key}
-                    onDragOver={(e) => {
-                      if (dragIndex === null) return;
-                      e.preventDefault();
-                      if (overIndex !== bi) setOverIndex(bi);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      dropBlock(bi);
-                    }}
-                    className={cn(
-                      'overflow-hidden rounded-xl border bg-surface',
-                      dragIndex === bi ? 'opacity-40' : '',
-                      isDropTarget ? 'border-accent ring-1 ring-accent/40' : 'border-[#e2ded5]',
-                    )}
-                  >
-                    {b.kind === 'rest' ? (
-                      <div className="flex items-center gap-2 bg-surface-2 px-3 py-2">
-                        <span
-                          draggable
-                          onDragStart={(e) => {
-                            setDragIndex(bi);
-                            e.dataTransfer.effectAllowed = 'move';
-                          }}
-                          onDragEnd={() => {
-                            setDragIndex(null);
-                            setOverIndex(null);
-                          }}
-                          className="cursor-grab select-none px-0.5 font-mono text-[15px] text-faint hover:text-ink-3 active:cursor-grabbing"
-                          title="Arrastra para reordenar"
-                        >
-                          ⠿
-                        </span>
-                        <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
-                          Descanso
-                        </span>
-                        <input
-                          value={b.items[0]?.workSeconds ?? ''}
-                          placeholder="0"
-                          onChange={(e) =>
-                            b.items[0] && updateItem(b.key, b.items[0].key, { workSeconds: e.target.value })
-                          }
-                          className={cn(
-                            'h-7 w-16 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]',
-                            b.items[0] && fieldErr(b.items[0].key, 'workSeconds') && errRing,
-                          )}
-                        />
-                        <span className="font-mono text-[11px] text-muted">seg</span>
-                        <span className="flex-1" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
+        {/* Left: the editor, VS Code style (tab bar · editor · problems) */}
+        {type === 'structured' ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+            {/* Tab bar: base + variants (+), undo/redo on the right */}
+            <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
+              {!segmentMode &&
+                [{ id: 'base', label: baseLabel.trim() || 'Principal' }, ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label }))].map(
+                  (t, i) => (
+                    <div
+                      key={t.id}
+                      onClick={() => setActiveTab(i)}
+                      onDoubleClick={() => setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label })}
+                      title={i === 0 ? 'Rutina principal · doble clic para nombrar el nivel' : 'Variante · doble clic para renombrar'}
+                      className={cn(
+                        'group flex cursor-pointer items-center gap-2 border-r border-line px-4 font-mono text-[12px]',
+                        activeTab === i
+                          ? 'bg-surface text-ink shadow-[inset_0_-2px_0_var(--color-accent)]'
+                          : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
+                      )}
+                    >
+                      <span>{t.label || 'Sin nombre'}</span>
+                      {i > 0 && (
                         <button
                           type="button"
-                          onClick={() => duplicateBlock(bi)}
-                          className="inline-flex shrink-0 items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
-                          title="Duplicar"
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setBlocks((bs) => bs.filter((x) => x.key !== b.key))}
-                          className="inline-flex shrink-0 items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
-                          title="Eliminar"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmRemove({ index: i - 1, label: t.label });
+                          }}
+                          className="rounded px-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
+                          title="Eliminar variante"
                         >
                           ✕
                         </button>
-                      </div>
-                    ) : b.kind === 'single' ? (
-                      b.items[0] ? (
-                        exerciseFields(b.key, b.items[0], blockDragHandle(bi), () => removeBlock(b.key))
-                      ) : null
-                    ) : (
-                      <>
-                    <div
-                      onClick={() => toggleCollapse(b.key)}
-                      className="flex cursor-pointer items-center gap-2 border-b border-[#eeeae2] bg-surface-2 px-3 py-2"
-                    >
-                      <span
-                        draggable
-                        onDragStart={(e) => {
-                          setDragIndex(bi);
-                          e.dataTransfer.effectAllowed = 'move';
-                        }}
-                        onDragEnd={() => {
-                          setDragIndex(null);
-                          setOverIndex(null);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="cursor-grab select-none px-0.5 font-mono text-[15px] text-faint hover:text-ink-3 active:cursor-grabbing"
-                        title="Arrastra para reordenar"
-                      >
-                        ⠿
-                      </span>
-                      {nameEditKey === b.key ? (
-                        <input
-                          autoFocus
-                          value={b.name}
-                          onChange={(e) => updateBlock(b.key, { name: e.target.value })}
-                          onClick={(e) => e.stopPropagation()}
-                          onBlur={() => setNameEditKey(null)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === 'Escape') setNameEditKey(null);
-                          }}
-                          placeholder={`Bloque ${bi + 1}`}
-                          className="min-w-0 flex-1 rounded-md border border-line-2 bg-surface px-2 py-1 text-sm font-bold focus:border-accent/50 focus:outline-none"
-                        />
-                      ) : (
-                        <>
-                          <span className="truncate text-sm font-bold">
-                            {b.name || `Bloque ${bi + 1}`}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setNameEditKey(b.key);
-                            }}
-                            className="inline-flex shrink-0 items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-accent"
-                            title="Renombrar"
-                          >
-                            <svg
-                              width="15"
-                              height="15"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
-                            </svg>
-                          </button>
-                          <span className="flex-1" />
-                        </>
                       )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          duplicateBlock(bi);
-                        }}
-                        className="inline-flex shrink-0 items-center rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
-                        title="Duplicar bloque"
-                      >
-                        <svg
-                          width="15"
-                          height="15"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                          <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setBlocks((bs) => bs.filter((x) => x.key !== b.key));
-                        }}
-                        className="inline-flex shrink-0 items-center rounded p-1 text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
-                        title="Eliminar bloque"
-                      >
-                        ✕
-                      </button>
                     </div>
-                    {isCollapsed ? (
-                      <div className="px-4 py-2.5 font-mono text-[11px] text-muted">
-                        {b.items.length} elemento{b.items.length === 1 ? '' : 's'}
-                        {r && r > 1 ? ` · ${r} rondas` : ''}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 border-b border-[#f4f1eb] px-3.5 py-2">
-                          <label className="flex items-center gap-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-muted-2">
-                            {es.workouts.rounds}
-                            <input
-                              placeholder="1"
-                              value={b.rounds}
-                              onChange={(e) => updateBlock(b.key, { rounds: e.target.value })}
-                              className="h-7 w-12 rounded-md border border-line-2 bg-surface px-2 text-center font-mono text-[12px]"
-                            />
-                          </label>
-                        </div>
-                        {b.items.length > 0 && itemHeader()}
-                        {b.items.map((it, i) => itemRow(b.key, it, i))}
-                        <div className="flex gap-2 p-3">
-                          {addButton(es.workouts.addExercise, () => addExerciseTo(b.key))}
-                          {addButton('+ Descanso', () => addRestItem(b.key))}
-                        </div>
-                      </>
-                    )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              {blocks.length === 0 && (
-                <div className="rounded-xl border border-dashed border-line-2 bg-surface-3 p-[18px] text-center text-[13px] text-ink-3">
-                  Añade un ejercicio, un descanso o un bloque para empezar.
-                </div>
-              )}
-              <div>
+                  ),
+                )}
+              {!segmentMode && (
                 <button
                   type="button"
-                  onClick={(e) => setAddMenu(addMenu ? null : menuAnchor(e.currentTarget, 156))}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line-2 bg-surface-3 py-3 text-[13px] font-semibold text-ink-2 hover:bg-surface-2"
+                  onClick={() => setTabDialog({ mode: 'add', index: tabs.length + 1, label: tabs.length === 0 ? 'Escalada' : '' })}
+                  disabled={!editorReady}
+                  className="px-3 font-mono text-[14px] text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-40"
+                  title="Añadir variante (copia la pestaña activa)"
                 >
-                  + Añadir
+                  +
                 </button>
-                {addMenu && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setAddMenu(null)} />
-                    <div
-                      className="fixed z-40 w-60 overflow-hidden rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
-                      style={{
-                        left: addMenu.left,
-                        top: addMenu.top,
-                        transform: addMenu.up ? 'translate(-50%,-100%)' : 'translate(-50%,0)',
-                      }}
-                    >
-                      {[
-                        {
-                          label: 'Ejercicio',
-                          desc: 'Un ejercicio suelto',
-                          on: () => setPickerBlock('__new__'),
-                        },
-                        {
-                          label: 'Descanso',
-                          desc: 'Una pausa entre ejercicios',
-                          on: () => setBlocks((bs) => [...bs, restBlock()]),
-                        },
-                        {
-                          label: 'Bloque',
-                          desc: 'Varias rondas de ejercicios',
-                          on: () =>
-                            setBlocks((bs) => [
-                              ...bs,
-                              { ...emptyBlock(), name: `Bloque ${bs.length + 1}` },
-                            ]),
-                        },
-                      ].map((o) => (
-                        <button
-                          key={o.label}
-                          type="button"
-                          onClick={() => {
-                            o.on();
-                            setAddMenu(null);
-                          }}
-                          className="flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left hover:bg-surface-2"
-                        >
-                          <span className="text-[13px] font-semibold text-ink">+ {o.label}</span>
-                          <span className="font-mono text-[10px] text-muted">{o.desc}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {!segmentMode && sectionSlot(cooldownBlocks, 'cooldown', 'Enfriamiento')}
-
-              <p className="font-mono text-[11px] leading-relaxed text-muted">
-                {segmentMode
-                  ? 'Un segmento es un calentamiento o enfriamiento reutilizable. No se registra en los resultados y no lleva su propio calentamiento ni enfriamiento.'
-                  : 'Un bloque son varias rondas de lo que tenga dentro. Calentamiento y enfriamiento son opcionales y no cuentan para los resultados.'}
-              </p>
-            </>
-          ) : (
-            <div>
-              <h2 className="mb-3 text-[15px] font-bold">{es.workouts.video}</h2>
-              <div className="max-w-xl">
-                <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
+              )}
+              <span className="flex-1" />
+              <div className="flex items-center gap-0.5 px-2">
+                <button
+                  type="button"
+                  onClick={() => editorApi.current?.undo()}
+                  disabled={!canUndo}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Deshacer (⌘Z / Ctrl+Z)"
+                  aria-label="Deshacer"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7v6h6" />
+                    <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editorApi.current?.redo()}
+                  disabled={!canRedo}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Rehacer (⇧⌘Z / Ctrl+Y)"
+                  aria-label="Rehacer"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 7v6h-6" />
+                    <path d="M3 17a9 9 0 0 1 15-6.7L21 13" />
+                  </svg>
+                </button>
               </div>
             </div>
-          )}
-        </div>
+            <div ref={editorHost} className="min-h-0 flex-1">
+              {!editorReady ? (
+                <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
+              ) : (
+                <RutinaTextEditor
+                  key={activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}
+                  value={value}
+                  onChange={setValue}
+                  catalog={catalog}
+                  parsed={parsed}
+                  placeholder={PLACEHOLDER}
+                  autoFocus={!workout}
+                  extras={extras}
+                  onInsertBlock={insertBlock}
+                  onSaveBlock={(t) => {
+                    setServerError(null);
+                    setSnippetModal({ name: '', text: t.trim() });
+                  }}
+                  apiRef={editorApi}
+                  onCreateExercise={(n) => setNewExercise({ name: titleCase(n), difficulty: 'beginner' })}
+                  className="h-full"
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
+            <h2 className="mb-3 text-[15px] font-bold">{es.workouts.video}</h2>
+            <div className="max-w-xl">
+              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
+            </div>
+          </div>
+        )}
 
-        {/* Right: live preview of the whole rutina */}
-          <aside className="flex w-full flex-col gap-[22px] border-t border-line bg-surface px-[22px] py-[22px] lg:sticky lg:top-0 lg:w-[380px] lg:border-l lg:border-t-0">
+          {/* Right: live athlete-facing preview */}
+          <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
             <RutinaPreview model={previewModel} name={name} />
+            {activeTab > 0 && activeVariant && (
+              <p className="font-mono text-[11px] text-muted">Mostrando la variante «{activeVariant.label}».</p>
+            )}
           </aside>
-        </div>
       </div>
 
-      {/* Settings drawer (moved out of the sidebar to free it for the preview) */}
+      <Dialog
+        open={tabDialog !== null}
+        onClose={() => setTabDialog(null)}
+        title={tabDialog?.mode === 'add' ? 'Nueva variante' : 'Nombre del nivel'}
+        className="max-w-sm"
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre</div>
+            <Input
+              autoFocus
+              value={tabDialog?.label ?? ''}
+              onChange={(e) => setTabDialog((d) => (d ? { ...d, label: e.target.value } : d))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && tabDialog && (tabDialog.mode === 'rename' || tabDialog.label.trim())) {
+                  if (tabDialog.mode === 'add') addVariant(tabDialog.label.trim());
+                  else renameTab(tabDialog.index, tabDialog.label.trim());
+                  setTabDialog(null);
+                }
+              }}
+              placeholder={tabDialog?.mode === 'add' ? 'p. ej. Escalada, Principiante' : 'p. ej. RX'}
+            />
+            <p className="mt-2 text-[12px] leading-snug text-muted">
+              {tabDialog?.mode === 'add'
+                ? 'Se crea copiando el contenido de la pestaña activa. En la app el usuario elige el nivel antes de empezar.'
+                : 'Así verá el usuario este nivel en la app. Déjalo vacío para "Principal".'}
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setTabDialog(null)}>
+              {es.app.cancel}
+            </Button>
+            <Button
+              type="button"
+              disabled={tabDialog?.mode === 'add' && !tabDialog.label.trim()}
+              onClick={() => {
+                if (!tabDialog) return;
+                if (tabDialog.mode === 'add') addVariant(tabDialog.label.trim());
+                else renameTab(tabDialog.index, tabDialog.label.trim());
+                setTabDialog(null);
+              }}
+            >
+              {tabDialog?.mode === 'add' ? 'Crear' : es.app.save}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={confirmRemove !== null}
+        onClose={() => setConfirmRemove(null)}
+        title="Eliminar variante"
+        className="max-w-sm"
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <p className="text-[14px] leading-relaxed text-ink-2">
+            ¿Eliminar la variante «{confirmRemove?.label}»? Se borrará al guardar la rutina.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmRemove(null)}>
+              {es.app.cancel}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (confirmRemove) removeVariant(confirmRemove.index);
+                setConfirmRemove(null);
+              }}
+            >
+              Eliminar
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Guide drawer */}
+      {guideOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setGuideOpen(false)} />
+          <aside className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[420px] flex-col border-l border-line bg-surface shadow-[0_0_40px_-10px_rgba(0,0,0,0.35)]">
+            <div className="flex shrink-0 items-center justify-between border-b border-line px-5 py-4">
+              <h3 className="text-[15px] font-bold">Guía de la notación</h3>
+              <button
+                type="button"
+                onClick={() => setGuideOpen(false)}
+                aria-label="Cerrar"
+                className="rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="shrink-0 px-5 pt-4">
+              <div className="flex h-9 items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
+                <span className="text-muted-2">⌕</span>
+                <input
+                  autoFocus
+                  value={guideQuery}
+                  onChange={(e) => setGuideQuery(e.target.value)}
+                  placeholder="Buscar (tempo, carga, EMOM…)"
+                  className="h-full flex-1 bg-transparent text-[13px] text-ink placeholder:text-muted-2 focus:outline-none"
+                />
+                {guideQuery && (
+                  <button type="button" onClick={() => setGuideQuery('')} className="text-faint-2 hover:text-ink">
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-6 pt-3">
+              {guideSections.length === 0 && (
+                <p className="text-[12px] text-muted">Nada coincide con «{guideQuery}».</p>
+              )}
+              {guideSections.map((sec) => (
+                <section key={sec.title} className="flex flex-col gap-1.5">
+                  <h4 className="mt-2 text-[12px] font-bold uppercase tracking-[0.06em] text-ink-3">{sec.title}</h4>
+                  <dl className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface-2/40 p-3">
+                    {sec.rows.map((g) => (
+                      <div key={g.k} className="flex flex-col gap-0.5">
+                        <dt className="font-mono text-[11.5px] font-medium text-ink">{g.k}</dt>
+                        <dd className="text-[11px] leading-snug text-muted">{g.v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
+              ))}
+            </div>
+          </aside>
+        </>
+      )}
+
+      {/* Settings drawer */}
       {settingsOpen && (
         <>
           <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setSettingsOpen(false)} />
@@ -2009,75 +1050,28 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
               {!segmentMode && (
                 <div className="flex flex-col gap-2.5">
                   <MonoLabel>{es.workouts.type}</MonoLabel>
-                  {locked ? (
-                    <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
-                      {es.workouts.types[type]}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-1.5">
-                      {(['structured', 'video'] as const).map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setType(t)}
-                          className={cn(
-                            'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                            type === t ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-2',
-                          )}
-                        >
-                          {es.workouts.types[t]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {type === 'structured' && (
-                <div className="flex flex-col gap-2.5">
-                  <MonoLabel>{es.workouts.format}</MonoLabel>
-                  {locked ? (
-                    <div className="rounded-lg border border-accent/30 bg-accent-tint/40 px-3 py-2.5 text-xs font-semibold text-accent-dark">
-                      {FORMAT_LABEL[format]}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {WORKOUT_FORMAT.map((f) => (
-                        <button
-                          key={f}
-                          type="button"
-                          onClick={() => setFormat(f)}
-                          className={cn(
-                            'rounded-lg border px-1.5 py-2.5 text-center text-xs font-semibold',
-                            format === f
-                              ? 'border-accent bg-accent-tint/50 text-accent-dark'
-                              : 'border-line-2 bg-surface text-ink-2 hover:bg-surface-2',
-                          )}
-                        >
-                          {FORMAT_LABEL[f]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">
+                    {es.workouts.types[type]}
+                  </div>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.difficulty}</div>
-                    <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
-                      {DIFFICULTY.map((d) => (
-                        <option key={d} value={d}>
-                          {es.difficulty[d]}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div>
-                    <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
-                    <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
-                  </div>
+                  <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value as typeof difficulty)}>
+                    {DIFFICULTY.map((d) => (
+                      <option key={d} value={d}>
+                        {es.difficulty[d]}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
+                <div>
+                  <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.duration}</div>
+                  <Input inputMode="numeric" value={durationMin} onChange={(e) => setDurationMin(e.target.value)} />
+                </div>
+              </div>
 
               <div className="flex flex-col gap-2.5">
                 <MonoLabel>{es.fields.thumbnail}</MonoLabel>
@@ -2088,81 +1082,97 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         </>
       )}
 
-      <EntityPicker<ExerciseListItem>
-        open={pickerBlock !== null}
-        onClose={() => setPickerBlock(null)}
-        title={es.pick.exercise}
-        queryKey="exercise-picker"
-        load={(s) => api.exercises.list({ search: s || undefined, pageSize: 50 }).then((r) => r.data)}
-        renderTitle={(e) => e.name}
-        renderSubtitle={(e) => es.difficulty[e.difficulty]}
-        onPick={(e) => {
-          if (pickerBlock === '__new__') {
-            // Top-level "+ Ejercicio" → a loose exercise done once.
-            setBlocks((bs) => [...bs, singleBlock(e.id)]);
-          } else if (pickerBlock === '__warmup__') {
-            setBlocks((bs) => [...bs, singleBlock(e.id, 'warmup')]);
-          } else if (pickerBlock === '__cooldown__') {
-            setBlocks((bs) => [...bs, singleBlock(e.id, 'cooldown')]);
-          } else if (pickerBlock) {
-            setBlocks((bs) =>
-              bs.map((b) =>
-                b.key === pickerBlock ? { ...b, items: [...b.items, emptyItem(e.id)] } : b,
-              ),
-            );
-          }
-        }}
-      />
-
-      <EntityPicker<WorkoutListItem>
-        open={rutinaPicker !== null}
-        onClose={() => setRutinaPicker(null)}
-        title={rutinaPicker === 'cooldown' ? 'Importar enfriamiento' : 'Importar calentamiento'}
-        queryKey="rutina-picker"
-        load={(s) =>
-          api.workouts.list({ search: s || undefined, pageSize: 50, kind: 'segment' }).then((r) =>
-            r.data.filter((w) => w.id !== workout?.id),
-          )
-        }
-        renderTitle={(w) => w.name}
-        renderSubtitle={(w) => (w.format ? FORMAT_LABEL[w.format] : es.workouts.video)}
-        onPick={(w) => {
-          if (rutinaPicker) importSegment.mutate({ section: rutinaPicker, id: w.id });
-        }}
-      />
-
       <Dialog
-        open={promoteModal !== null}
-        onClose={() => setPromoteModal(null)}
-        title="Guardar como segmento"
-        className="max-w-md"
+        open={snippetModal !== null}
+        onClose={() => setSnippetModal(null)}
+        title="Guardar bloque reutilizable"
+        className="max-w-lg"
       >
         <div className="flex flex-col gap-4 p-5">
           <div>
-            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre del segmento</div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre</div>
             <Input
               autoFocus
-              value={promoteModal?.name ?? ''}
-              onChange={(e) => setPromoteModal((m) => (m ? { ...m, name: e.target.value } : m))}
+              value={snippetModal?.name ?? ''}
+              onChange={(e) => setSnippetModal((m) => (m ? { ...m, name: e.target.value } : m))}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') confirmPromote();
+                if (e.key === 'Enter' && snippetModal?.name.trim()) createSnippet.mutate(snippetModal);
               }}
-              placeholder="Nombre del segmento"
+              placeholder="p. ej. Core express"
             />
-            <p className="mt-2 text-[12px] leading-snug text-muted">
-              Se guardará en Segmentos como un calentamiento o enfriamiento reutilizable.
+            <p className="mt-1.5 text-[12px] leading-snug text-muted">
+              Escribe este nombre al inicio de una línea y el bloque aparecerá como sugerencia.
             </p>
           </div>
+          <div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Contenido</div>
+            <textarea
+              value={snippetModal?.text ?? ''}
+              onChange={(e) => setSnippetModal((m) => (m ? { ...m, text: e.target.value } : m))}
+              className="min-h-32 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
+            />
+          </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setPromoteModal(null)}>
+            <Button type="button" variant="outline" onClick={() => setSnippetModal(null)}>
               {es.app.cancel}
             </Button>
             <Button
               type="button"
-              onClick={confirmPromote}
-              disabled={saveAsRutina.isPending || !promoteModal?.name.trim()}
+              onClick={() => snippetModal && createSnippet.mutate(snippetModal)}
+              disabled={createSnippet.isPending || !snippetModal?.name.trim() || !snippetModal?.text.trim()}
             >
-              {saveAsRutina.isPending ? es.app.saving : es.app.save}
+              {createSnippet.isPending ? es.app.saving : es.app.save}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={newExercise !== null}
+        onClose={() => setNewExercise(null)}
+        title="Crear ejercicio"
+        className="max-w-md"
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.exercises.fields.name}</div>
+            <Input
+              autoFocus
+              value={newExercise?.name ?? ''}
+              onChange={(e) => setNewExercise((m) => (m ? { ...m, name: e.target.value } : m))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newExercise?.name.trim()) createExercise.mutate(newExercise);
+              }}
+            />
+          </div>
+          <div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.fields.difficulty}</div>
+            <Select
+              value={newExercise?.difficulty ?? 'beginner'}
+              onChange={(e) =>
+                setNewExercise((m) => (m ? { ...m, difficulty: e.target.value as Workout['difficulty'] } : m))
+              }
+            >
+              {DIFFICULTY.map((d) => (
+                <option key={d} value={d}>
+                  {es.difficulty[d]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <p className="text-[12px] leading-snug text-muted">
+            Se crea como borrador; completa músculos, equipo y video desde Ejercicios cuando quieras.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setNewExercise(null)}>
+              {es.app.cancel}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => newExercise && createExercise.mutate(newExercise)}
+              disabled={createExercise.isPending || !newExercise?.name.trim()}
+            >
+              {createExercise.isPending ? es.app.saving : 'Crear'}
             </Button>
           </div>
         </div>

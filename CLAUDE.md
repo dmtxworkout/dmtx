@@ -13,6 +13,7 @@ DMTX is the **"Netflix of workouts"**: a Spanish-language fitness platform with 
 | [docs/admin-screens.md](docs/admin-screens.md) | Screen-by-screen spec for the portal |
 | [docs/billing.md](docs/billing.md) | Self-managed billing engine + reporting |
 | [docs/conventions.md](docs/conventions.md) | How to add an entity end-to-end; code patterns |
+| [docs/rutina-text.md](docs/rutina-text.md) | The rutina text notation the admin editor parses (grammar, modifiers, diagnostics) |
 | [docs/env.md](docs/env.md) | Required env vars and where they live |
 | [docs/roadmap.md](docs/roadmap.md) | What's built vs. next |
 | [features/](features/) | Backlog of planned-but-not-scheduled features (e.g. coach marketplace) |
@@ -24,7 +25,7 @@ apps/admin   Next.js 16 portal (Spanish) → Vercel        apps/api   Hono/OpenA
 apps/mobile  Expo (later)
 packages/schemas  shared Zod (source of truth)   packages/db  Drizzle + Postgres (SERVER-ONLY)
 packages/auth     Better Auth                    packages/api-client  typed client for the browser
-packages/core     workout engines (later)        packages/config      tsconfig/eslint/tailwind
+packages/core     rutina text parser (+ engines later) packages/config   tsconfig/eslint/tailwind
 ```
 
 ## Hard rules

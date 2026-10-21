@@ -15,6 +15,7 @@ const groups = [
     items: [
       { href: '/rutinas', label: es.nav.workouts },
       { href: '/segmentos', label: es.nav.segments },
+      { href: '/bloques', label: es.nav.snippets },
       { href: '/ejercicios', label: es.nav.exercises },
       { href: '/programas', label: es.nav.programs },
       { href: '/habilidades', label: es.nav.skills },

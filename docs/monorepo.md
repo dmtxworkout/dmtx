@@ -12,7 +12,7 @@ apps/
 packages/
   config/      tsconfig bases, eslint flat configs, (tailwind lives in admin for now)
   schemas/     shared Zod DTOs + enums + tempo/goal/load/format-config  (leaf, client-safe)
-  core/        workout execution/progression engines                    (not yet created)
+  core/        rutina text parser/serializer/completion (+ future engines) (pure TS, tested with vitest)
   db/          Drizzle schema + migrations + createDb()  (SERVER-ONLY)
   auth/        Better Auth server (.) + browser client (./client)
   api-client/  typed fetch client for the browser
@@ -27,7 +27,8 @@ db      → schemas                            (server-only; lint-banned from ad
 auth    → db, schemas                        (@dmtx/auth server; @dmtx/auth/client is browser-safe)
 api-client → schemas
 apps/api   → db, schemas, auth
-apps/admin → api-client, schemas, auth/client, config
+apps/admin → api-client, schemas, core, auth/client, config
+core    → schemas                            (client-safe; shared with mobile later)
 ```
 
 **Enforcement:** `packages/config/eslint/base.js` exports `noServerOnlyImports`, applied in the Next config (`@dmtx/config/eslint/next`). It bans `@dmtx/db`, `@dmtx/db/*`, and the server `@dmtx/auth` entry from client code. `@dmtx/auth/client` and `@dmtx/auth/permissions` are allowed.

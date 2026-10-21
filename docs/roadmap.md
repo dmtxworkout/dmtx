@@ -27,6 +27,15 @@
 
 Bigger directions we want but haven't scheduled live in [../features/](../features/) — e.g. a **coach marketplace** where other coaches publish programs and earn commissions (needs a revenue-share model since today it's one all-access subscription).
 
+## Rutina editor (built)
+
+The block/item builder was replaced (2026-10-20) by the **text editor**: `/core` parses the [rutina text notation](rutina-text.md) and the admin form saves the parsed structure. Exercises carry `aliases` (matched by the parser and `GET /api/exercises?search=`), and absolute loads carry an optional `womenValue` (`/95 lb`).
+
+## Rutina editor — next
+
+- ~~Partes con formato propio dentro de una sección~~ — built (2026-10-20): part blocks (`kind='part'`, own format, children via `parent_block_id`), the parser/serializer nest them, and the mobile player chains parts (one combined log for multi-part sessions).
+- Several rutinas open at once (tabs per file) when building programs by week.
+
 ## Known shortcuts to revisit
 
 - Exercise form omits muscle/equipment pickers (needs the taxonomy screens first).

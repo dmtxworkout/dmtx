@@ -6,8 +6,22 @@
 // only real blocks (multi-exercise or multi-round) get a gap + a rounds header.
 export type PvItem =
   | { kind: 'rest'; seconds: number | null }
-  | { kind: 'exercise'; prefix: string | null; name: string; load: string | null; tempo: string | null };
-export type PvBlock = { title: string | null; rounds: number | null; items: PvItem[] };
+  | {
+      kind: 'exercise';
+      prefix: string | null;
+      name: string;
+      load: string | null;
+      tempo: string | null;
+      perSide?: boolean;
+      note?: string | null;
+    };
+export type PvBlock = {
+  title: string | null;
+  rounds: number | null;
+  items: PvItem[];
+  /** A part header ("AMRAP 12 min"): rendered as a sub-heading before its blocks. */
+  part?: string | null;
+};
 export type PvSection = { name: string | null; formatLabel?: string | null; blocks: PvBlock[] };
 export type PvModel = {
   type: 'structured' | 'video';
@@ -33,6 +47,8 @@ function Line({ item }: { item: PvItem }) {
       {item.name}
       {item.load && <span className="text-ink-3"> @{item.load}</span>}
       {item.tempo && <span className="text-ink-3"> · {item.tempo}</span>}
+      {item.perSide && <span className="text-ink-3"> · c/lado</span>}
+      {item.note && <div className="text-[12px] leading-5 text-muted">— {item.note}</div>}
     </div>
   );
 }
@@ -42,13 +58,17 @@ function Line({ item }: { item: PvItem }) {
 // loose exercise that should sit tight against its neighbours.
 const isBlock = (b: PvBlock) => b.items.length > 1 || (b.rounds != null && b.rounds > 1);
 
-type Unit = { rounds: number | null; loose: boolean; items: PvItem[] };
+type Unit = { rounds: number | null; loose: boolean; items: PvItem[]; part?: string };
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   // Build display units WITHOUT mutating the incoming block arrays (they belong
   // to the live model and must stay intact across re-renders).
   const units: Unit[] = [];
   for (const b of blocks) {
+    if (b.part) {
+      units.push({ rounds: null, loose: false, items: [], part: b.part });
+      continue;
+    }
     if (b.items.length === 0) continue;
     if (isBlock(b)) {
       units.push({ rounds: b.rounds, loose: false, items: [...b.items] });
@@ -71,6 +91,11 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
         <div className="flex flex-col gap-4">
           {units.map((u, i) => (
             <div key={i}>
+              {u.part && (
+                <div className="-mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-dark">
+                  {u.part}
+                </div>
+              )}
               {u.rounds != null && u.rounds > 1 && (
                 <div className="mb-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
                   {u.rounds} rondas
@@ -87,7 +112,15 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   );
 }
 
-export function RutinaPreview({ model, name }: { model: PvModel; name: string }) {
+export function RutinaPreview({
+  model,
+  name,
+  hideHeader = false,
+}: {
+  model: PvModel;
+  name: string;
+  hideHeader?: boolean;
+}) {
   const mainHasContent = model.main.some((b) => b.items.length > 0);
   const empty = !model.warmup && !model.cooldown && !mainHasContent && !model.hasVideo;
   // The main section is headed by the format itself (e.g. "AMRAP 10 min").
@@ -95,12 +128,14 @@ export function RutinaPreview({ model, name }: { model: PvModel; name: string })
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
-          Vista previa
+      {!hideHeader && (
+        <div className="flex items-center justify-between">
+          <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
+            Vista previa
+          </div>
+          <span className="font-mono text-[10px] text-faint">como la ve el usuario</span>
         </div>
-        <span className="font-mono text-[10px] text-faint">como la ve el usuario</span>
-      </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-line-2 bg-surface">
         <div className="border-b border-line-3 px-4 py-3">

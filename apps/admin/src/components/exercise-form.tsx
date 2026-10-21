@@ -22,6 +22,7 @@ const formSchema = z.object({
   name: z.string().min(1, es.app.nameRequired),
   description: z.string(),
   cues: z.array(z.object({ value: z.string() })),
+  aliases: z.array(z.object({ value: z.string() })),
   difficulty: difficultySchema,
   isUnilateral: z.boolean(),
   status: contentStatusSchema,
@@ -32,6 +33,7 @@ const emptyValues: FormValues = {
   name: '',
   description: '',
   cues: [],
+  aliases: [],
   difficulty: 'beginner',
   isUnilateral: false,
   status: 'draft',
@@ -42,6 +44,7 @@ function toDefaults(exercise: Exercise): FormValues {
     name: exercise.name,
     description: exercise.description ?? '',
     cues: exercise.cues.map((value) => ({ value })),
+    aliases: exercise.aliases.map((value) => ({ value })),
     difficulty: exercise.difficulty,
     isUnilateral: exercise.isUnilateral,
     status: exercise.status,
@@ -64,6 +67,7 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
     defaultValues: exercise ? toDefaults(exercise) : emptyValues,
   });
   const cues = useFieldArray({ control: form.control, name: 'cues' });
+  const aliases = useFieldArray({ control: form.control, name: 'aliases' });
 
   const save = useMutation({
     mutationFn: (values: FormValues) => {
@@ -71,6 +75,7 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
         name: values.name,
         description: values.description || null,
         cues: values.cues.map((c) => c.value).filter((v) => v.trim().length > 0),
+        aliases: values.aliases.map((a) => a.value.trim()).filter((v) => v.length > 0),
         difficulty: values.difficulty,
         isUnilateral: values.isUnilateral,
         status: values.status,
@@ -202,6 +207,36 @@ export function ExerciseForm({ exercise }: { exercise?: Exercise }) {
                   onClick={() => cues.append({ value: '' })}
                 >
                   {es.exercises.fields.addCue}
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{es.exercises.fields.aliases}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 py-4">
+                <p className="text-xs text-zinc-500">{es.exercises.fields.aliasesHelp}</p>
+                {aliases.fields.map((field, i) => (
+                  <div key={field.id} className="flex gap-2">
+                    <Input {...form.register(`aliases.${i}.value` as const)} />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => aliases.remove(i)}
+                    >
+                      ✕
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => aliases.append({ value: '' })}
+                >
+                  {es.exercises.fields.addAlias}
                 </Button>
               </CardContent>
             </Card>
