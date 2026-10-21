@@ -511,18 +511,27 @@ export function RutinaForm({
     setVariants((vs) => (vs ?? []).slice(1));
     setActiveTab(0);
   };
-  /** Levels are ordered: move a tab of the version list one step up or down. */
-  const moveTab = (i: number, dir: -1 | 1) => {
+  /** Levels are ordered: drop the tab at `from` so it lands at `to` (both in the version list). */
+  const moveTab = (from: number, to: number) => {
+    if (from === to) return;
     const all = [{ id: baseLevelId, label: baseLabel, sections: sections ?? EMPTY_SECTIONS }, ...tabs];
-    const j = i + dir;
-    if (j < 0 || j >= all.length) return;
-    [all[i], all[j]] = [all[j]!, all[i]!];
+    const [moved] = all.splice(from, 1);
+    all.splice(to, 0, moved!);
     setBaseLabel(all[0]!.label);
     setBaseLevelId(all[0]!.id);
     setSections(all[0]!.sections);
     setVariants(all.slice(1));
-    setActiveTab(j);
+    setActiveTab(to);
   };
+  // Drag and drop in the level list (native HTML5: the list is short). The
+  // source index lives in a ref: dragover fires before any re-render.
+  const dragFromRef = useRef<number | null>(null);
+  const [dragFrom, setDragFromState] = useState<number | null>(null);
+  const setDragFrom = (i: number | null) => {
+    dragFromRef.current = i;
+    setDragFromState(i);
+  };
+  const [dragOver, setDragOver] = useState<number | null>(null);
   const renameTab = (index: number, label: string) => {
     if (index === 0) setBaseLabel(label);
     else setVariants((vs) => (vs ?? []).map((t, i) => (i === index - 1 ? { ...t, label } : t)));
@@ -959,7 +968,7 @@ export function RutinaForm({
                     )}
                     title={skillMode ? 'Nivel de la habilidad' : 'Versión de la rutina (sus tres pestañas)'}
                   >
-                    <span className="text-muted">{skillMode ? 'Nivel' : 'Versión'}</span>
+                    {!skillMode && <span className="text-muted">Versión</span>}
                     <span className="font-semibold text-ink">{versionList[activeTab]?.label || 'Sin nombre'}</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-3">
                       <path d="M6 9l6 6 6-6" />
@@ -970,11 +979,38 @@ export function RutinaForm({
                       {versionList.map((t, i) => (
                         <div
                           key={t.id}
+                          draggable={skillMode && versionList.length > 1}
+                          onDragStart={(e) => {
+                            setDragFrom(i);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver={(e) => {
+                            if (dragFromRef.current === null) return;
+                            e.preventDefault();
+                            setDragOver((o) => (o === i ? o : i));
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dragFromRef.current !== null) moveTab(dragFromRef.current, i);
+                            setDragFrom(null);
+                            setDragOver(null);
+                          }}
+                          onDragEnd={() => {
+                            setDragFrom(null);
+                            setDragOver(null);
+                          }}
                           className={cn(
-                            'group flex items-center gap-1 rounded-lg pl-2.5 pr-1 text-[13px]',
+                            'group flex items-center gap-1 rounded-lg pl-1.5 pr-1 text-[13px]',
                             activeTab === i ? 'bg-accent-tint text-accent-dark' : 'text-ink-2 hover:bg-surface-2',
+                            dragFrom === i && 'opacity-40',
+                            dragOver === i && dragFrom !== null && dragFrom !== i && (dragFrom < i ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : 'shadow-[inset_0_2px_0_var(--color-accent)]'),
                           )}
                         >
+                          {skillMode && (
+                            <span className="cursor-grab select-none px-0.5 font-mono text-[12px] leading-none text-faint-2 active:cursor-grabbing" title="Arrastra para reordenar" aria-hidden>
+                              ⋮⋮
+                            </span>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -983,35 +1019,11 @@ export function RutinaForm({
                             }}
                             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
                           >
-                            <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>
-                            {skillMode && <span className="font-mono text-[10px] text-muted">{i + 1}</span>}
+                            {!skillMode && <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>}
                             <span className="truncate font-semibold">{t.label || 'Sin nombre'}</span>
                             {i === 0 && !skillMode && <span className="font-mono text-[10px] text-muted">base</span>}
                           </button>
-                          {skillMode && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => moveTab(i, -1)}
-                                disabled={i === 0}
-                                className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink disabled:opacity-0 group-hover:opacity-100"
-                                title="Subir"
-                                aria-label="Subir"
-                              >
-                                ↑
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => moveTab(i, 1)}
-                                disabled={i === versionList.length - 1}
-                                className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink disabled:opacity-0 group-hover:opacity-100"
-                                title="Bajar"
-                                aria-label="Bajar"
-                              >
-                                ↓
-                              </button>
-                            </>
-                          )}
+
                           <button
                             type="button"
                             onClick={() => {
@@ -1061,7 +1073,7 @@ export function RutinaForm({
                       </button>
                       <p className="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-muted">
                         {skillMode
-                          ? 'Cada nivel es una rutina con su objetivo. El nuevo copia el nivel activo; súbelo o bájalo con las flechas.'
+                          ? 'Cada nivel es una rutina con su objetivo. El nuevo copia el nivel activo; arrastra para reordenar.'
                           : 'Una versión es la rutina entera: sus tres pestañas. La nueva copia la versión activa.'}
                       </p>
                     </div>
