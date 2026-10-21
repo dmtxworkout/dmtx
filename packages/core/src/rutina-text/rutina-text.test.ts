@@ -667,3 +667,16 @@ describe('archived exercises', () => {
     expect(cat.resolve('hand').suggestions).toEqual(['Handstand walk']);
   });
 });
+
+describe('fuzzy exercise matches', () => {
+  it('a typo or a partial name resolves but gets an info diagnostic with the real name', () => {
+    const typo = parse('10 burpess');
+    expect(typo.blocks[0]!.items[0]!.match?.id).toBe('burpee');
+    expect(typo.diagnostics.map((d) => [d.severity, d.code, d.suggestions])).toEqual([['info', 'fuzzy_exercise', ['Burpees']]]);
+    const partial = parse('10 Flexiones dia');
+    expect(partial.blocks[0]!.items[0]!.match?.id).toBe('diamond');
+    expect(partial.diagnostics[0]).toMatchObject({ code: 'fuzzy_exercise', suggestions: ['Flexiones diamante'] });
+    // Written exactly (name or alias): nothing to say.
+    expect(parse('10 push ups').diagnostics).toEqual([]);
+  });
+});

@@ -33,7 +33,8 @@ export type DiagnosticCode =
   | 'empty_group'
   | 'rest_with_more'
   | 'two_items'
-  | 'archived_exercise';
+  | 'archived_exercise'
+  | 'fuzzy_exercise';
 
 /** A problem on one line. `from`/`to` are column offsets within that line. */
 export interface Diagnostic {

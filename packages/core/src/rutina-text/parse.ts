@@ -523,6 +523,18 @@ export function parseItemLine(
       message: `"${it.rawName}" coincide con varios ejercicios; se usó "${res.match.name}".`,
       suggestions: res.suggestions,
     });
+  } else if (res.match.confidence === 'fuzzy') {
+    // A typo or a partial name still resolves (the preview shows the real
+    // name), but the text should say so: one click writes it properly.
+    diag(ctx, {
+      line,
+      from,
+      to,
+      severity: 'info',
+      code: 'fuzzy_exercise',
+      message: `"${it.rawName}" se entiende como "${res.match.name}".`,
+      suggestions: [res.match.name],
+    });
   }
 
   if (

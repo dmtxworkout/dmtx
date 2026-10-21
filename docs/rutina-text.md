@@ -110,8 +110,9 @@ missing count is a warning.
 `parseRutina` returns `{ main, warmup, cooldown, blocks, diagnostics, lines }`.
 Each diagnostic carries a 0-based `line`, column `from/to`, `severity`
 (`error` blocks saving) and a `code`:
-`unknown_exercise`, `missing_exercise`, `ambiguous_exercise`, `missing_count`,
-`format_needs_config`. `lines[i].kind` classifies every line for editor styling.
+`unknown_exercise`, `missing_exercise`, `ambiguous_exercise`, `fuzzy_exercise`
+(info: a typo or partial name resolved to a catalog exercise; the suggestion is
+the real name), `missing_count`, `format_needs_config`. `lines[i].kind` classifies every line for editor styling.
 
 `toWorkoutInput(parsed)` yields the `format*`/`blocks` fields of
 `CreateWorkoutInput`; `completionsAt(text, offset, catalog, opts)` powers the
