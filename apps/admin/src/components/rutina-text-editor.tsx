@@ -324,14 +324,18 @@ const selectionTooltip = StateField.define<Tooltip | null>({
         above: false,
         strictSide: false,
         arrow: false,
-        create: () => {
+        create: (view) => {
           const dom = document.createElement('div');
           dom.className = 'rt-selection-tip';
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.innerHTML = `${BOOKMARK_ICON}<span>Guardar como bloque</span>`;
           btn.addEventListener('mousedown', (e) => e.preventDefault());
-          btn.addEventListener('click', () => save(text));
+          btn.addEventListener('click', () => {
+            // Collapse the selection so the action disappears while the dialog is open.
+            view.dispatch({ selection: { anchor: view.state.selection.main.to } });
+            save(text);
+          });
           dom.appendChild(btn);
           return { dom, offset: { x: 0, y: 6 } };
         },
