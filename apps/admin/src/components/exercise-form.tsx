@@ -319,18 +319,6 @@ export function ExerciseForm({
                   <Label htmlFor="description">{es.exercises.fields.description}</Label>
                   <Textarea id="description" {...form.register('description')} />
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="difficulty">{es.exercises.fields.difficulty}</Label>
-                    <Select id="difficulty" {...form.register('difficulty')}>
-                      {DIFFICULTY.map((d) => (
-                        <option key={d} value={d}>
-                          {es.difficulty[d]}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                </div>
               </CardContent>
             </Card>
 
@@ -366,9 +354,21 @@ export function ExerciseForm({
             </Card>
           </div>
 
-          {/* Right: media */}
-          <div>
-            <Card className={cn(!embedded && 'lg:sticky lg:top-6')}>
+          {/* Right: difficulty, media */}
+          <div className={cn('flex flex-col gap-5', !embedded && 'lg:sticky lg:top-6')}>
+            <Card>
+              <CardContent className="py-5">
+                <Label htmlFor="difficulty">{es.exercises.fields.difficulty}</Label>
+                <Select id="difficulty" {...form.register('difficulty')}>
+                  {DIFFICULTY.map((d) => (
+                    <option key={d} value={d}>
+                      {es.difficulty[d]}
+                    </option>
+                  ))}
+                </Select>
+              </CardContent>
+            </Card>
+            <Card>
               <CardHeader>
                 <CardTitle>{es.exercises.fields.media}</CardTitle>
               </CardHeader>
