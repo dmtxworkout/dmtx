@@ -34,7 +34,7 @@ export const es = {
     skills: 'Habilidades',
     collections: 'Colecciones',
     muscles: 'Músculos',
-    equipment: 'Equipo',
+    equipment: 'Equipos',
     media: 'Biblioteca',
     users: 'Usuarios',
     subscriptions: 'Suscripciones',

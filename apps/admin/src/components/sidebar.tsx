@@ -25,7 +25,7 @@ const groups = [
     label: es.nav.sections.catalogo,
     items: [
       { href: '/musculos', label: es.nav.muscles },
-      { href: '/equipo', label: es.nav.equipment },
+      { href: '/equipos', label: es.nav.equipment },
       { href: '/biblioteca', label: es.nav.media },
     ],
   },

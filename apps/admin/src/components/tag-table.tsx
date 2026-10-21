@@ -23,7 +23,6 @@ interface Kind {
   singular: string;
   plural: string;
   title: string;
-  subtitle: string;
   empty: string;
   rows: (t: Awaited<ReturnType<typeof api.taxonomy.get>>) => Row[];
   create: (name: string) => Promise<unknown>;
@@ -35,7 +34,6 @@ export const MUSCLES: Kind = {
   singular: 'músculo',
   plural: 'músculos',
   title: 'Músculos',
-  subtitle: 'Las etiquetas con las que la app filtra y muestra qué trabaja cada rutina. Nómbralas como las buscaría un suscriptor: Pierna, Pecho, Core…',
   empty: 'Aún no hay músculos. Empieza por Pierna, Pecho, Espalda, Core…',
   rows: (t) => t.muscles,
   create: (name) => api.taxonomy.createMuscle({ name }),
@@ -46,8 +44,7 @@ export const MUSCLES: Kind = {
 export const EQUIPMENT: Kind = {
   singular: 'equipo',
   plural: 'equipos',
-  title: 'Equipo',
-  subtitle: 'Lo que hace falta para cada ejercicio. La app lo muestra en cada rutina y filtra por él.',
+  title: 'Equipos',
   empty: 'Aún no hay equipo. Empieza por Peso corporal, Mancuernas, Barra…',
   rows: (t) => t.equipment,
   create: (name) => api.taxonomy.createEquipment({ name }),
@@ -133,41 +130,20 @@ export function TagTable({ kind }: { kind: Kind }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageHeader
-        title={kind.title}
-        subtitle={data ? `${all.length} ${all.length === 1 ? kind.singular : kind.plural}` : kind.subtitle}
-        actions={
-          <div className="flex items-center gap-2">
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => onKey(e, () => void add())}
-              placeholder={kind.title === 'Equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
-              aria-label={kind.title === 'Equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
-              className="h-[38px] w-[220px] rounded-lg border border-line-2 bg-surface px-3 text-sm text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
-            />
-            <Button type="button" onClick={() => void add()} disabled={!draft.trim()}>
-              Agregar
-            </Button>
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-2.5">
-          <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
-            <span className="text-muted-2">⌕</span>
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar"
-              className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
-            />
-          </div>
-          <p className="text-[12px] text-muted">{kind.subtitle}</p>
+      <PageHeader title={kind.title}>
+        <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
+          <span className="text-muted-2">⌕</span>
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar"
+            className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none"
+          />
         </div>
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
-        <div className="relative max-w-[760px] overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="relative overflow-hidden rounded-xl border border-line bg-surface">
           {/* The bulk bar covers the header row instead of pushing the list down. */}
           {selected.size > 0 ? (
             <div className={`absolute inset-x-0 top-0 z-10 grid h-[42px] ${COLS} items-center border-b border-line-3 bg-surface-2`}>
@@ -197,14 +173,6 @@ export function TagTable({ kind }: { kind: Kind }) {
             <span className="text-right font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2">Ejercicios</span>
           </div>
 
-          {adding.map((name, i) => (
-            <div key={`adding-${i}`} className={`grid ${COLS} items-center border-b border-line-4 py-2.5 opacity-70`} aria-busy="true">
-              <span className="ml-0.5 block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-2 border-t-ink" aria-hidden />
-              <span className="truncate text-sm font-semibold text-ink">{name}</span>
-              <span className="text-right font-mono text-[12px] text-muted">Agregando…</span>
-            </div>
-          ))}
-
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted">{es.app.loading}</div>
           ) : isError ? (
@@ -217,7 +185,7 @@ export function TagTable({ kind }: { kind: Kind }) {
               return (
                 <div
                   key={r.id}
-                  className={cn(`grid ${COLS} items-center border-b border-line-4 py-2.5 last:border-0`, on ? 'bg-accent-tint/40' : 'hover:bg-surface-2/60')}
+                  className={cn(`grid ${COLS} items-center border-b border-line-4 py-2.5`, on ? 'bg-accent-tint/40' : 'hover:bg-surface-2/60')}
                 >
                   <Checkbox
                     checked={on}
@@ -257,6 +225,28 @@ export function TagTable({ kind }: { kind: Kind }) {
               );
             })
           )}
+
+          {adding.map((name, i) => (
+            <div key={`adding-${i}`} className={`grid ${COLS} items-center border-b border-line-4 py-2.5 opacity-70`} aria-busy="true">
+              <span className="ml-0.5 block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-2 border-t-ink" aria-hidden />
+              <span className="truncate text-sm font-semibold text-ink">{name}</span>
+              <span className="text-right font-mono text-[12px] text-muted">Agregando…</span>
+            </div>
+          ))}
+
+          {/* The add row closes the list: type a name, Enter, and keep typing the next one. */}
+          <div className={`grid ${COLS} items-center border-t border-line-4 py-2`}>
+            <span />
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => onKey(e, () => void add())}
+              placeholder={`+ ${kind.singular === 'equipo' ? 'Equipo' : 'Músculo'} (Enter para agregar)`}
+              aria-label={kind.singular === 'equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
+              className="h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
+            />
+            <span />
+          </div>
         </div>
       </div>
 
