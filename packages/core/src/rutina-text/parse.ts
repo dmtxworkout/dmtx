@@ -483,7 +483,7 @@ export function parseItemLine(
   it.match = res.match;
   // "10 burpees 20 sentadillas": the name does not resolve but, split at the
   // inner count, both halves do — two exercises on one line.
-  const split = !res.match ? name.match(/^(.*?\S)\s+(\d+(?:\s*[x×]\s*\d+)?)\s+(\S.*)$/) : null;
+  const split = !res.match ? it.rawName.match(/^(.*?\S)\s+(\d+(?:\s*[x×]\s*\d+)?)\s+(\S.*)$/) : null;
   if (split && ctx.catalog.resolve(split[1]!).match && ctx.catalog.resolve(split[3]!).match) {
     diag(ctx, {
       line,
