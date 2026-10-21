@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Goal } from '@dmtx/schemas';
 import { api } from '@/lib/api';
+import { skillGoalLabel } from '@/components/rutina-form';
 import { es } from '@/i18n/es';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -13,19 +13,6 @@ import { Badge } from '@/components/ui/badge';
 import { MediaThumb } from '@/components/media-thumb';
 
 const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
-const METRIC_SHORT: Record<string, string> = {
-  reps: 'reps',
-  time_seconds: 's',
-  distance_meters: 'm',
-  rounds: 'rondas',
-  load_kg: 'kg',
-  hold_seconds: 's',
-};
-
-function goalText(g: Goal | null | undefined): string {
-  if (!g || !('metric' in g)) return '—';
-  return `${es.goal.comparators[g.comparator]} ${g.value} ${METRIC_SHORT[g.metric] ?? ''}`.trim();
-}
 
 export default function HabilidadesPage() {
   const [search, setSearch] = useState('');
@@ -36,11 +23,6 @@ export default function HabilidadesPage() {
     queryKey: ['skills', search],
     queryFn: () => api.skills.list({ search: search || undefined, pageSize: 60 }),
   });
-  const { data: woList } = useQuery({
-    queryKey: ['workouts', 'all'],
-    queryFn: () => api.workouts.list({ pageSize: 500 }),
-  });
-  const workoutName = (id: string) => woList?.data.find((w) => w.id === id)?.name ?? '…';
 
   const remove = useMutation({
     mutationFn: (id: string) => api.skills.remove(id),
@@ -125,13 +107,12 @@ export default function HabilidadesPage() {
                       <span className="min-w-0 truncate text-[13px] font-semibold">{lv.name}</span>
                     </div>
                     <div className="h-[22px] rounded-[5px]" style={{ background: HATCH }} />
-                    <div className="truncate font-mono text-[10px] text-muted">{workoutName(lv.workoutId)}</div>
-                    <div className="flex items-center gap-1.5 border-t border-line-3 pt-1.5">
+                    <div className="flex flex-col gap-0.5 border-t border-line-3 pt-1.5">
                       <span className="font-mono text-[9px] font-medium uppercase tracking-[0.1em] text-muted-2">
-                        Desbloqueo
+                        {i === sk.levels.length - 1 ? 'Último nivel' : 'Para pasar al siguiente'}
                       </span>
-                      <span className="ml-auto font-mono text-[11px] font-semibold text-ink-2">
-                        {goalText(lv.unlockGoal)}
+                      <span className="truncate font-mono text-[11px] font-semibold text-ink-2">
+                        {lv.unlockGoals.length ? lv.unlockGoals.map(skillGoalLabel).join(' · ') : i === sk.levels.length - 1 ? '—' : 'Sin objetivo'}
                       </span>
                     </div>
                   </button>

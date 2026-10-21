@@ -135,7 +135,7 @@ function serializeBlock(b: BlockRow, byBlock: Map<string, ItemRow[]>) {
   };
 }
 
-async function insertBlocks(
+export async function insertBlocks(
   db: Database,
   workoutId: string,
   blocks: WorkoutBlockInput[],
@@ -185,7 +185,7 @@ async function insertBlocks(
 }
 
 /** A slug nobody else has: the base slug, else base-2, base-3, … */
-async function uniqueSlug(db: Database, wanted: string): Promise<string> {
+export async function uniqueSlug(db: Database, wanted: string): Promise<string> {
   const taken = new Set(
     (
       await db
@@ -223,6 +223,8 @@ workoutsRoute.openapi(
     const where = and(
       isNull(workouts.deletedAt),
       isNull(workouts.variantOfId),
+      // A skill level's rutina is edited from its skill, not here.
+      isNull(workouts.ownerSkillId),
       search ? ilike(workouts.name, `%${search}%`) : undefined,
     );
     const [rows, [totals]] = await Promise.all([

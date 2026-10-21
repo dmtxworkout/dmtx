@@ -1,5 +1,7 @@
-import { HabilidadForm } from '@/components/habilidad-form';
+'use client';
+
+import { RutinaForm } from '@/components/rutina-form';
 
 export default function NuevaHabilidadPage() {
-  return <HabilidadForm />;
+  return <RutinaForm skill={null} />;
 }

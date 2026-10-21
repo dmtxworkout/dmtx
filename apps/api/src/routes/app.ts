@@ -208,6 +208,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               eq(workouts.status, 'published'),
               isNull(workouts.deletedAt),
               isNull(workouts.variantOfId),
+              isNull(workouts.ownerSkillId),
               byTags ? inArray(workouts.id, byTags) : undefined,
               like
                 ? byText?.length
@@ -319,7 +320,7 @@ appRoute.get('/home', async (c) => {
 // and equipment that at least one published rutina actually carries.
 appRoute.get('/filters', async (c) => {
   const db = c.get('db');
-  const live = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId));
+  const live = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId), isNull(workouts.ownerSkillId));
   const [g, e] = await Promise.all([
     db
       .selectDistinct({ slug: muscles.slug, name: muscles.name, position: muscles.position })
@@ -669,7 +670,7 @@ appRoute.get('/skills/:id', async (c) => {
         position: l.position,
         name: l.name,
         description: l.description,
-        unlockGoal: l.unlockGoal ?? null,
+        unlockGoals: l.unlockGoals ?? [],
         thumbnailUrl: url(media, l.thumbnailAssetId),
         workout: w ? workoutSummary(w, url(media, w.thumbnailAssetId)) : null,
       };

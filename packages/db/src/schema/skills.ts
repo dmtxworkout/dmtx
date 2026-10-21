@@ -1,5 +1,5 @@
 import { integer, jsonb, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
-import type { Goal } from '@dmtx/schemas';
+import type { SkillGoal } from '@dmtx/schemas';
 import {
   contentStatusEnum,
   difficultyEnum,
@@ -39,7 +39,7 @@ export const skillMuscles = pgTable(
   (t) => [primaryKey({ columns: [t.skillId, t.muscleId] })],
 );
 
-/** A level within a skill: a workout to train + a goal to unlock the next level. */
+/** A level within a skill: a workout to train + the goals (from its "Objetivo" section) that unlock the next level. */
 export const skillLevels = pgTable('skill_levels', {
   id: primaryId(),
   skillId: uuid()
@@ -51,7 +51,7 @@ export const skillLevels = pgTable('skill_levels', {
   workoutId: uuid()
     .notNull()
     .references(() => workouts.id, { onDelete: 'restrict' }),
-  unlockGoal: jsonb().$type<Goal>(),
+  unlockGoals: jsonb().$type<SkillGoal[]>().notNull().default([]),
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   ...timestamps,
 });

@@ -1,7 +1,9 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
-import { skillLevels, skills } from '@dmtx/db';
+import { skillLevels, skills, workoutBlocks, workouts } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
+import { estimateDurationSeconds } from '@dmtx/core';
+import { insertBlocks, uniqueSlug } from './workouts';
 import {
   createSkillSchema,
   paginated,
@@ -33,36 +35,91 @@ function base(s: SkillRow) {
   };
 }
 
-async function loadFull(db: Database, s: SkillRow) {
-  const levels = await db
-    .select()
+type LevelRow = typeof skillLevels.$inferSelect;
+
+async function levelsOf(db: Database, skillIds: string[]) {
+  if (!skillIds.length) return [] as (LevelRow & { sourceText: string })[];
+  const rows = await db
+    .select({ level: skillLevels, sourceText: workouts.sourceText })
     .from(skillLevels)
-    .where(eq(skillLevels.skillId, s.id))
+    .innerJoin(workouts, eq(workouts.id, skillLevels.workoutId))
+    .where(inArray(skillLevels.skillId, skillIds))
     .orderBy(skillLevels.position);
+  return rows.map((r) => ({ ...r.level, sourceText: r.sourceText ?? '' }));
+}
+
+function serializeLevel(l: LevelRow & { sourceText: string }) {
   return {
-    ...base(s),
-    levels: levels.map((l) => ({
-      id: l.id,
-      name: l.name,
-      description: l.description,
-      workoutId: l.workoutId,
-      unlockGoal: l.unlockGoal ?? null,
-    })),
+    id: l.id,
+    name: l.name,
+    description: l.description,
+    workoutId: l.workoutId,
+    sourceText: l.sourceText,
+    unlockGoals: l.unlockGoals ?? [],
+    thumbnailAssetId: l.thumbnailAssetId,
   };
 }
 
-async function insertLevels(db: Database, skillId: string, levels: SkillLevelInput[]) {
-  if (!levels.length) return;
-  await db.insert(skillLevels).values(
-    levels.map((l, i) => ({
-      skillId,
-      position: i,
-      name: l.name,
+async function loadFull(db: Database, s: SkillRow) {
+  const levels = await levelsOf(db, [s.id]);
+  return { ...base(s), levels: levels.map(serializeLevel) };
+}
+
+/**
+ * Write the skill's levels: each level owns a rutina (a workout row hidden
+ * from the catalog) built from the text the admin wrote. Levels with an id are
+ * updated in place, new ones created, the rest deleted with their rutina.
+ */
+async function syncLevels(db: Database, skill: SkillRow, levels: SkillLevelInput[]) {
+  const existing = await db.select().from(skillLevels).where(eq(skillLevels.skillId, skill.id));
+  const keep = new Set(levels.map((l) => l.id).filter((id): id is string => !!id));
+  const gone = existing.filter((l) => !keep.has(l.id));
+  if (gone.length) {
+    await db.delete(skillLevels).where(inArray(skillLevels.id, gone.map((l) => l.id)));
+    await db.update(workouts).set({ deletedAt: new Date() }).where(inArray(workouts.id, gone.map((l) => l.workoutId)));
+  }
+  const byId = new Map(existing.map((l) => [l.id, l]));
+  for (let i = 0; i < levels.length; i += 1) {
+    const l = levels[i]!;
+    const workoutValues = {
+      name: `${skill.name} · ${l.name}`,
       description: l.description ?? null,
-      workoutId: l.workoutId,
-      unlockGoal: l.unlockGoal ?? null,
-    })),
-  );
+      type: 'structured' as const,
+      format: l.format ?? null,
+      difficulty: skill.difficulty ?? 'beginner',
+      estimatedDurationSeconds: estimateDurationSeconds(l.blocks),
+      status: skill.status,
+      thumbnailAssetId: l.thumbnailAssetId ?? null,
+      sourceText: l.sourceText,
+      ownerSkillId: skill.id,
+    };
+    const current = l.id ? byId.get(l.id) : undefined;
+    if (current) {
+      await db.update(workouts).set(workoutValues).where(eq(workouts.id, current.workoutId));
+      await db.delete(workoutBlocks).where(eq(workoutBlocks.workoutId, current.workoutId));
+      if (l.blocks.length) await insertBlocks(db, current.workoutId, l.blocks);
+      await db
+        .update(skillLevels)
+        .set({ position: i, name: l.name, description: l.description ?? null, unlockGoals: l.unlockGoals, thumbnailAssetId: l.thumbnailAssetId ?? null })
+        .where(eq(skillLevels.id, current.id));
+    } else {
+      const [w] = await db
+        .insert(workouts)
+        .values({ ...workoutValues, slug: await uniqueSlug(db, slugify(`${skill.name} ${l.name}`)) })
+        .returning({ id: workouts.id });
+      if (!w) throw new Error('No se pudo crear la rutina del nivel');
+      if (l.blocks.length) await insertBlocks(db, w.id, l.blocks);
+      await db.insert(skillLevels).values({
+        skillId: skill.id,
+        position: i,
+        name: l.name,
+        description: l.description ?? null,
+        workoutId: w.id,
+        unlockGoals: l.unlockGoals,
+        thumbnailAssetId: l.thumbnailAssetId ?? null,
+      });
+    }
+  }
 }
 
 export const skillsRoute = createApp();
@@ -95,26 +152,14 @@ skillsRoute.openapi(
         .offset((page - 1) * pageSize),
       db.select({ value: count() }).from(skills).where(where),
     ]);
-    const ids = rows.map((r) => r.id);
-    const levels = ids.length
-      ? await db.select().from(skillLevels).where(inArray(skillLevels.skillId, ids)).orderBy(skillLevels.position)
-      : [];
+    const levels = await levelsOf(db, rows.map((r) => r.id));
     const byS = new Map<string, (typeof levels)[number][]>();
     for (const l of levels) {
       const arr = byS.get(l.skillId) ?? [];
       arr.push(l);
       byS.set(l.skillId, arr);
     }
-    const data = rows.map((s) => ({
-      ...base(s),
-      levels: (byS.get(s.id) ?? []).map((l) => ({
-        id: l.id,
-        name: l.name,
-        description: l.description,
-        workoutId: l.workoutId,
-        unlockGoal: l.unlockGoal ?? null,
-      })),
-    }));
+    const data = rows.map((s) => ({ ...base(s), levels: (byS.get(s.id) ?? []).map(serializeLevel) }));
     return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
@@ -168,7 +213,7 @@ skillsRoute.openapi(
       })
       .returning();
     if (!row) throw new Error('No se pudo crear la habilidad');
-    await insertLevels(db, row.id, input.levels);
+    await syncLevels(db, row, input.levels);
     return c.json(await loadFull(db, row), 201);
   },
 );
@@ -206,9 +251,13 @@ skillsRoute.openapi(
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
 
-    if (input.levels !== undefined) {
-      await db.delete(skillLevels).where(eq(skillLevels.skillId, id));
-      await insertLevels(db, id, input.levels);
+    if (input.levels !== undefined) await syncLevels(db, row, input.levels);
+    else {
+      // Name, status or difficulty changed: the levels' rutinas follow the skill.
+      await db
+        .update(workouts)
+        .set({ status: row.status, difficulty: row.difficulty ?? 'beginner' })
+        .where(eq(workouts.ownerSkillId, row.id));
     }
     return c.json(await loadFull(db, row), 200);
   },
@@ -234,6 +283,7 @@ skillsRoute.openapi(
       .where(and(eq(skills.id, id), isNull(skills.deletedAt)))
       .returning({ id: skills.id });
     if (!row) return c.json({ error: 'No encontrado' }, 404);
+    await db.update(workouts).set({ deletedAt: new Date() }).where(eq(workouts.ownerSkillId, id));
     return c.body(null, 204);
   },
 );

@@ -17,6 +17,7 @@ import {
 } from './_shared';
 import { mediaAssets } from './media';
 import { exercises } from './exercises';
+import { skills } from './skills';
 
 /**
  * A workout (rutina). Polymorphic via `type`:
@@ -36,6 +37,9 @@ export const workouts = pgTable('workouts', {
   scoringGoal: jsonb().$type<Goal>(),
   // The text the admin wrote in the editor; blocks are derived from it on save.
   sourceText: text(),
+  // A skill level's rutina belongs to the skill: edited there, hidden from the
+  // catalog, deleted with it.
+  ownerSkillId: uuid().references(() => skills.id, { onDelete: 'cascade' }),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   videoDurationSeconds: integer(),
   // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.

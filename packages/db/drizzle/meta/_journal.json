@@ -183,6 +183,13 @@
       "when": 1792609938411,
       "tag": "0025_drop_muscle_role",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1792613658367,
+      "tag": "0026_skill_goals",
+      "breakpoints": true
     }
   ]
 }

@@ -5,21 +5,17 @@ import { useQuery } from '@tanstack/react-query';
 import { Loading, Thumb } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { difficultyLabel, es } from '../../../i18n';
-import type { Goal } from '@dmtx/schemas';
+import type { SkillGoal } from '@dmtx/schemas';
 
-const COMPARATOR: Record<string, string> = { gte: '≥', lte: '≤', eq: '=', gt: '>', lt: '<' };
-const METRIC: Record<string, string> = {
-  reps: 'reps',
-  time_seconds: 's',
-  distance_meters: 'm',
-  rounds: 'rondas',
-  load_kg: 'kg',
-  hold_seconds: 's',
-};
+const seconds = (s: number) => (s % 60 === 0 ? `${s / 60} min` : s > 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`);
+const meters = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(m % 1000 === 0 ? 0 : 1)} km` : `${m} m`);
 
-function goalLabel(goal: Goal | null): string {
-  if (!goal || !('metric' in goal)) return '';
-  return `${COMPARATOR[goal.comparator] ?? ''} ${goal.value} ${METRIC[goal.metric] ?? ''}`.trim();
+/** "3 Dominadas", "Plancha 60 s", "Sentadilla 5 reps @100 kg". */
+function goalLabel(g: SkillGoal): string {
+  if (g.metric === 'reps') return `${g.value} ${g.exerciseName}`;
+  if (g.metric === 'time_seconds') return `${g.exerciseName} ${seconds(g.value)}`;
+  if (g.metric === 'distance_meters') return `${meters(g.value)} ${g.exerciseName}`;
+  return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;
 }
 
 export default function HabilidadDetalle() {
@@ -92,9 +88,9 @@ export default function HabilidadDetalle() {
                   </Text>
                 ) : null}
               </View>
-              {goalLabel(l.unlockGoal) ? (
-                <Text className="font-mono-semibold text-[12px] text-ink-2">
-                  {goalLabel(l.unlockGoal)}
+              {l.unlockGoals.length ? (
+                <Text numberOfLines={2} className="max-w-[40%] text-right font-mono-semibold text-[11px] text-ink-2">
+                  {l.unlockGoals.map(goalLabel).join('\n')}
                 </Text>
               ) : null}
             </Pressable>

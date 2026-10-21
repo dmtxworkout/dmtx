@@ -2,7 +2,7 @@
  * Response shapes from the consumer API (`/api/app/*`). Hand-written to mirror
  * apps/api/src/routes/app.ts (these endpoints aren't in the OpenAPI client).
  */
-import type { Difficulty, Goal, LoadPrescription, Tempo, WorkoutFormat } from '@dmtx/schemas';
+import type { Difficulty, Goal, LoadPrescription, SkillGoal, Tempo, WorkoutFormat } from '@dmtx/schemas';
 
 export type ContentKind = 'workout' | 'program' | 'skill';
 
@@ -193,7 +193,8 @@ export interface SkillLevel {
   position: number;
   name: string;
   description: string | null;
-  unlockGoal: Goal | null;
+  /** The marks that unlock the next level (empty on the last level). */
+  unlockGoals: SkillGoal[];
   thumbnailUrl: string | null;
   workout: WorkoutSummary | null;
 }

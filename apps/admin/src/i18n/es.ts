@@ -184,10 +184,6 @@ export const es = {
     empty: 'Aún no hay habilidades. Crea la primera.',
     levels: 'Niveles',
     addLevel: '+ Nivel',
-    levelName: 'Nombre del nivel',
-    pickWorkout: 'Elegir rutina',
-    unlockGoal: 'Objetivo de desbloqueo',
-    noLevels: 'Agrega un nivel para empezar.',
   },
   goal: {
     metric: 'Métrica',

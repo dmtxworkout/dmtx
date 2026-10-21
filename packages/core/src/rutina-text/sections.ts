@@ -4,8 +4,9 @@ import type { BlockSection } from '@dmtx/schemas';
 
 /**
  * The admin edits each section in its own tab, so a rutina's text is split
- * into three unindented texts and joined back (Python-style headers) for
- * parsing, preview and saving. Comments and spacing inside a section survive.
+ * into unindented texts (warmup, main, cooldown, and for a skill level the
+ * goal) and joined back (Python-style headers) for parsing, preview and
+ * saving. Comments and spacing inside a section survive.
  */
 export type SectionTexts = Record<BlockSection, string>;
 
@@ -14,6 +15,7 @@ const EMPTY = new Catalog([]);
 const HEADER: Record<Exclude<BlockSection, 'main'>, string> = {
   warmup: 'Calentamiento',
   cooldown: 'Enfriamiento',
+  goal: 'Objetivo',
 };
 
 const indent = (text: string) =>
@@ -26,7 +28,7 @@ const indent = (text: string) =>
 export function joinSections(parts: SectionTexts): string {
   const out: string[] = [];
   const push = (section: Exclude<BlockSection, 'main'>) => {
-    const t = parts[section].replace(/\s+$/, '');
+    const t = (parts[section] ?? '').replace(/\s+$/, '');
     if (!t.trim()) return;
     out.push(`${HEADER[section]}\n${indent(t)}`);
   };
@@ -34,6 +36,7 @@ export function joinSections(parts: SectionTexts): string {
   const main = parts.main.replace(/\s+$/, '');
   if (main.trim()) out.push(main);
   push('cooldown');
+  push('goal');
   return out.length ? out.join('\n\n') + '\n' : '';
 }
 
@@ -41,7 +44,7 @@ export function joinSections(parts: SectionTexts): string {
 export function splitSections(text: string): SectionTexts {
   const lines = text.split('\n');
   const info = parseRutina(text, { catalog: EMPTY }).lines;
-  const out: Record<BlockSection, string[]> = { warmup: [], main: [], cooldown: [] };
+  const out: Record<BlockSection, string[]> = { warmup: [], main: [], cooldown: [], goal: [] };
   lines.forEach((line, i) => {
     const li = info[i];
     if (!li || li.kind === 'section') return;
@@ -53,5 +56,5 @@ export function splitSections(text: string): SectionTexts {
     while (ls.length && !ls[ls.length - 1]!.trim()) ls.pop();
     return ls.length ? ls.join('\n') + '\n' : '';
   };
-  return { warmup: trim(out.warmup), main: trim(out.main), cooldown: trim(out.cooldown) };
+  return { warmup: trim(out.warmup), main: trim(out.main), cooldown: trim(out.cooldown), goal: trim(out.goal) };
 }

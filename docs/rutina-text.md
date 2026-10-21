@@ -117,6 +117,14 @@ Each diagnostic carries a 0-based `line`, column `from/to`, `severity`
 alias resolves, and the closest catalog name comes first in `suggestions`),
 `missing_exercise`, `ambiguous_exercise`, `missing_count`, `format_needs_config`. `lines[i].kind` classifies every line for editor styling.
 
+**Objetivo** (skills only): a fourth section, `Objetivo` header like the others,
+holding the marks that unlock the next level — one exercise line each, with an
+amount: `3 Dominadas`, `Plancha 60s`, `400 m Carrera`, `Sentadilla 5x5 @100 kg`.
+Formats, rondas and descansos are errors there (`goal_structure`), as is a line
+without an amount (`goal_needs_amount`). `goalsFrom(parsed)` turns them into
+`SkillGoal[]` (metric reps / time_seconds / distance_meters / load_kg with reps);
+`toWorkoutInput` leaves the section out of the blocks.
+
 `toWorkoutInput(parsed)` yields the `format*`/`blocks` fields of
 `CreateWorkoutInput`; `completionsAt(text, offset, catalog, opts)` powers the
 editor's autocomplete: units after a bare number (`12 mi` → `12 min`, `800 met`

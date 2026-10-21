@@ -104,6 +104,8 @@ export interface RutinaTextEditorProps {
   inserts?: InsertGroup[];
   /** Resolves the text to insert for a template / block / rutina. */
   onInsertBlock?: (kind: InsertKind, id: string) => Promise<string | null>;
+  /** The "Objetivo" tab of a skill: the "+" menu offers exercises only (no structure). */
+  onlyExercises?: boolean;
   /** Shown as a floating action when two or more lines are selected. */
   onSaveBlock?: (text: string) => void;
   /** "Editar ejercicio": a click on a recognised exercise name, or the action on its diagnostic card. */
@@ -521,6 +523,14 @@ const diagGutter = gutter({
 // line; clicking it opens a searchable menu. Inside a format or a group, whole
 // rutinas are left out (they only fit at the top level).
 const setInserts = StateEffect.define<InsertGroup[]>();
+const setOnlyExercises = StateEffect.define<boolean>();
+const onlyExercisesField = StateField.define<boolean>({
+  create: () => false,
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setOnlyExercises)) return e.value;
+    return v;
+  },
+});
 const insertsField = StateField.define<InsertGroup[]>({
   create: () => [],
   update: (v, tr) => {
@@ -719,8 +729,10 @@ function buildInsertMenu(
   const { insert } = view.state.field(handlersField);
   const parent = parentKindOf(view, lineNo);
   const nested = parent === 'format' || parent === 'group';
+  const onlyExercises = view.state.field(onlyExercisesField);
   // Formats and groups nest freely; a whole rutina only fits at the top level.
-  const allowed = groups.filter((g) => !nested || g.kind !== 'rutina');
+  // A skill's "Objetivo" tab takes exercises only.
+  const allowed = groups.filter((g) => (onlyExercises ? g.kind === 'ejercicio' : !nested || g.kind !== 'rutina'));
   const dom = document.createElement('div');
   dom.className = 'rt-insert';
   const close = () => {
@@ -1394,6 +1406,7 @@ export function RutinaTextEditor({
   onInsertBlock,
   onSaveBlock,
   onEditExercise,
+  onlyExercises,
   apiRef,
   placeholder,
   autoFocus,
@@ -1638,6 +1651,7 @@ export function RutinaTextEditor({
           catalogField,
           parsedLinesField,
           insertsField,
+          onlyExercisesField,
           hoverLineField,
           hoverTracker,
           addGutter,
@@ -1766,6 +1780,9 @@ export function RutinaTextEditor({
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setInserts.of(inserts ?? []) });
   }, [inserts]);
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setOnlyExercises.of(!!onlyExercises) });
+  }, [onlyExercises]);
   useEffect(() => {
     viewRef.current?.dispatch({ effects: setCatalog.of(catalog) });
   }, [catalog]);

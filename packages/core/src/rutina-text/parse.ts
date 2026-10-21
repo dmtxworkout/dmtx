@@ -1,5 +1,6 @@
 import type {
   BlockSection,
+  SkillGoal,
   BlockType,
   CreateWorkoutInput,
   FormatConfig,
@@ -52,8 +53,12 @@ function mask(s: string, re: RegExp): { m: RegExpMatchArray | null; s: string } 
 }
 
 const SECTION_RE =
-  /^\s*(calentamiento|warm ?-?up|enfriamiento|cool ?-?down|vuelta a la calma|principal|main|rutina|wod)\s*:?\s*$/;
+  /^\s*(calentamiento|warm ?-?up|enfriamiento|cool ?-?down|vuelta a la calma|principal|main|rutina|wod|objetivo|objetivos|goal|goals)\s*:?\s*$/;
 const SECTION_OF: Record<string, BlockSection> = {
+  objetivo: 'goal',
+  objetivos: 'goal',
+  goal: 'goal',
+  goals: 'goal',
   calentamiento: 'warmup',
   warmup: 'warmup',
   'warm-up': 'warmup',
@@ -567,8 +572,9 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     main: null,
     warmup: null,
     cooldown: null,
+    goal: null,
   };
-  const seen: Record<BlockSection, boolean> = { main: false, warmup: false, cooldown: false };
+  const seen: Record<BlockSection, boolean> = { main: false, warmup: false, cooldown: false, goal: false };
 
   let section: BlockSection = 'main';
   // Python-style scoping: content indented under a section header belongs to
@@ -741,6 +747,40 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     }
     // Dedenting to a container's header column leaves it (and anything inside).
     dedentTo(indent);
+
+    // The "Objetivo" section (skills) holds marks to reach: one exercise per
+    // line with its amount. Structure (formats, rondas, descansos) has no
+    // meaning there.
+    if (section === 'goal') {
+      const structural =
+        FORMAT_RE.test(f) || REST_START_RE.test(trimmed) || GROUP_RE.test(f) || GROUP_KW_RE.test(f) || SLOT_RE.test(trimmed);
+      if (structural) {
+        diag(ctx, {
+          line: i,
+          from: indent,
+          to: indent + trimmed.length,
+          severity: 'error',
+          code: 'goal_structure',
+          message: 'En Objetivo solo van ejercicios con su marca, p. ej. "3 Dominadas" o "Plancha 60s".',
+        });
+        return info('item');
+      }
+      if (/^\/\//.test(trimmed)) return info('note');
+      const it = parseItemLine(raw, i, ctx, { format: null });
+      if (it.match && it.reps == null && it.workSeconds == null && it.distanceMeters == null && !it.loadPrescription) {
+        diag(ctx, {
+          line: i,
+          from: indent,
+          to: indent + trimmed.length,
+          severity: 'error',
+          code: 'goal_needs_amount',
+          message: `¿Cuánto? Pon la marca a alcanzar: "10 ${it.match.name}", "${it.match.name} 60s" o "${it.match.name} 5x5 @100 kg".`,
+        });
+      }
+      siblings().push({ ...looseRun(i), items: [it] });
+      seen.goal = true;
+      return info('item');
+    }
 
     // "// texto" alone on a line: a note the athlete sees, attached to what is
     // right above it — the last exercise or block in the open container (or
@@ -948,6 +988,32 @@ function blockInput(b: ParsedBlock): BlockInput {
 export function toWorkoutInput(p: ParsedRutina): RutinaStructureInput {
   return {
     format: p.main?.format ?? null,
-    blocks: p.blocks.flatMap(blockInputs),
+    // The "Objetivo" section is not training: it becomes the level's goals (see `goalsFrom`).
+    blocks: p.blocks.filter((b) => b.section !== 'goal').flatMap(blockInputs),
   };
+}
+
+/**
+ * The goals written in the "Objetivo" section, one per resolved exercise line:
+ * the metric follows what was written (reps, time, distance, or a load for N
+ * reps). Lines that did not resolve or carry no amount are left out (they are
+ * errors already).
+ */
+export function goalsFrom(p: ParsedRutina): SkillGoal[] {
+  const out: SkillGoal[] = [];
+  for (const b of p.blocks) {
+    if (b.section !== 'goal') continue;
+    for (const it of b.items) {
+      if (it.kind !== 'exercise' || !it.match) continue;
+      const base = { exerciseId: it.match.id, exerciseName: it.match.name };
+      const load = it.loadPrescription;
+      if (load && load.type === 'absolute' && load.value > 0) {
+        const kg = load.unit === 'lb' ? Math.round(load.value * 0.45359237 * 10) / 10 : load.value;
+        out.push({ ...base, metric: 'load_kg', value: kg, reps: it.reps ?? null });
+      } else if (it.workSeconds != null && it.workSeconds > 0) out.push({ ...base, metric: 'time_seconds', value: it.workSeconds, reps: null });
+      else if (it.distanceMeters != null && it.distanceMeters > 0) out.push({ ...base, metric: 'distance_meters', value: it.distanceMeters, reps: null });
+      else if (it.reps != null && it.reps > 0) out.push({ ...base, metric: 'reps', value: it.reps, reps: null });
+    }
+  }
+  return out;
 }

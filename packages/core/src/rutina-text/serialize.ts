@@ -144,6 +144,7 @@ const SECTION_TITLE: Record<BlockSection, string> = {
   warmup: 'Calentamiento',
   main: 'Rutina',
   cooldown: 'Enfriamiento',
+  goal: 'Objetivo',
 };
 
 /** Rutina → text. The inverse of `parseRutina` for every supported field. */

@@ -39,6 +39,8 @@ export type PvModel = {
   warmup: PvSection | null;
   main: PvBlock[];
   cooldown: PvSection | null;
+  /** A skill level: the marks that unlock the next level, as the athlete reads them. */
+  goals?: string[];
 };
 
 function Line({ item }: { item: PvItem }) {
@@ -152,7 +154,8 @@ export function RutinaPreview({
 }) {
   const hasContent = (blocks: PvBlock[]): boolean => blocks.some((b) => b.items.length > 0 || hasContent(b.blocks ?? []));
   const mainHasContent = hasContent(model.main);
-  const empty = !model.warmup && !model.cooldown && !mainHasContent && !model.hasVideo;
+  const goals = model.goals ?? [];
+  const empty = !model.warmup && !model.cooldown && !mainHasContent && !model.hasVideo && !goals.length;
   // The main section is headed by the format itself (e.g. "AMRAP 10 min").
   const mainLabel = `${model.formatLabel}${model.headline ? ` ${model.headline}` : ''}`;
 
@@ -196,6 +199,23 @@ export function RutinaPreview({
                 label={`Enfriamiento${model.cooldown.formatLabel ? ` · ${model.cooldown.formatLabel}` : ''}`}
                 blocks={model.cooldown.blocks}
               />
+            )}
+            {goals.length > 0 && (
+              <section>
+                <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
+                  Objetivo · para pasar al siguiente nivel
+                </div>
+                <ul className="flex flex-col gap-1">
+                  {goals.map((g, i) => (
+                    <li key={i} className="flex items-center gap-2 text-[14px] text-ink">
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-accent text-[10px] font-bold text-accent-dark">
+                        ✓
+                      </span>
+                      {g}
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </div>
         )}

@@ -7,12 +7,13 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, ReusableBlock, Workout, WorkoutFormat } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, ReusableBlock, Skill, SkillGoal, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
 import {
   Catalog,
   formatDistance,
   formatDuration,
   formatHeader,
+  goalsFrom,
   loadText,
   parseRutina,
   serializeRutina,
@@ -59,8 +60,17 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
 };
 
 
-const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Calentamiento', cooldown: 'Enfriamiento' };
-const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '' };
+const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Calentamiento', cooldown: 'Enfriamiento', goal: 'Objetivo' };
+const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '', goal: '' };
+const GOAL_PLACEHOLDER = 'Las marcas que desbloquean el siguiente nivel, una por línea:\n3 Dominadas\nPlancha 60s\nSentadilla 5x5 @100 kg';
+
+/** A level's goal as the athlete reads it: "3 Dominadas", "Plancha 60 s", "Sentadilla 5 reps @100 kg". */
+export function skillGoalLabel(g: SkillGoal): string {
+  if (g.metric === 'reps') return `${g.value} ${g.exerciseName}`;
+  if (g.metric === 'time_seconds') return `${g.exerciseName} ${formatDuration(g.value)}`;
+  if (g.metric === 'distance_meters') return `${formatDistance(g.value)} ${g.exerciseName}`;
+  return `${g.exerciseName} ${g.reps ? `${g.reps} reps ` : ''}@${g.value} kg`;
+}
 const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque reutilizable…';
 
 // Complete reference shown in the right column.
@@ -279,6 +289,7 @@ function previewFrom(
     warmup: section('warmup'),
     main: pvBlocks(parsed.blocks.filter((b) => b.section === 'main')),
     cooldown: section('cooldown'),
+    goals: goalsFrom(parsed).map(skillGoalLabel),
   };
 }
 
@@ -287,10 +298,13 @@ function previewFrom(
 export function RutinaForm({
   workout,
   block,
+  skill,
 }: {
   workout?: Workout;
   /** A saved block: the same editor on one piece of text (null → a new block). */
   block?: ReusableBlock | null;
+  /** A skill: its levels are the tabs, each with an "Objetivo" section (null → a new skill). */
+  skill?: Skill | null;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -298,20 +312,25 @@ export function RutinaForm({
   // same editor and preview, one tab (no warmup/cooldown), no versions,
   // settings or status.
   const blockMode = block !== undefined;
-  const basePath = blockMode ? '/bloques' : '/rutinas';
-  const listTitle = blockMode ? es.reusableBlocks.title : es.workouts.title;
-  const newLabel = blockMode ? 'Nuevo bloque' : es.workouts.new;
-  const isNew = blockMode ? !block : !workout;
+  // A skill ("habilidad") is a rutina per level: the version tabs become the
+  // levels, each one with an extra "Objetivo" section whose lines are the
+  // marks that unlock the next level.
+  const skillMode = skill !== undefined;
+  const basePath = blockMode ? '/bloques' : skillMode ? '/habilidades' : '/rutinas';
+  const listTitle = blockMode ? es.reusableBlocks.title : skillMode ? es.skills.title : es.workouts.title;
+  const newLabel = blockMode ? 'Nuevo bloque' : skillMode ? es.skills.new : es.workouts.new;
+  const isNew = blockMode ? !block : skillMode ? !skill : !workout;
+  const levelWord = skillMode ? 'nivel' : 'variante';
   const [nameError, setNameError] = useState(false);
 
-  const [name, setName] = useState(workout?.name ?? block?.name ?? '');
-  const [description, setDescription] = useState(workout?.description ?? '');
-  const [difficulty, setDifficulty] = useState(workout?.difficulty ?? 'beginner');
-  const [status, setStatus] = useState(workout?.status ?? 'draft');
+  const [name, setName] = useState(workout?.name ?? block?.name ?? skill?.name ?? '');
+  const [description, setDescription] = useState(workout?.description ?? skill?.description ?? '');
+  const [difficulty, setDifficulty] = useState(workout?.difficulty ?? skill?.difficulty ?? 'beginner');
+  const [status, setStatus] = useState(workout?.status ?? skill?.status ?? 'draft');
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   // A new rutina asks for name + type in one dialog, then opens the editor.
-  const [createOpen, setCreateOpen] = useState(!workout && !blockMode);
-  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
+  const [createOpen, setCreateOpen] = useState(!workout && !blockMode && !skill);
+  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? skill?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
@@ -345,16 +364,30 @@ export function RutinaForm({
   const [activeSection, setActiveSection] = useState<BlockSection>('main');
   useEffect(() => {
     if (sections === null && catalogReady && !createOpen) {
-      setSections(blockMode ? { ...EMPTY_SECTIONS, main: block?.text ?? '' } : splitSections(initialText(workout, catalog)));
+      setSections(
+        blockMode
+          ? { ...EMPTY_SECTIONS, main: block?.text ?? '' }
+          : skillMode
+            ? splitSections(skill?.levels[0]?.sourceText ?? '')
+            : splitSections(initialText(workout, catalog)),
+      );
     }
-  }, [sections, catalogReady, createOpen, workout, catalog, blockMode, block]);
+  }, [sections, catalogReady, createOpen, workout, catalog, blockMode, block, skillMode, skill]);
 
   // Variants (RX / Escalada / …): versions of the whole rutina, switched from
   // the tab bar. Each is a full rutina row linked to this one; loaded once the
   // catalog is ready, saved/created/removed alongside the base on "Guardar".
   type VariantTab = { id: string | null; label: string; sections: SectionTexts };
-  const [baseLabel, setBaseLabel] = useState(workout?.variantLabel ?? '');
-  const [variants, setVariants] = useState<VariantTab[] | null>(workout?.variants?.length ? null : []);
+  const [baseLabel, setBaseLabel] = useState(workout?.variantLabel ?? skill?.levels[0]?.name ?? (skillMode ? 'Nivel 1' : ''));
+  // In skill mode the base tab is level 1 (this is its id); the "variants" are the other levels.
+  const [baseLevelId, setBaseLevelId] = useState<string | null>(skill?.levels[0]?.id ?? null);
+  const [variants, setVariants] = useState<VariantTab[] | null>(
+    skillMode
+      ? (skill?.levels ?? []).slice(1).map((l) => ({ id: l.id, label: l.name, sections: splitSections(l.sourceText) }))
+      : workout?.variants?.length
+        ? null
+        : [],
+  );
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState(0); // 0 = base, n = variants[n-1]
   const [tabDialog, setTabDialog] = useState<{ mode: 'add' | 'rename'; index: number; label: string } | null>(null);
@@ -398,7 +431,7 @@ export function RutinaForm({
   }, [variants, catalogReady, workout, catalog]);
   const tabs = variants ?? [];
   const versionList = [
-    { id: 'base', label: baseLabel.trim() || 'Principal' },
+    { id: 'base', label: baseLabel.trim() || (skillMode ? 'Nivel 1' : 'Principal') },
     ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label })),
   ];
   const activeVariant = activeTab > 0 ? tabs[activeTab - 1] : undefined;
@@ -465,6 +498,29 @@ export function RutinaForm({
     setVariants((vs) => (vs ?? []).filter((_, i) => i !== index));
     setActiveTab((t) => (t > index + 1 ? t - 1 : t === index + 1 ? 0 : t));
   };
+  /** Remove a tab of the version list (0 = base). In skill mode level 1 can go too: the next level takes its place. */
+  const removeTab = (i: number) => {
+    if (i > 0) return removeVariant(i - 1);
+    const next = tabs[0];
+    if (!next) return;
+    setBaseLabel(next.label);
+    setBaseLevelId(next.id);
+    setSections(next.sections);
+    setVariants((vs) => (vs ?? []).slice(1));
+    setActiveTab(0);
+  };
+  /** Levels are ordered: move a tab of the version list one step up or down. */
+  const moveTab = (i: number, dir: -1 | 1) => {
+    const all = [{ id: baseLevelId, label: baseLabel, sections: sections ?? EMPTY_SECTIONS }, ...tabs];
+    const j = i + dir;
+    if (j < 0 || j >= all.length) return;
+    [all[i], all[j]] = [all[j]!, all[i]!];
+    setBaseLabel(all[0]!.label);
+    setBaseLevelId(all[0]!.id);
+    setSections(all[0]!.sections);
+    setVariants(all.slice(1));
+    setActiveTab(j);
+  };
   const renameTab = (index: number, label: string) => {
     if (index === 0) setBaseLabel(label);
     else setVariants((vs) => (vs ?? []).map((t, i) => (i === index - 1 ? { ...t, label } : t)));
@@ -501,8 +557,8 @@ export function RutinaForm({
     type === 'video' ? (workout?.videoDurationSeconds ?? null) : estimateDurationSeconds(toWorkoutInput(parsed).blocks);
   const durationLabel = estimatedSeconds ? `${Math.ceil(estimatedSeconds / 60)} min` : null;
   const metaLine = [
-    type === 'video' ? 'Video' : mainFormats.length ? mainFormats.join(' + ') : FORMAT_LABEL[format],
-    durationLabel,
+    skillMode ? `${tabs.length + 1} nivel${tabs.length ? 'es' : ''}` : type === 'video' ? 'Video' : mainFormats.length ? mainFormats.join(' + ') : FORMAT_LABEL[format],
+    skillMode ? null : durationLabel,
     es.difficulty[difficulty],
   ]
     .filter(Boolean)
@@ -603,6 +659,46 @@ export function RutinaForm({
     },
     onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
+  // A skill: every tab is a level with its own rutina (text + structure) and
+  // the goals parsed from its "Objetivo" section.
+  const levelPayload = (id: string | null, label: string, secs: SectionTexts, index: number): SkillLevelInput => {
+    const text = joinSections(secs);
+    const parsed = parseRutina(text, { catalog });
+    const structure = toWorkoutInput(parsed);
+    return {
+      id: id ?? undefined,
+      name: label.trim() || `Nivel ${index + 1}`,
+      sourceText: text,
+      format: structure.format,
+      blocks: structure.blocks,
+      unlockGoals: goalsFrom(parsed),
+    };
+  };
+  const saveSkill = useMutation({
+    mutationFn: async () => {
+      const levels = [
+        levelPayload(baseLevelId, baseLabel, sections ?? EMPTY_SECTIONS, 0),
+        ...tabs.map((t, i) => levelPayload(t.id, t.label, t.sections, i + 1)),
+      ];
+      const input = { name: name.trim(), description: description || null, difficulty, status, thumbnailAssetId, levels };
+      return skill ? api.skills.update(skill.id, input) : api.skills.create(input);
+    },
+    onSuccess: (saved) => {
+      // The server assigns ids to new levels; keep the texts as edited.
+      const first = saved.levels[0];
+      setBaseLevelId(first?.id ?? null);
+      const rest = saved.levels.slice(1).map((l, i) => ({ id: l.id, label: l.name, sections: tabs[i]?.sections ?? splitSections(l.sourceText) }));
+      setVariants(rest);
+      setRemovedVariantIds([]);
+      setBaseline({ ...currentRef.current, variants: rest });
+      qc.setQueryData(['skill', saved.id], saved);
+      qc.invalidateQueries({ queryKey: ['skills'] });
+      qc.invalidateQueries({ queryKey: ['workouts'] });
+      toast('Habilidad guardada');
+      if (!skill) router.replace(`${basePath}/${saved.id}`);
+    },
+    onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
+  });
   const save = useMutation({
     mutationFn: async () => {
       const basePayload = payloadFor(sections ?? EMPTY_SECTIONS, null);
@@ -684,7 +780,7 @@ export function RutinaForm({
   const doSaveRef = useRef<() => void>(() => {});
   const { bar: unsavedBar, guardNav, shake: shakeBar } = useUnsavedChanges({
     dirty,
-    saving: save.isPending || saveBlock.isPending,
+    saving: save.isPending || saveBlock.isPending || saveSkill.isPending,
     onSave: () => doSaveRef.current(),
     onDiscard: discard,
     canSave: type !== 'structured' || editorReady,
@@ -697,7 +793,7 @@ export function RutinaForm({
     }
     setNameError(false);
     if (type === 'structured') {
-      const all = [{ label: baseLabel.trim() || 'Principal', sections: sections ?? EMPTY_SECTIONS }, ...tabs];
+      const all = [{ label: baseLabel.trim() || (skillMode ? 'Nivel 1' : 'Principal'), sections: sections ?? EMPTY_SECTIONS }, ...tabs];
       for (let i = 0; i < all.length; i += 1) {
         const p = parseRutina(joinSections(all[i]!.sections), { catalog });
         const errors = p.diagnostics.filter((d) => d.severity === 'error');
@@ -717,7 +813,22 @@ export function RutinaForm({
         }
       }
     }
+    if (skillMode && status === 'published') {
+      // Published: every level but the last needs a way to unlock the next one.
+      const all = [{ label: baseLabel, sections: sections ?? EMPTY_SECTIONS }, ...tabs];
+      for (let i = 0; i < all.length - 1; i += 1) {
+        const goals = goalsFrom(parseRutina(joinSections(all[i]!.sections), { catalog }));
+        if (!goals.length) {
+          setActiveTab(i);
+          setActiveSection('goal');
+          toast(`El nivel «${all[i]!.label || `Nivel ${i + 1}`}» no tiene objetivo: nadie podría pasar al siguiente. Escríbelo en su pestaña Objetivo o guarda como borrador.`, 'error');
+          shakeBar();
+          return;
+        }
+      }
+    }
     if (blockMode) saveBlock.mutate();
+    else if (skillMode) saveSkill.mutate();
     else save.mutate();
   };
   doSaveRef.current = doSave;
@@ -786,7 +897,7 @@ export function RutinaForm({
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
-              {(blockMode ? (['main'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
+              {(blockMode ? (['main'] as const) : skillMode ? (['main', 'warmup', 'cooldown', 'goal'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
                 const empty = !activeSections[sec].trim();
                 return (
                   <div
@@ -844,9 +955,9 @@ export function RutinaForm({
                       'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] hover:bg-surface-3 disabled:opacity-40',
                       versionOpen ? 'bg-surface-3 text-ink' : 'text-ink-2',
                     )}
-                    title="Versión de la rutina (sus tres pestañas)"
+                    title={skillMode ? 'Nivel de la habilidad' : 'Versión de la rutina (sus tres pestañas)'}
                   >
-                    <span className="text-muted">Versión</span>
+                    <span className="text-muted">{skillMode ? 'Nivel' : 'Versión'}</span>
                     <span className="font-semibold text-ink">{versionList[activeTab]?.label || 'Sin nombre'}</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-3">
                       <path d="M6 9l6 6 6-6" />
@@ -871,9 +982,34 @@ export function RutinaForm({
                             className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
                           >
                             <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>
+                            {skillMode && <span className="font-mono text-[10px] text-muted">{i + 1}</span>}
                             <span className="truncate font-semibold">{t.label || 'Sin nombre'}</span>
-                            {i === 0 && <span className="font-mono text-[10px] text-muted">base</span>}
+                            {i === 0 && !skillMode && <span className="font-mono text-[10px] text-muted">base</span>}
                           </button>
+                          {skillMode && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => moveTab(i, -1)}
+                                disabled={i === 0}
+                                className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink disabled:opacity-0 group-hover:opacity-100"
+                                title="Subir"
+                                aria-label="Subir"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => moveTab(i, 1)}
+                                disabled={i === versionList.length - 1}
+                                className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink disabled:opacity-0 group-hover:opacity-100"
+                                title="Bajar"
+                                aria-label="Bajar"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
                           <button
                             type="button"
                             onClick={() => {
@@ -881,7 +1017,7 @@ export function RutinaForm({
                               setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label });
                             }}
                             className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink group-hover:opacity-100"
-                            title={i === 0 ? 'Nombrar el nivel de la versión principal' : 'Renombrar'}
+                            title={i === 0 && !skillMode ? 'Nombrar el nivel de la versión principal' : 'Renombrar'}
                             aria-label="Renombrar"
                           >
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -889,16 +1025,16 @@ export function RutinaForm({
                               <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
                             </svg>
                           </button>
-                          {i > 0 && (
+                          {(i > 0 || (skillMode && versionList.length > 1)) && (
                             <button
                               type="button"
                               onClick={() => {
                                 setVersionOpen(false);
-                                setConfirmRemove({ index: i - 1, label: t.label });
+                                setConfirmRemove({ index: i, label: t.label });
                               }}
                               className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
-                              title="Eliminar variante"
-                              aria-label="Eliminar variante"
+                              title={`Eliminar ${levelWord}`}
+                              aria-label={`Eliminar ${levelWord}`}
                             >
                               ✕
                             </button>
@@ -910,15 +1046,21 @@ export function RutinaForm({
                         type="button"
                         onClick={() => {
                           setVersionOpen(false);
-                          setTabDialog({ mode: 'add', index: tabs.length + 1, label: tabs.length === 0 ? 'Escalada' : '' });
+                          setTabDialog({
+                            mode: 'add',
+                            index: tabs.length + 1,
+                            label: skillMode ? `Nivel ${tabs.length + 2}` : tabs.length === 0 ? 'Escalada' : '',
+                          });
                         }}
                         className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-semibold text-accent-dark hover:bg-accent-tint"
                       >
                         <span className="w-3 text-center">+</span>
-                        Nueva variante
+                        {skillMode ? 'Nuevo nivel' : 'Nueva variante'}
                       </button>
                       <p className="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-muted">
-                        Una versión es la rutina entera: sus tres pestañas. La nueva copia la versión activa.
+                        {skillMode
+                          ? 'Cada nivel es una rutina con su objetivo. El nuevo copia el nivel activo; súbelo o bájalo con las flechas.'
+                          : 'Una versión es la rutina entera: sus tres pestañas. La nueva copia la versión activa.'}
                       </p>
                     </div>
                   )}
@@ -933,9 +1075,10 @@ export function RutinaForm({
                   key={`${activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
                   value={value}
                   onChange={setValue}
+                  onlyExercises={activeSection === 'goal'}
                   catalog={catalog}
                   parsed={parsedTab}
-                  placeholder={PLACEHOLDER}
+                  placeholder={activeSection === 'goal' ? GOAL_PLACEHOLDER : PLACEHOLDER}
                   autoFocus={isNew}
                   extras={extras}
                   inserts={inserts}
@@ -968,7 +1111,7 @@ export function RutinaForm({
           <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
             <RutinaPreview model={previewModel} name={name} />
             {activeTab > 0 && activeVariant && (
-              <p className="font-mono text-[11px] text-muted">Mostrando la variante «{activeVariant.label}».</p>
+              <p className="font-mono text-[11px] text-muted">Mostrando {skillMode ? 'el nivel' : 'la variante'} «{activeVariant.label}».</p>
             )}
           </aside>
       </div>
@@ -976,7 +1119,7 @@ export function RutinaForm({
       <Dialog
         open={tabDialog !== null}
         onClose={() => setTabDialog(null)}
-        title={tabDialog?.mode === 'add' ? 'Nueva variante' : 'Nombre del nivel'}
+        title={tabDialog?.mode === 'add' ? (skillMode ? 'Nuevo nivel' : 'Nueva variante') : skillMode ? 'Nombre del nivel' : 'Nombre del nivel'}
         className="max-w-sm"
       >
         <div className="flex flex-col gap-4 p-5">
@@ -993,12 +1136,14 @@ export function RutinaForm({
                   setTabDialog(null);
                 }
               }}
-              placeholder={tabDialog?.mode === 'add' ? 'p. ej. Escalada, Principiante' : 'p. ej. RX'}
+              placeholder={skillMode ? 'p. ej. Negativas, Primera dominada' : tabDialog?.mode === 'add' ? 'p. ej. Escalada, Principiante' : 'p. ej. RX'}
             />
             <p className="mt-2 text-[12px] leading-snug text-muted">
-              {tabDialog?.mode === 'add'
-                ? 'Se crea copiando la versión activa (sus tres pestañas). En la app el usuario elige el nivel antes de empezar.'
-                : 'Así verá el usuario este nivel en la app. Déjalo vacío para "Principal".'}
+              {skillMode
+                ? 'Así verá el usuario este nivel en la app.'
+                : tabDialog?.mode === 'add'
+                  ? 'Se crea copiando la versión activa (sus tres pestañas). En la app el usuario elige el nivel antes de empezar.'
+                  : 'Así verá el usuario este nivel en la app. Déjalo vacío para "Principal".'}
             </p>
           </div>
           <div className="flex justify-end gap-2">
@@ -1040,10 +1185,10 @@ export function RutinaForm({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim()) setCreateOpen(false);
               }}
-              placeholder={blockMode ? 'p. ej. Core express' : 'p. ej. Murph'}
+              placeholder={blockMode ? 'p. ej. Core express' : skillMode ? 'p. ej. Dominadas' : 'p. ej. Murph'}
             />
           </div>
-          {!blockMode && (
+          {!blockMode && !skillMode && (
             <div>
               <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.type}</div>
               <div className="grid grid-cols-2 gap-2">
@@ -1084,12 +1229,12 @@ export function RutinaForm({
       <Dialog
         open={confirmRemove !== null}
         onClose={() => setConfirmRemove(null)}
-        title="Eliminar variante"
+        title={`Eliminar ${levelWord}`}
         className="max-w-sm"
       >
         <div className="flex flex-col gap-4 p-5">
           <p className="text-[14px] leading-relaxed text-ink-2">
-            ¿Eliminar la variante «{confirmRemove?.label}»? Se borrará al guardar la rutina.
+            ¿Eliminar {skillMode ? 'el nivel' : 'la variante'} «{confirmRemove?.label}»? Se borrará al guardar{skillMode ? ', con su rutina' : ' la rutina'}.
           </p>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setConfirmRemove(null)}>
@@ -1098,7 +1243,7 @@ export function RutinaForm({
             <Button
               type="button"
               onClick={() => {
-                if (confirmRemove) removeVariant(confirmRemove.index);
+                if (confirmRemove) removeTab(confirmRemove.index);
                 setConfirmRemove(null);
               }}
             >
@@ -1201,7 +1346,7 @@ export function RutinaForm({
                 </div>
               </div>
 
-              {!blockMode && (
+              {!blockMode && !skillMode && (
                 <div className="flex flex-col gap-2.5">
                   <MonoLabel>{es.workouts.type}</MonoLabel>
                   <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">

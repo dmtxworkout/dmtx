@@ -19,7 +19,7 @@ PostgreSQL via Drizzle. Schema lives in `packages/db/src/schema/` (one file per 
   - **Principle:** a part's `format_config` = its global timing; blocks/items = the prescription. One structure expresses all formats.
   - **Variants:** a rutina may have variants (RX / Escalada / …) — full `workouts` rows with `variant_of_id` → base and a `variant_label`. Lists and the consumer catalog hide variants; the base's detail returns `variants: [{id, label}]` and the app offers them as a level before starting.
 - **`programs`**: polymorphic via `type` (`structured`|`video_playlist`). Structured: `program_days` (absolute `position` + optional week/day) → `program_items` (→ workout). Playlist: `program_video_items`. Tags via `program_goal_tags` → `goal_tags`; `program_muscles` (m2m).
-- **`skills`** → `skill_levels` (ordered; each → a workout + `unlock_goal` to unlock the next level). `skill_muscles` (m2m).
+- **`skills`** → `skill_levels` (ordered). Each level **owns** a workout (`workouts.owner_skill_id` → the skill; hidden from every catalog list, deleted with the skill) written in the rutina editor, and `unlock_goals` (jsonb `SkillGoal[]`: exercise + metric reps|time_seconds|distance_meters|load_kg + value, derived on save from the level text's **Objetivo** section, one goal per line; the last level has none). `skill_muscles` (m2m).
 
 ## Shared JSONB value objects (typed by `@dmtx/schemas`)
 
