@@ -127,9 +127,11 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   });
   return (
     <section>
-      <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
-        {label}
-      </div>
+      {label && (
+        <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
+          {label}
+        </div>
+      )}
       {empty ? (
         <div className="text-[13px] text-muted">Sin ejercicios</div>
       ) : (

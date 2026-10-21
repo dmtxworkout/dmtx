@@ -262,6 +262,8 @@ function previewFrom(
   parsed: ParsedRutina,
   type: 'structured' | 'video',
   hasVideo: boolean,
+  /** A reusable block is one piece of text: no "Rutina" section label over it. */
+  blockMode = false,
 ): PvModel {
   // Parts carry the format headers inside the list, so the section labels are plain.
   const section = (s: 'warmup' | 'cooldown'): PvSection | null => {
@@ -272,7 +274,7 @@ function previewFrom(
   return {
     type,
     hasVideo,
-    formatLabel: type === 'structured' ? 'Rutina' : 'Video',
+    formatLabel: blockMode ? '' : type === 'structured' ? 'Rutina' : 'Video',
     headline: '',
     warmup: section('warmup'),
     main: pvBlocks(parsed.blocks.filter((b) => b.section === 'main')),
@@ -479,8 +481,8 @@ export function RutinaForm({
   const format = parsed.main?.format ?? 'for_time';
 
   const previewModel = useMemo(
-    () => previewFrom(parsed, type, type === 'video' && !!videoAssetId),
-    [parsed, type, videoAssetId],
+    () => previewFrom(parsed, type, type === 'video' && !!videoAssetId, blockMode),
+    [parsed, type, videoAssetId, blockMode],
   );
 
   const guideSections = useMemo(() => {
