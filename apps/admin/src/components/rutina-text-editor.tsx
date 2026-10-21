@@ -23,6 +23,7 @@ import {
   type DecorationSet,
   type Tooltip,
   type ViewUpdate,
+  closeHoverTooltips,
 } from '@codemirror/view';
 import {
   defaultKeymap,
@@ -105,6 +106,10 @@ export interface RutinaTextEditorProps {
   onInsertBlock?: (kind: InsertKind, id: string) => Promise<string | null>;
   /** Shown as a floating action when two or more lines are selected. */
   onSaveBlock?: (text: string) => void;
+  /** "Editar ejercicio" on a recognised exercise (hover card, Cmd/Ctrl+click). */
+  onEditExercise?: (id: string) => void;
+  /** What the hover card says about a recognised exercise. */
+  describeExercise?: (id: string) => ExerciseInfo | null;
   apiRef?: MutableRefObject<RutinaEditorApi | null>;
   placeholder?: string;
   autoFocus?: boolean;
@@ -114,19 +119,64 @@ export interface RutinaTextEditorProps {
 // --- State shared with the extensions ----------------------------------------
 // Props that the (once-created) extensions need live in state fields, updated
 // through effects, so tooltips can be built from `state` alone.
+export interface ExerciseInfo {
+  name: string;
+  muscles: string[];
+  equipment: string[];
+  archived: boolean;
+}
 interface Handlers {
   create: ((name: string) => void) | null;
   save: ((text: string) => void) | null;
   insert: ((kind: InsertKind, id: string) => Promise<string | null>) | null;
+  edit: ((id: string) => void) | null;
+  describe: ((id: string) => ExerciseInfo | null) | null;
 }
 const setHandlers = StateEffect.define<Handlers>();
 const handlersField = StateField.define<Handlers>({
-  create: () => ({ create: null, save: null, insert: null }),
+  create: () => ({ create: null, save: null, insert: null, edit: null, describe: null }),
   update: (v, tr) => {
     for (const e of tr.effects) if (e.is(setHandlers)) return e.value;
     return v;
   },
 });
+
+/** A recognised exercise name in the text: where it is and which exercise it resolved to. */
+interface ExerciseRef {
+  line: number;
+  from: number;
+  to: number;
+  id: string;
+  name: string;
+}
+const setExerciseRefs = StateEffect.define<ExerciseRef[]>();
+const exerciseRefsField = StateField.define<ExerciseRef[]>({
+  create: () => [],
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setExerciseRefs)) return e.value;
+    return v;
+  },
+});
+function collectExerciseRefs(blocks: ParsedRutina['blocks']): ExerciseRef[] {
+  const out: ExerciseRef[] = [];
+  const walk = (list: ParsedRutina['blocks']) => {
+    for (const b of list) {
+      for (const it of b.items) {
+        if (it.match && it.nameRange) out.push({ line: it.line, from: it.nameRange[0], to: it.nameRange[1], id: it.match.id, name: it.match.name });
+      }
+      if (b.children) walk(b.children);
+    }
+  };
+  walk(blocks);
+  return out;
+}
+/** The recognised exercise under a document position, if any. */
+function exerciseAt(state: EditorState, pos: number): (ExerciseRef & { docFrom: number; docTo: number }) | null {
+  const line = state.doc.lineAt(pos);
+  const col = pos - line.from;
+  const ref = state.field(exerciseRefsField).find((r) => r.line === line.number - 1 && col >= r.from && col <= r.to);
+  return ref ? { ...ref, docFrom: line.from + ref.from, docTo: line.from + ref.to } : null;
+}
 
 const setParsedLines = StateEffect.define<LineInfo[]>();
 const parsedLinesField = StateField.define<LineInfo[]>({
@@ -215,6 +265,8 @@ const BACK_ICON =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
 const CHEVRON_ICON =
   '<svg class="c" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>';
+const PENCIL_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const PLUS_ICON =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 const BOOKMARK_ICON =
@@ -293,6 +345,58 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
       el('div', 'rt-diag-msg', d.message, top);
     }
   });
+  // A recognised exercise under the card (an archived one, say) can be edited from here.
+  const ref = exerciseAt(view.state, from) ?? exerciseAt(view.state, to);
+  const { edit } = view.state.field(handlersField);
+  if (ref && edit) {
+    button('rt-diag-action', `${PENCIL_ICON}<span>Editar ejercicio «${escape(ref.name)}»</span>`, () => {
+      view.dispatch({ effects: [setGutterTip.of(null), closeHoverTooltips] });
+      edit(ref.id);
+    });
+  }
+  return dom;
+}
+
+/** The card for a recognised exercise: what it works, what it needs, and "Editar". */
+function buildExerciseCard(view: EditorView, ref: ExerciseRef): HTMLElement {
+  const { edit, describe } = view.state.field(handlersField);
+  const info = describe?.(ref.id);
+  const dom = document.createElement('div');
+  dom.className = 'rt-diag';
+  const top = document.createElement('div');
+  top.className = 'rt-diag-top';
+  dom.appendChild(top);
+  const label = document.createElement('div');
+  label.className = 'rt-diag-label';
+  label.textContent = info?.archived ? 'Ejercicio · archivado' : 'Ejercicio';
+  top.appendChild(label);
+  const name = document.createElement('div');
+  name.className = 'rt-diag-name';
+  name.textContent = info?.name ?? ref.name;
+  top.appendChild(name);
+  const facts = [
+    info?.muscles.length ? `Trabaja ${info.muscles.join(', ')}` : null,
+    info?.equipment.length ? `Equipo: ${info.equipment.join(', ')}` : null,
+  ].filter(Boolean);
+  if (facts.length) {
+    const msg = document.createElement('div');
+    msg.className = 'rt-diag-msg';
+    msg.textContent = facts.join(' · ');
+    top.appendChild(msg);
+  }
+  if (edit) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'rt-diag-action';
+    b.innerHTML = `${PENCIL_ICON}<span>Editar ejercicio</span><kbd>⌘ clic</kbd>`;
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', () => {
+      // The dialog would otherwise sit on top of a card that never gets a mouseleave.
+      view.dispatch({ effects: closeHoverTooltips });
+      edit(ref.id);
+    });
+    dom.appendChild(b);
+  }
   return dom;
 }
 
@@ -300,12 +404,21 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
 const hoverCard = hoverTooltip(
   (view, pos): Tooltip | null => {
     const hit = diagnosticsAt(view.state, pos);
-    if (!hit) return null;
+    if (hit) {
+      return {
+        pos: hit.from,
+        end: hit.to,
+        above: false,
+        create: () => ({ dom: buildCard(view, hit.diags, hit.from, hit.to) }),
+      };
+    }
+    const ref = exerciseAt(view.state, pos);
+    if (!ref) return null;
     return {
-      pos: hit.from,
-      end: hit.to,
+      pos: ref.docFrom,
+      end: ref.docTo,
       above: false,
-      create: () => ({ dom: buildCard(view, hit.diags, hit.from, hit.to) }),
+      create: () => ({ dom: buildExerciseCard(view, ref) }),
     };
   },
   { hoverTime: 120, hideOnChange: true },
@@ -493,6 +606,18 @@ const trackHover = (view: EditorView, event: MouseEvent) => {
 };
 const hoverTracker = EditorView.domEventHandlers({
   mousemove: (event, view) => trackHover(view, event),
+  // Cmd/Ctrl+click on a recognised exercise opens it for editing ("go to definition").
+  mousedown: (event, view) => {
+    if (!(event.metaKey || event.ctrlKey) || event.button !== 0) return false;
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+    if (pos == null) return false;
+    const ref = exerciseAt(view.state, pos);
+    const { edit } = view.state.field(handlersField);
+    if (!ref || !edit) return false;
+    event.preventDefault();
+    edit(ref.id);
+    return true;
+  },
   mouseleave: (_e, view) => {
     if (view.state.field(hoverLineField) != null) view.dispatch({ effects: setHoverLine.of(null) });
     return false;
@@ -1229,6 +1354,14 @@ const theme = EditorView.theme({
   },
   '.rt-diag-label.error': { color: 'var(--color-accent-dark)' },
   '.rt-diag-msg': { padding: '2px 8px 5px', fontSize: '13px', color: 'var(--color-ink-2)', lineHeight: '1.4' },
+  '.rt-diag-name': { padding: '2px 8px 0', fontSize: '15px', fontWeight: '700', color: 'var(--color-ink)' },
+  '.rt-diag-action kbd': {
+    marginLeft: 'auto',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10px',
+    color: 'var(--color-muted)',
+    letterSpacing: '0.04em',
+  },
   '.rt-diag-sugg': {
     display: 'block',
     width: '100%',
@@ -1292,6 +1425,8 @@ export function RutinaTextEditor({
   inserts,
   onInsertBlock,
   onSaveBlock,
+  onEditExercise,
+  describeExercise,
   apiRef,
   placeholder,
   autoFocus,
@@ -1307,6 +1442,8 @@ export function RutinaTextEditor({
   const extrasRef = useRef(extras);
   const onInsertRef = useRef(onInsertBlock);
   const onSaveRef = useRef(onSaveBlock);
+  const onEditRef = useRef(onEditExercise);
+  const describeRef = useRef(describeExercise);
   catalogRef.current = catalog;
   parsedRef.current = parsed;
   onChangeRef.current = onChange;
@@ -1314,6 +1451,8 @@ export function RutinaTextEditor({
   extrasRef.current = extras;
   onInsertRef.current = onInsertBlock;
   onSaveRef.current = onSaveBlock;
+  onEditRef.current = onEditExercise;
+  describeRef.current = describeExercise;
 
   useEffect(() => {
     if (!host.current) return;
@@ -1528,6 +1667,7 @@ export function RutinaTextEditor({
           history(),
           indentUnit.of('  '),
           handlersField,
+          exerciseRefsField,
           diagsField,
           catalogField,
           parsedLinesField,
@@ -1612,6 +1752,8 @@ export function RutinaTextEditor({
         create: onCreateRef.current ? (n) => onCreateRef.current?.(n) : null,
         save: onSaveRef.current ? (t) => onSaveRef.current?.(t) : null,
         insert: (k, id) => onInsertRef.current?.(k, id) ?? Promise.resolve(null),
+        edit: onEditRef.current ? (id) => onEditRef.current?.(id) : null,
+        describe: (id) => describeRef.current?.(id) ?? null,
       }),
     });
     if (autoFocus) view.focus();
@@ -1651,7 +1793,7 @@ export function RutinaTextEditor({
       });
     }
     view.dispatch(setDiagnostics(view.state, diags), {
-      effects: [setParsedDiags.of(parsed.diagnostics), setParsedLines.of(parsed.lines)],
+      effects: [setParsedDiags.of(parsed.diagnostics), setParsedLines.of(parsed.lines), setExerciseRefs.of(collectExerciseRefs(parsed.blocks))],
     });
   }, [parsed]);
 

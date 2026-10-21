@@ -39,6 +39,7 @@ import { MediaField } from '@/components/media-field';
 import { ExerciseForm } from '@/components/exercise-form';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { toast } from '@/components/ui/toast';
+import { useTaxonomy } from '@/components/tag-pickers';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import {
   RutinaPreview,
@@ -315,8 +316,16 @@ export function RutinaForm({
   const [guideQuery, setGuideQuery] = useState('');
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
   const editorApi = useRef<RutinaEditorApi | null>(null);
-  // A missing exercise is created from the editor with the full exercise form.
+  // A missing exercise is created from the editor with the full exercise form;
+  // a recognised one is edited the same way (hover card or Cmd/Ctrl+click).
   const [newExercise, setNewExercise] = useState<{ name: string } | null>(null);
+  const [editExerciseId, setEditExerciseId] = useState<string | null>(null);
+  const editExerciseQ = useQuery({
+    queryKey: ['exercise', editExerciseId],
+    queryFn: () => api.exercises.get(editExerciseId!),
+    enabled: !!editExerciseId,
+  });
+  const { data: taxonomy } = useTaxonomy();
   const editorHost = useRef<HTMLDivElement>(null);
 
   const { data: exList } = useQuery({
@@ -328,6 +337,19 @@ export function RutinaForm({
     [exList],
   );
   const catalogReady = !!exList;
+  /** What the editor's hover card says about an exercise: primary muscles and equipment. */
+  const describeExercise = (id: string) => {
+    const ex = exList?.data.find((e) => e.id === id);
+    if (!ex) return null;
+    const muscleName = (mid: string) => taxonomy?.muscles.find((m) => m.id === mid)?.name;
+    const equipmentName = (eid: string) => taxonomy?.equipment.find((e) => e.id === eid)?.name;
+    return {
+      name: ex.name,
+      muscles: ex.muscles.filter((m) => m.role === 'primary').map((m) => muscleName(m.muscleId)).filter((n): n is string => !!n),
+      equipment: ex.equipmentIds.map(equipmentName).filter((n): n is string => !!n),
+      archived: !!ex.archivedAt,
+    };
+  };
 
   // The rutina text, one piece per section (each section is a tab). Seeded once
   // the catalog is available (names come from it).
@@ -400,6 +422,46 @@ export function RutinaForm({
       setVariants((vs) =>
         (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, sections: { ...t.sections, [activeSection]: v } } : t)),
       );
+  };
+  /** Replace an exercise name (as a whole word, accents and case ignored) in every section of every version; returns the lines changed. */
+  const renameInTexts = (oldName: string, newName: string): number => {
+    let changed = 0;
+    const target = fold(oldName.trim());
+    const isWord = (ch: string | undefined) => !!ch && /[\p{L}\p{N}]/u.test(ch);
+    const renameLine = (line: string): string => {
+      // Walk the folded line for the name; splice the raw line at the same offsets
+      // (folding keeps the length, since it only strips combining marks per char).
+      const folded = [...line].map((ch) => fold(ch) || ch);
+      const raw = [...line];
+      let out = '';
+      let i = 0;
+      let hit = false;
+      while (i < raw.length) {
+        const slice = folded.slice(i, i + [...target].length).join('');
+        if (slice === target && !isWord(folded[i - 1]) && !isWord(folded[i + [...target].length])) {
+          out += newName;
+          i += [...target].length;
+          hit = true;
+        } else {
+          out += raw[i];
+          i += 1;
+        }
+      }
+      if (hit) changed += 1;
+      return out;
+    };
+    const renameSections = (sc: SectionTexts): SectionTexts => {
+      const next = { ...sc };
+      for (const key of Object.keys(next) as (keyof SectionTexts)[]) {
+        next[key] = next[key].split('\n').map(renameLine).join('\n');
+      }
+      return next;
+    };
+    // Computed from the current values (not inside the state updaters, which
+    // React runs later) so the count is known right away for the toast.
+    if (sections) setSections(renameSections(sections));
+    if (variants) setVariants(variants.map((v) => ({ ...v, sections: renameSections(v.sections) })));
+    return changed;
   };
   // The whole rutina (all sections) of the active version, as one document.
   const doc = useMemo(() => joinSections(activeSections), [activeSections]);
@@ -903,6 +965,8 @@ export function RutinaForm({
                   }
                   apiRef={editorApi}
                   onCreateExercise={(n) => setNewExercise({ name: titleCase(n) })}
+                  onEditExercise={setEditExerciseId}
+                  describeExercise={describeExercise}
                   className="h-full"
                 />
               )}
@@ -1235,6 +1299,39 @@ export function RutinaForm({
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      <Dialog open={editExerciseId !== null} onClose={() => setEditExerciseId(null)} title="Editar ejercicio" className="max-w-3xl">
+        {editExerciseId && !editExerciseQ.data && <div className="p-8 text-center text-sm text-muted">{es.app.loading}</div>}
+        {editExerciseId && editExerciseQ.data && (
+          <ExerciseForm
+            key={editExerciseQ.data.id}
+            embedded
+            exercise={editExerciseQ.data}
+            onCancel={() => setEditExerciseId(null)}
+            onSaved={(saved) => {
+              const previous = editExerciseQ.data!;
+              setEditExerciseId(null);
+              qc.invalidateQueries({ queryKey: ['exercises'] });
+              if (saved.name.trim() === previous.name.trim()) {
+                toast(`Ejercicio guardado: ${saved.name}`);
+                return;
+              }
+              // Renamed: the text still says the old name everywhere. Rewrite it in
+              // every section of every version, and keep the old name as an alias so
+              // other rutinas that use it keep resolving.
+              const n = renameInTexts(previous.name, saved.name);
+              const aliases = saved.aliases.map(fold);
+              if (!aliases.includes(fold(previous.name))) {
+                api.exercises
+                  .update(saved.id, { aliases: [...saved.aliases, previous.name] })
+                  .then(() => qc.invalidateQueries({ queryKey: ['exercises'] }))
+                  .catch(() => undefined);
+              }
+              toast(n ? `Renombrado en ${n} línea${n === 1 ? '' : 's'} · «${previous.name}» queda como alias` : `Ejercicio guardado: ${saved.name}`);
+            }}
+          />
+        )}
       </Dialog>
 
       <Dialog
