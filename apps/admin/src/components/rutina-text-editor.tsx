@@ -782,9 +782,27 @@ export function RutinaTextEditor({
       if (completionStatus(view.state) === 'active') closeCompletion(view);
       return smartEnter(view);
     };
+    // Tab accepts a suggestion only when something was typed on the line;
+    // on a blank line it indents one level (even with the popup open).
     const tabKey = (view: EditorView) => {
-      if (completionStatus(view.state) === 'active') return acceptCompletion(view);
+      if (completionStatus(view.state) === 'active' && typedOnLine(view)) return acceptCompletion(view);
       return indentMore(view);
+    };
+    // Backspace inside the leading whitespace removes a whole level (2 spaces),
+    // so the cursor always lands on a level boundary.
+    const backspaceKey = (view: EditorView) => {
+      const sel = view.state.selection.main;
+      if (!sel.empty) return false;
+      const line = view.state.doc.lineAt(sel.head);
+      const before = line.text.slice(0, sel.head - line.from);
+      if (!before.length || before.trim() !== '') return false;
+      const remove = before.length % 2 === 0 ? 2 : 1;
+      view.dispatch({
+        changes: { from: sel.head - remove, to: sel.head, insert: '' },
+        selection: { anchor: sel.head - remove },
+        userEvent: 'delete',
+      });
+      return true;
     };
 
     const view = new EditorView({
@@ -824,6 +842,7 @@ export function RutinaTextEditor({
               { key: 'Enter', run: enterKey },
               { key: 'Tab', run: tabKey },
               { key: 'Shift-Tab', run: indentLess },
+              { key: 'Backspace', run: backspaceKey },
               { key: 'Escape', run: closeCompletion },
               { key: 'ArrowDown', run: moveCompletionSelection(true) },
               { key: 'ArrowUp', run: moveCompletionSelection(false) },
