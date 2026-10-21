@@ -219,7 +219,6 @@ function segmentBody(src: Workout, catalog: Catalog): string[] {
 // catalog (so the template parses clean), with generic names as a fallback.
 type Template = { id: string; title: string; desc: string; text: (ex: (i: number) => string) => string };
 const TEMPLATES: Template[] = [
-  { id: 'blank', title: 'En blanco', desc: 'Empieza desde cero; la guía te acompaña.', text: () => '' },
   {
     id: 'amrap',
     title: 'AMRAP clásico',
@@ -289,12 +288,9 @@ Enfriamiento
 ];
 const FALLBACK_EX = ['burpees', 'sentadillas', 'flexiones'];
 
-/** Initial text: an existing rutina serialized, or the chosen template for a new one. */
-function initialText(workout: Workout | undefined, catalog: Catalog, templateId: string, exNames: string[]): string {
-  if (!workout) {
-    const t = TEMPLATES.find((x) => x.id === templateId) ?? TEMPLATES[0]!;
-    return t.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio');
-  }
+/** Initial text: an existing rutina serialized; a new one starts empty (templates are offered in the editor). */
+function initialText(workout: Workout | undefined, catalog: Catalog): string {
+  if (!workout) return '';
   if (workout.type !== 'structured') return '';
   return serializeRutina(workout, catalog);
 }
@@ -383,12 +379,8 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     workout?.estimatedDurationSeconds ? String(Math.round(workout.estimatedDurationSeconds / 60)) : '',
   );
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
-  // New workouts start in a guided wizard (type → name); existing ones skip
-  // straight to the editor. The format is whatever the text says.
-  const [wizardStep, setWizardStep] = useState<'type' | 'name' | 'template' | 'done'>(
-    workout ? 'done' : segmentMode ? 'name' : 'type',
-  );
-  const [templateId, setTemplateId] = useState('blank');
+  // A new rutina asks for name + type in one dialog, then opens the editor.
+  const [createOpen, setCreateOpen] = useState(!workout);
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -416,10 +408,13 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   // The rutina text. Seeded once the catalog is available (names come from it).
   const [text, setText] = useState<string | null>(null);
   useEffect(() => {
-    if (text === null && catalogReady && wizardStep === 'done') {
-      setText(initialText(workout, catalog, templateId, (exList?.data ?? []).map((e) => e.name)));
+    if (text === null && catalogReady && !createOpen) {
+      setText(initialText(workout, catalog));
     }
-  }, [text, catalogReady, wizardStep, workout, catalog, templateId, exList]);
+  }, [text, catalogReady, createOpen, workout, catalog]);
+  // Templates offered inside the editor while it is empty.
+  const exNames = (exList?.data ?? []).map((e) => e.name);
+  const applyTemplate = (t: Template) => setText(t.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio'));
 
   // Variants (RX / Escalada / …): one tab each, after the base tab. Each is a
   // full rutina row linked to this one; loaded (and serialized) once the
@@ -669,161 +664,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     save.mutate();
   };
 
-  // ---- Create wizard (new workouts only): type → format → name -------------
-  const selectType = (t: 'structured' | 'video') => {
-    setType(t);
-    setWizardStep('name');
-  };
-  const finishWizard = () => {
-    if (!name.trim()) {
-      setNameError(true);
-      return;
-    }
-    setNameError(false);
-    setWizardStep(type === 'structured' && !segmentMode ? 'template' : 'done');
-  };
-
-  if (wizardStep !== 'done') {
-    const stepTotal = segmentMode ? 1 : type === 'structured' ? 3 : 2;
-    const stepNum = segmentMode ? 1 : wizardStep === 'type' ? 1 : wizardStep === 'name' ? 2 : 3;
-    return (
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between gap-6 border-b border-line bg-surface px-7 py-4">
-          <div className="flex items-center gap-2 font-mono text-xs font-medium text-muted">
-            <button type="button" onClick={() => router.push(basePath)} className="hover:text-ink-2">
-              {listTitle}
-            </button>
-            <span>/</span>
-            <span className="text-ink-2">Nueva</span>
-          </div>
-          <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
-            {es.app.cancel}
-          </Button>
-        </header>
-
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-2xl px-6 py-10">
-            <div className="mb-6 font-mono text-[11px] font-semibold uppercase tracking-widest text-muted">
-              Paso {stepNum} de {stepTotal}
-            </div>
-
-            {wizardStep === 'type' && (
-              <>
-                <h1 className="mb-1 text-2xl font-bold tracking-tight">¿Qué tipo de rutina?</h1>
-                <p className="mb-6 text-sm text-ink-3">Esto no se puede cambiar después.</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {(
-                    [
-                      { v: 'structured', desc: 'Ejercicios con series, reps, tiempo o distancia.' },
-                      { v: 'video', desc: 'Una sola clase en video, sin pasos.' },
-                    ] as const
-                  ).map((o) => (
-                    <button
-                      key={o.v}
-                      type="button"
-                      onClick={() => selectType(o.v)}
-                      className="flex flex-col gap-1.5 rounded-xl border border-line-2 bg-surface p-4 text-left hover:border-ink hover:bg-surface-2"
-                    >
-                      <span className="text-base font-bold">{es.workouts.types[o.v]}</span>
-                      <span className="text-[13px] leading-snug text-ink-3">{o.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {wizardStep === 'name' && (
-              <>
-                {!segmentMode && (
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep('type')}
-                    className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
-                  >
-                    ← Atrás
-                  </button>
-                )}
-                <h1 className="mb-1 text-2xl font-bold tracking-tight">
-                  Nombra tu {segmentMode ? 'segmento' : 'rutina'}
-                </h1>
-                <p className="mb-5 text-sm text-ink-3">
-                  {es.workouts.types[type]}
-                  {type === 'structured' ? ' · el formato se escribe en la primera línea de cada parte' : ''}
-                </p>
-                <Input
-                  autoFocus
-                  value={name}
-                  onChange={(e) => {
-                    setName(e.target.value);
-                    if (nameError) setNameError(false);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') finishWizard();
-                  }}
-                  placeholder={newLabel}
-                />
-                {nameError && (
-                  <span className="mt-1.5 block text-xs font-medium text-accent-dark">
-                    {es.app.nameRequired}
-                  </span>
-                )}
-                <div className="mt-6">
-                  <Button onClick={finishWizard}>Continuar</Button>
-                </div>
-              </>
-            )}
-
-            {wizardStep === 'template' && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setWizardStep('name')}
-                  className="mb-4 font-mono text-xs text-muted hover:text-ink-2"
-                >
-                  ← Atrás
-                </button>
-                <h1 className="mb-1 text-2xl font-bold tracking-tight">¿Cómo quieres empezar?</h1>
-                <p className="mb-6 text-sm text-ink-3">
-                  Una plantilla es una rutina ya escrita para que la edites: la forma más rápida de aprender la notación.
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {TEMPLATES.map((t) => {
-                    const preview = t
-                      .text((i) => (exList?.data ?? []).map((e) => e.name)[i] ?? FALLBACK_EX[i] ?? 'ejercicio')
-                      .split('\n')
-                      .filter((l) => l.trim() && !l.trim().startsWith('//'))
-                      .slice(0, 4);
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          setTemplateId(t.id);
-                          setWizardStep('done');
-                        }}
-                        className="flex flex-col gap-2 rounded-xl border border-line-2 bg-surface p-4 text-left hover:border-accent hover:bg-accent-tint/30"
-                      >
-                        <span className="text-[15px] font-bold">{t.title}</span>
-                        <span className="text-[12.5px] leading-snug text-ink-3">{t.desc}</span>
-                        {preview.length > 0 && (
-                          <pre className="mt-1 overflow-hidden rounded-lg bg-surface-2 px-3 py-2 font-mono text-[11px] leading-5 text-ink-2">
-                            {preview.join('\n')}
-                            {'\n…'}
-                          </pre>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {/* Header */}
@@ -960,6 +800,25 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 </button>
               </div>
             </div>
+            {editorReady && !value.trim() && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface-2/60 px-4 py-2.5">
+                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">
+                  Empieza con una plantilla
+                </span>
+                {TEMPLATES.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    title={t.desc}
+                    className="rounded-full border border-line-2 bg-surface px-3 py-1 text-[12px] font-semibold text-ink-2 hover:border-accent hover:text-accent-dark"
+                  >
+                    {t.title}
+                  </button>
+                ))}
+                <span className="font-mono text-[10px] text-muted">o escribe directamente</span>
+              </div>
+            )}
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
@@ -1046,6 +905,66 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
               }}
             >
               {tabDialog?.mode === 'add' ? 'Crear' : es.app.save}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog
+        open={createOpen}
+        onClose={() => router.push(basePath)}
+        title={newLabel}
+        className="max-w-md"
+      >
+        <div className="flex flex-col gap-4 p-5">
+          <div>
+            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.exercises.fields.name}</div>
+            <Input
+              autoFocus
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (nameError) setNameError(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && name.trim()) setCreateOpen(false);
+              }}
+              placeholder={segmentMode ? 'p. ej. Calentamiento general' : 'p. ej. Murph'}
+            />
+          </div>
+          {!segmentMode && (
+            <div>
+              <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.type}</div>
+              <div className="grid grid-cols-2 gap-2">
+                {(
+                  [
+                    { v: 'structured', desc: 'Ejercicios escritos en el editor' },
+                    { v: 'video', desc: 'Una sola clase en video' },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    onClick={() => setType(o.v)}
+                    className={cn(
+                      'flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left',
+                      type === o.v ? 'border-accent bg-accent-tint/40' : 'border-line-2 bg-surface hover:bg-surface-2',
+                    )}
+                  >
+                    <span className="text-[13px] font-bold text-ink">{es.workouts.types[o.v]}</span>
+                    <span className="text-[11px] leading-snug text-ink-3">{o.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-muted">El tipo no se puede cambiar después.</p>
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => router.push(basePath)}>
+              {es.app.cancel}
+            </Button>
+            <Button type="button" disabled={!name.trim()} onClick={() => setCreateOpen(false)}>
+              Crear
             </Button>
           </div>
         </div>
