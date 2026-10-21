@@ -304,7 +304,9 @@ const LEAD_COUNT_RE = /^\s*(\d+)\s+(?=\S)/;
 const TRAIL_COUNT_RE = /\s+[x×]?\s*(\d+)\s*$/;
 const MAX_RE = /\b(?:max|maximas?|maximo|al fallo|failure|amrap)\b/;
 const INTERVAL_RE = /^\s*(?:(?:min(?:uto)?|intervalo)\.?\s*)?(\d+)\s*[:).\]]\s+/;
-const NOTE_RE = /\/\/(.*)$/;
+// "// texto" is an internal comment (dropped); "(texto)" at the end is a note the athlete sees.
+const COMMENT_RE = /\/\/.*$/;
+const NOTE_RE = /\(([^()]*)\)\s*$/;
 
 export function parseItemLine(
   original: string,
@@ -316,9 +318,12 @@ export function parseItemLine(
   let s = foldKeep(original);
   let r: ReturnType<typeof mask>;
 
+  r = mask(s, COMMENT_RE);
+  s = r.s;
   r = mask(s, NOTE_RE);
   s = r.s;
-  if (r.m) it.notes = r.m[1]!.trim() || null;
+  // Keep the note as written (accents, case): slice the original, not the fold.
+  if (r.m) it.notes = original.slice(r.m.index! + 1, r.m.index! + 1 + r.m[1]!.length).trim() || null;
 
   r = mask(s, INTERVAL_RE);
   s = r.s;
@@ -578,6 +583,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       type: kindOf(kw, rounds),
       rounds,
       label: null,
+      notes: null,
       items: [],
       loose: false,
     };
@@ -654,6 +660,38 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       closeGroup();
     }
 
+    // "(texto)" alone on a line: a note the athlete sees, attached to what is
+    // right above it — the last exercise of the open group (or the group itself
+    // when it has none yet), else the last block of the open part/section (or
+    // the part itself when it is still empty).
+    const noteLine = raw.trim().match(/^\((.*)\)$/);
+    if (noteLine) {
+      const text = noteLine[1]!.trim();
+      const container = part ? (part.children ?? []) : blocks;
+      const last = container[container.length - 1];
+      const target: { notes: string | null } | null =
+        group && !(groupIndent != null && groupIndent > groupHeaderIndent && indent <= groupHeaderIndent)
+          ? (group.items[group.items.length - 1] ?? group)
+          : last
+            ? last.loose
+              ? last.items[0]!
+              : last
+            : part;
+      if (!target) {
+        diag(ctx, {
+          line: i,
+          from: indent,
+          to: indent + trimmed.length,
+          severity: 'warning',
+          code: 'orphan_note',
+          message: 'La nota necesita un ejercicio, un bloque o una parte encima.',
+        });
+      } else if (text) {
+        target.notes = target.notes ? `${target.notes} · ${text}` : text;
+      }
+      return info('note');
+    }
+
     const fm = f.match(FORMAT_RE);
     if (fm) {
       const kw = fm[1]!.replace(/\s+/g, ' ');
@@ -673,6 +711,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
             type: 'single',
             rounds: null,
             label: null,
+            notes: null,
             items: [],
             loose: false,
             format: parsed.config,
@@ -704,6 +743,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
           type: 'single',
           rounds: null,
           label: null,
+          notes: null,
           items: [item],
           loose: true,
         });
@@ -780,6 +820,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
         type: 'single',
         rounds: null,
         label: null,
+        notes: null,
         items: [item],
         loose: true,
       });
@@ -812,7 +853,7 @@ function blockInput(b: ParsedBlock): BlockInput {
     type: b.type,
     rounds: b.rounds,
     label: b.label,
-    notes: null,
+    notes: b.notes,
     format: b.kind === 'part' ? (b.format?.format ?? null) : null,
     formatConfig: b.kind === 'part' ? (b.format ?? null) : null,
     blocks: b.kind === 'part' ? (b.children ?? []).map(blockInput) : [],

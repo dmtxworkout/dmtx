@@ -26,7 +26,8 @@ export type DiagnosticCode =
   | 'format_needs_config'
   | 'unsupported'
   | 'orphan_rest'
-  | 'interval_outside_emom';
+  | 'interval_outside_emom'
+  | 'orphan_note';
 
 /** A problem on one line. `from`/`to` are column offsets within that line. */
 export interface Diagnostic {
@@ -75,6 +76,8 @@ export interface ParsedBlock {
   type: BlockType;
   rounds: number | null;
   label: string | null;
+  /** A note the athlete sees, written as "(texto)" on its own line under the header. */
+  notes: string | null;
   items: ParsedItem[];
   /** A loose exercise/rest line (no group header). */
   loose: boolean;
@@ -90,7 +93,7 @@ export interface SectionFormat {
   line: number;
 }
 
-export type LineKind = 'blank' | 'comment' | 'section' | 'format' | 'group' | 'rest' | 'item';
+export type LineKind = 'blank' | 'comment' | 'note' | 'section' | 'format' | 'group' | 'rest' | 'item';
 
 export interface LineInfo {
   kind: LineKind;

@@ -43,7 +43,8 @@ mode: a header with nothing indented under it is simply empty.
 | `3 rondas, descanso 1 min - Pierna:` | **Group header** → block with `rounds`, optional trailing rest item and label. Also `Superserie`, `Circuito 3 rondas`, `Bloque:`, `5 series`. Items follow until a blank line (or until indentation drops back). |
 | `41 burpees` | **Item**: count + exercise + modifiers (see below). A loose item is its own single block. |
 | `descanso 90s` | Rest line: rest item inside a group, or a loose rest block. |
-| `// nota` / `# nota` | Whole-line comment (ignored). |
+| `// comentario` / `# comentario` | Internal comment: never stored in the structure nor shown to the athlete. Survives because the rutina keeps its `sourceText`. |
+| `(nota para el atleta)` | A note the athlete sees. Alone on a line it attaches to what is right above it: the last exercise of the open group (or the group itself when empty), else the last block of the open part/section (or the part itself). With nothing above → `orphan_note` warning. |
 
 ## Format headers
 
@@ -87,7 +88,8 @@ the fix as its suggestion. Real exercise names are never flagged.
 | `intervalo 1:` · `min 1:` · `1)` prefix | `intervalIndex` (EMOM only; stripped elsewhere) |
 | `intervalo 2:` on its own line (EMOM) | A group holding that interval's work (the lines indented under it); the player rotates over such slots. `min 2:` is accepted too |
 | `intervalo N:` outside an EMOM | Ignored, with an `interval_outside_emom` warning |
-| `// nota` (trailing) | `notes` |
+| `(nota)` (trailing) | `notes`, shown to the athlete |
+| `// comentario` (trailing) | Internal; dropped |
 | `max` · `al fallo` | no count, noted |
 
 Whatever is left after removing modifiers is the exercise name, matched against

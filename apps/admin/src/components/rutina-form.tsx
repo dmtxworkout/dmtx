@@ -34,7 +34,7 @@ import { Select } from '@/components/ui/select';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
 import { toast } from '@/components/ui/toast';
-import { RutinaTextEditor, type RutinaEditorApi } from '@/components/rutina-text-editor';
+import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import {
   RutinaPreview,
   type PvBlock,
@@ -54,17 +54,7 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
 };
 
 
-const PLACEHOLDER = `Calentamiento
-  5 min remo suave
-
-AMRAP 12 min
-  10 burpees
-  15 sentadillas
-  plancha 30s
-
-  3 rondas
-    10 flexiones de pecho
-    descanso 1 min`;
+const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque guardado…';
 
 // Complete reference shown in the right column.
 type GuideRow = { k: string; v: string };
@@ -132,6 +122,8 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
     rows: [
       { k: 'c/lado · por lado', v: 'cantidad por cada lado' },
       { k: 'desc 90s', v: 'descanso entre series (Fuerza)' },
+      { k: '10 burpees (sin saltar)', v: 'nota que ve el usuario; sola en una línea pertenece a lo que tiene encima' },
+      { k: '// revisar carga', v: 'comentario interno: no se guarda en la estructura ni lo ve el usuario' },
       { k: 'intervalo 2: 10 burpees', v: 'fija el intervalo de un ejercicio en un EMOM' },
       { k: 'intervalo 2:', v: 'en un EMOM, abre el grupo de ejercicios de ese intervalo (indentados debajo); los intervalos rotan' },
       { k: '// despacio', v: 'nota que ve el usuario' },
@@ -227,7 +219,8 @@ const FALLBACK_EX = ['burpees', 'sentadillas', 'flexiones'];
 function initialText(workout: Workout | undefined, catalog: Catalog): string {
   if (!workout) return '';
   if (workout.type !== 'structured') return '';
-  return serializeRutina(workout, catalog);
+  // The text as it was written (comments included); regenerate only for data without it.
+  return workout.sourceText ?? serializeRutina(workout, catalog);
 }
 
 // ---- Preview model from the parse result -------------------------------------
@@ -259,6 +252,7 @@ function pvItem(it: ParsedItem, inSlot = false): PvItem {
 const pvBlock = (b: ParsedBlock): PvBlock => ({
   title: b.label,
   rounds: b.rounds,
+  note: b.notes,
   items: b.items.map((it) => pvItem(it, b.type === 'emom')),
 });
 /** Parts become a header entry followed by their blocks. */
@@ -266,7 +260,7 @@ const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] =>
   blocks.flatMap((b) =>
     b.kind === 'part'
       ? [
-          { title: null, rounds: null, items: [], part: b.format ? formatHeader(b.format.format, b.format) : 'Parte' },
+          { title: null, rounds: null, items: [], part: b.format ? formatHeader(b.format.format, b.format) : 'Parte', note: b.notes },
           ...(b.children ?? []).map(pvBlock),
         ]
       : [pvBlock(b)],
@@ -342,9 +336,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       setText(initialText(workout, catalog));
     }
   }, [text, catalogReady, createOpen, workout, catalog]);
-  // Templates offered inside the editor while it is empty.
-  const exNames = (exList?.data ?? []).map((e) => e.name);
-  const applyTemplate = (t: Template) => setText(t.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio'));
 
   // Variants (RX / Escalada / …): one tab each, after the base tab. Each is a
   // full rutina row linked to this one; loaded (and serialized) once the
@@ -362,7 +353,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     Promise.all(workout.variants.map((v) => api.workouts.get(v.id)))
       .then((rows) => {
         if (cancelled) return;
-        setVariants(rows.map((w) => ({ id: w.id, label: w.variantLabel ?? '', text: serializeRutina(w, catalog) })));
+        setVariants(rows.map((w) => ({ id: w.id, label: w.variantLabel ?? '', text: w.sourceText ?? serializeRutina(w, catalog) })));
       })
       .catch((e) => setServerError(e instanceof Error ? e.message : es.app.error));
     return () => {
@@ -439,6 +430,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   });
   const extras = useMemo<CompletionExtra[]>(
     () => [
+      { kind: 'template', items: TEMPLATES.map((t) => ({ id: t.id, name: t.title })) },
       { kind: 'snippet', items: (snippetsQ.data?.data ?? []).map((sn) => ({ id: sn.id, name: sn.name })) },
       {
         kind: 'rutina',
@@ -449,7 +441,29 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     ],
     [snippetsQ.data, rutinasQ.data, workout?.id],
   );
-  const insertBlock = async (kind: 'snippet' | 'rutina', id: string): Promise<string | null> => {
+  // The "+" menu in the gutter: the same things, grouped and described.
+  const inserts = useMemo<InsertGroup[]>(
+    () => [
+      { kind: 'template', title: 'Plantillas', items: TEMPLATES.map((t) => ({ id: t.id, title: t.title, desc: t.desc })) },
+      {
+        kind: 'snippet',
+        title: 'Bloques guardados',
+        items: (snippetsQ.data?.data ?? []).map((sn) => ({ id: sn.id, title: sn.name })),
+      },
+      {
+        kind: 'rutina',
+        title: 'Rutinas',
+        items: (rutinasQ.data?.data ?? [])
+          .filter((w) => w.id !== workout?.id && w.type === 'structured')
+          .map((w) => ({ id: w.id, title: w.name })),
+      },
+    ],
+    [snippetsQ.data, rutinasQ.data, workout?.id],
+  );
+  const exNames = (exList?.data ?? []).map((e) => e.name);
+  const insertBlock = async (kind: InsertKind, id: string): Promise<string | null> => {
+    // Templates use real catalog exercises so they do not land full of errors.
+    if (kind === 'template') return TEMPLATES.find((t) => t.id === id)?.text((i) => exNames[i] ?? FALLBACK_EX[i] ?? 'ejercicio') ?? null;
     if (kind === 'snippet') return snippetsQ.data?.data.find((sn) => sn.id === id)?.text ?? null;
     const src = await api.workouts.get(id);
     // Another rutina's main section, as written (its parts included).
@@ -498,6 +512,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       kind: segmentMode ? 'segment' : 'rutina',
       type,
       format: structure?.format ?? null,
+      sourceText: structured ? tabText : null,
       difficulty,
       status,
       thumbnailAssetId,
@@ -695,25 +710,6 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 </button>
               </div>
             </div>
-            {editorReady && !value.trim() && (
-              <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-line bg-surface-2/60 px-4 py-2.5">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">
-                  Empieza con una plantilla
-                </span>
-                {TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => applyTemplate(t)}
-                    title={t.desc}
-                    className="rounded-full border border-line-2 bg-surface px-3 py-1 text-[12px] font-semibold text-ink-2 hover:border-accent hover:text-accent-dark"
-                  >
-                    {t.title}
-                  </button>
-                ))}
-                <span className="font-mono text-[10px] text-muted">o escribe directamente</span>
-              </div>
-            )}
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
@@ -727,6 +723,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                   placeholder={PLACEHOLDER}
                   autoFocus={!workout}
                   extras={extras}
+                  inserts={inserts}
                   onInsertBlock={insertBlock}
                   onSaveBlock={(t) => {
                     setServerError(null);

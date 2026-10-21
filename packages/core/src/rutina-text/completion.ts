@@ -11,11 +11,12 @@ export type CompletionType =
   | 'create'
   | 'snippet'
   | 'rutina'
+  | 'template'
   | 'unit';
 
-/** Named things (saved blocks, other rutinas) the editor can insert whole. */
+/** Named things (templates, saved blocks, other rutinas) the editor can insert whole. */
 export interface CompletionExtra {
-  kind: 'snippet' | 'rutina';
+  kind: 'template' | 'snippet' | 'rutina';
   items: { id: string; name: string }[];
 }
 
@@ -30,7 +31,7 @@ export interface Completion {
   type: CompletionType;
   /**
    * Text that replaces `[from, to)`. For `create`, the exercise name to create;
-   * for `snippet` / `rutina`, the id of the thing to insert.
+   * for `template` / `snippet` / `rutina`, the id of the thing to insert.
    */
   apply: string;
 }
@@ -362,6 +363,7 @@ export function completionsAt(
 }
 
 const EXTRA_DETAIL: Record<CompletionExtra['kind'], string> = {
+  template: 'plantilla',
   snippet: 'bloque guardado',
   rutina: 'rutina',
 };

@@ -61,6 +61,11 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
             .filter(Boolean)
             .join(' · ') || null,
         rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
+        // Notes written for the athlete: the part's (once, on its first block) and the block's.
+        note:
+          [partOf && (i === 0 || flat[i - 1]?.partOf !== partOf) ? partOf.notes : null, b.notes]
+            .filter(Boolean)
+            .join(' · ') || null,
         items: b.items.filter((it) => it.kind === 'rest' || it.exercise),
       }))
       .filter((bv) => bv.items.length > 0);
@@ -78,6 +83,9 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
               <Text className="pb-0.5 font-mono-semibold text-[11px] uppercase tracking-wider text-accent">
                 {label}
               </Text>
+            ) : null}
+            {bv.note ? (
+              <Text className="pb-1 font-sans text-[13px] italic leading-5 text-ink-3">{bv.note}</Text>
             ) : null}
             {bv.items.map((it) =>
               it.kind === 'rest' ? (
@@ -98,9 +106,14 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
                   <Text className="w-14 font-mono-semibold text-[15px] text-accent">
                     {targetText(it, du)}
                   </Text>
-                  <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink">
-                    {it.exercise?.name}
-                  </Text>
+                  <View className="min-w-0 flex-1">
+                    <Text numberOfLines={1} className="font-semibold text-[15px] text-ink">
+                      {it.exercise?.name}
+                    </Text>
+                    {it.notes ? (
+                      <Text className="font-sans text-[12px] italic leading-4 text-ink-3">{it.notes}</Text>
+                    ) : null}
+                  </View>
                   {loadKgOf(it) != null ? (
                     <Text className="font-mono text-[12px] text-ink-3">
                       {formatWeight(loadKgOf(it), wu)}

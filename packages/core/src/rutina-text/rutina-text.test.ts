@@ -196,9 +196,28 @@ Enfriamiento
     expect(errors('AMRAP\n10 burpees')[0]).toMatchObject({ code: 'format_needs_config' });
   });
 
-  it('keeps trailing notes', () => {
-    const w = toWorkoutInput(parse('10 burpees // despacio, con control'));
+  it('keeps "(notas)" for the athlete and drops "// comentarios"', () => {
+    const w = toWorkoutInput(parse('10 burpees (despacio, con control) // revisar con el coach'));
     expect(w.blocks[0]!.items[0]!.notes).toBe('despacio, con control');
+    const p = parse(`(huérfana)
+AMRAP 12 min
+  (Mantén el ritmo toda la ronda)
+  10 burpees
+  (sin saltar)
+  3 rondas:
+    (descansa poco)
+    5 flexiones
+    (hasta el pecho)
+
+(buen trabajo)
+`);
+    expect(p.diagnostics.map((d) => [d.line, d.code])).toEqual([[0, 'orphan_note']]);
+    const part = toWorkoutInput(p).blocks[0]!;
+    expect(part.notes).toBe('Mantén el ritmo toda la ronda · buen trabajo');
+    expect(part.blocks[0]!.items[0]!.notes).toBe('sin saltar');
+    expect(part.blocks[1]!.notes).toBe('descansa poco');
+    expect(part.blocks[1]!.items[0]!.notes).toBe('hasta el pecho');
+    expect(p.lines[2]!.kind).toBe('note');
   });
 
   it('accepts trailing counts and Spanish time words', () => {
@@ -245,7 +264,7 @@ describe('serializeRutina', () => {
     descanso 30s
 
 Fuerza
-  sentadilla 5x5 @80% tempo 0-3-1-1 desc 2 min // profundo
+  sentadilla 5x5 @80% tempo 0-3-1-1 desc 2 min (profundo)
   Superserie 3 rondas - Empuje:
     10 flexiones
     8 dominadas +10 kg

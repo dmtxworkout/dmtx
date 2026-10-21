@@ -20,6 +20,8 @@ export type PvItem =
 export type PvBlock = {
   title: string | null;
   rounds: number | null;
+  /** A note for the athlete, under the block's (or part's) heading. */
+  note?: string | null;
   items: PvItem[];
   /** A part header ("AMRAP 12 min"): rendered as a sub-heading before its blocks. */
   part?: string | null;
@@ -65,7 +67,7 @@ function Line({ item }: { item: PvItem }) {
 // loose exercise that should sit tight against its neighbours.
 const isBlock = (b: PvBlock) => b.items.length > 1 || (b.rounds != null && b.rounds > 1);
 
-type Unit = { rounds: number | null; loose: boolean; items: PvItem[]; part?: string; title?: string | null };
+type Unit = { rounds: number | null; loose: boolean; items: PvItem[]; part?: string; title?: string | null; note?: string | null };
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   // Build display units WITHOUT mutating the incoming block arrays (they belong
@@ -73,12 +75,12 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   const units: Unit[] = [];
   for (const b of blocks) {
     if (b.part) {
-      units.push({ rounds: null, loose: false, items: [], part: b.part });
+      units.push({ rounds: null, loose: false, items: [], part: b.part, note: b.note });
       continue;
     }
     if (b.items.length === 0) continue;
-    if (isBlock(b) || b.title) {
-      units.push({ rounds: b.rounds, loose: false, items: [...b.items], title: b.title });
+    if (isBlock(b) || b.title || b.note) {
+      units.push({ rounds: b.rounds, loose: false, items: [...b.items], title: b.title, note: b.note });
     } else {
       const last = units[units.length - 1];
       // Merge consecutive loose exercises into one tight run.
@@ -107,6 +109,9 @@ function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
                 <div className="mb-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-3">
                   {[u.title, u.rounds != null && u.rounds > 1 ? `${u.rounds} rondas` : null].filter(Boolean).join(' · ')}
                 </div>
+              )}
+              {u.note && (
+                <div className={`${u.part ? 'mt-3 ' : ''}mb-0.5 text-[12px] italic leading-5 text-muted`}>{u.note}</div>
               )}
               {u.items.map((it, j) => (
                 <Line key={j} item={it} />

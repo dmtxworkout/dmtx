@@ -54,8 +54,22 @@ import {
   type Catalog,
   type CompletionExtra,
   type Diagnostic,
+  type LineInfo,
+  type LineKind,
   type ParsedRutina,
 } from '@dmtx/core';
+
+export type InsertKind = 'template' | 'snippet' | 'rutina';
+export interface InsertItem {
+  id: string;
+  title: string;
+  desc?: string | null;
+}
+export interface InsertGroup {
+  kind: InsertKind;
+  title: string;
+  items: InsertItem[];
+}
 
 /** Imperative access the form uses for "guardar bloque". */
 export interface RutinaEditorApi {
@@ -74,10 +88,12 @@ export interface RutinaTextEditorProps {
   parsed: ParsedRutina;
   /** Offered on "ejercicio no encontrado" diagnostics. */
   onCreateExercise?: (name: string) => void;
-  /** Saved blocks / other rutinas offered as whole-line suggestions. */
+  /** Templates / saved blocks / other rutinas offered as whole-line suggestions. */
   extras?: CompletionExtra[];
-  /** Resolves the text to insert for a `snippet` / `rutina` suggestion. */
-  onInsertBlock?: (kind: 'snippet' | 'rutina', id: string) => Promise<string | null>;
+  /** The same things, grouped, for the "+" menu in the gutter. */
+  inserts?: InsertGroup[];
+  /** Resolves the text to insert for a template / snippet / rutina. */
+  onInsertBlock?: (kind: InsertKind, id: string) => Promise<string | null>;
   /** Shown as a floating action when two or more lines are selected. */
   onSaveBlock?: (text: string) => void;
   apiRef?: MutableRefObject<RutinaEditorApi | null>;
@@ -92,12 +108,22 @@ export interface RutinaTextEditorProps {
 interface Handlers {
   create: ((name: string) => void) | null;
   save: ((text: string) => void) | null;
+  insert: ((kind: InsertKind, id: string) => Promise<string | null>) | null;
 }
 const setHandlers = StateEffect.define<Handlers>();
 const handlersField = StateField.define<Handlers>({
-  create: () => ({ create: null, save: null }),
+  create: () => ({ create: null, save: null, insert: null }),
   update: (v, tr) => {
     for (const e of tr.effects) if (e.is(setHandlers)) return e.value;
+    return v;
+  },
+});
+
+const setParsedLines = StateEffect.define<LineInfo[]>();
+const parsedLinesField = StateField.define<LineInfo[]>({
+  create: () => [],
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setParsedLines)) return e.value;
     return v;
   },
 });
@@ -148,6 +174,7 @@ const lineDeco: Record<string, Decoration> = {
   group: Decoration.line({ class: 'rt-group' }),
   rest: Decoration.line({ class: 'rt-rest' }),
   comment: Decoration.line({ class: 'rt-comment' }),
+  note: Decoration.line({ class: 'rt-notes' }),
 };
 function lineKindDecorations(view: EditorView): DecorationSet {
   const doc = view.state.doc;
@@ -396,9 +423,245 @@ const diagGutter = gutter({
   },
 });
 
+// --- "+" gutter: insert a template / saved block / rutina at a line ----------
+// The "+" sits left of the line number on the hovered line and on the cursor's
+// line; clicking it opens a searchable menu. What the menu offers depends on
+// where the line sits: inside a format or a group only saved blocks fit.
+const setInserts = StateEffect.define<InsertGroup[]>();
+const insertsField = StateField.define<InsertGroup[]>({
+  create: () => [],
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setInserts)) return e.value;
+    return v;
+  },
+});
+const setHoverLine = StateEffect.define<number | null>();
+const hoverLineField = StateField.define<number | null>({
+  create: () => null,
+  update: (v, tr) => {
+    for (const e of tr.effects) if (e.is(setHoverLine)) return e.value;
+    return v;
+  },
+});
+class AddMarker extends GutterMarker {
+  constructor(readonly hot: boolean) {
+    super();
+  }
+  override eq(other: AddMarker) {
+    return other.hot === this.hot;
+  }
+  override toDOM() {
+    const el = document.createElement('div');
+    el.className = `rt-add${this.hot ? ' hot' : ''}`;
+    el.textContent = '+';
+    el.title = 'Insertar plantilla, bloque guardado o rutina';
+    return el;
+  }
+}
+const addMarkers = [new AddMarker(false), new AddMarker(true)];
+const lineUnderPointer = (view: EditorView, event: MouseEvent): number | null => {
+  const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false);
+  return pos == null ? null : view.state.doc.lineAt(pos).number - 1;
+};
+const trackHover = (view: EditorView, event: MouseEvent) => {
+  const line = lineUnderPointer(view, event);
+  if (line !== view.state.field(hoverLineField)) view.dispatch({ effects: setHoverLine.of(line) });
+  return false;
+};
+const hoverTracker = EditorView.domEventHandlers({
+  mousemove: (event, view) => trackHover(view, event),
+  mouseleave: (_e, view) => {
+    if (view.state.field(hoverLineField) != null) view.dispatch({ effects: setHoverLine.of(null) });
+    return false;
+  },
+});
+const openInsertMenu = StateEffect.define<number | null>(); // 0-based line, or null to close
+const addGutter = gutter({
+  class: 'rt-gutter-add',
+  lineMarker(view, line) {
+    const n = view.state.doc.lineAt(line.from).number - 1;
+    const cursorLine = view.state.doc.lineAt(view.state.selection.main.head).number - 1;
+    return addMarkers[n === view.state.field(hoverLineField) || n === cursorLine ? 1 : 0]!;
+  },
+  lineMarkerChange: (u) =>
+    u.selectionSet || u.transactions.some((tr) => tr.effects.some((e) => e.is(setHoverLine))),
+  domEventHandlers: {
+    mousemove: (view, _line, event) => trackHover(view, event as MouseEvent),
+    mousedown(view, line, event) {
+      if (!(event.target as HTMLElement).classList?.contains('rt-add')) return false;
+      event.preventDefault();
+      view.dispatch({ effects: openInsertMenu.of(view.state.doc.lineAt(line.from).number - 1) });
+      return true;
+    },
+  },
+});
+
+const indentOf = (text: string) => text.length - text.trimStart().length;
+/** Kind of the line a target line is nested under (by indentation), or null at the top level. */
+function parentKindOf(view: EditorView, lineNo: number): LineKind | null {
+  const doc = view.state.doc;
+  const lines = view.state.field(parsedLinesField);
+  const target = doc.line(lineNo + 1).text;
+  const indent = target.trim() ? indentOf(target) : indentOf(target);
+  for (let n = lineNo - 1; n >= 0; n -= 1) {
+    const t = doc.line(n + 1).text;
+    if (!t.trim()) continue;
+    const kind = lines[n]?.kind ?? 'item';
+    if (kind === 'comment' || kind === 'note') continue;
+    if (indentOf(t) < indent) return kind;
+    if (indent === 0) return null;
+  }
+  return null;
+}
+
+/** Put `text` on `lineNo`: replacing it when blank, else on new lines below it, re-indented to match. */
+function insertAtLine(view: EditorView, lineNo: number, text: string) {
+  const doc = view.state.doc;
+  const line = doc.line(Math.min(lineNo + 1, doc.lines));
+  const blank = !line.text.trim();
+  const indent = ' '.repeat(indentOf(line.text));
+  const body = text.replace(/\s+$/, '').split('\n');
+  // A template's explanatory "// …" header only helps in an empty editor.
+  if (doc.toString().trim()) while (body.length && /^\s*\/\//.test(body[0]!)) body.shift();
+  const insert = body.map((l) => (l.trim() ? indent + l : '')).join('\n');
+  const from = blank ? line.from : line.to;
+  const to = blank ? line.to : line.to;
+  const payload = blank ? insert : `\n${insert}`;
+  view.dispatch({
+    changes: { from, to, insert: payload },
+    selection: { anchor: from + payload.length },
+    scrollIntoView: true,
+    userEvent: 'input',
+  });
+  view.focus();
+}
+
+const foldText = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; destroy: () => void } {
+  const groups = view.state.field(insertsField);
+  const { insert } = view.state.field(handlersField);
+  const parent = parentKindOf(view, lineNo);
+  const nested = parent === 'format' || parent === 'group';
+  const dom = document.createElement('div');
+  dom.className = 'rt-insert';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = nested ? 'Buscar bloque guardado…' : 'Buscar plantilla, bloque o rutina…';
+  input.className = 'rt-insert-search';
+  dom.appendChild(input);
+  const list = document.createElement('div');
+  list.className = 'rt-insert-list';
+  dom.appendChild(list);
+  const close = () => view.dispatch({ effects: openInsertMenu.of(null) });
+  let rows: HTMLButtonElement[] = [];
+  let active = 0;
+  const paint = () => rows.forEach((r, i) => r.classList.toggle('active', i === active));
+  const pick = (kind: InsertKind, id: string) => {
+    close();
+    insert?.(kind, id).then((text) => {
+      if (text) insertAtLine(view, lineNo, text);
+    });
+  };
+  const render = () => {
+    const q = foldText(input.value.trim());
+    list.textContent = '';
+    rows = [];
+    for (const g of groups) {
+      if (nested && g.kind !== 'snippet') continue;
+      const items = g.items.filter((it) => !q || foldText(`${it.title} ${it.desc ?? ''}`).includes(q));
+      if (!items.length) continue;
+      const head = document.createElement('div');
+      head.className = 'rt-insert-group';
+      head.textContent = g.title;
+      list.appendChild(head);
+      for (const it of items) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'rt-insert-item';
+        const t = document.createElement('span');
+        t.className = 't';
+        t.textContent = it.title;
+        b.appendChild(t);
+        if (it.desc) {
+          const d = document.createElement('span');
+          d.className = 'd';
+          d.textContent = it.desc;
+          b.appendChild(d);
+        }
+        b.addEventListener('mousedown', (e) => e.preventDefault());
+        b.addEventListener('click', () => pick(g.kind, it.id));
+        list.appendChild(b);
+        rows.push(b);
+      }
+    }
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'rt-insert-empty';
+      empty.textContent = nested
+        ? 'Dentro de un formato o un bloque solo caben bloques guardados.'
+        : 'Nada que insertar con ese nombre.';
+      list.appendChild(empty);
+    }
+    active = 0;
+    paint();
+  };
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      view.focus();
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!rows.length) return;
+      active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+      paint();
+      rows[active]?.scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      rows[active]?.click();
+    }
+  });
+  const onDocDown = (e: MouseEvent) => {
+    if (!dom.contains(e.target as Node)) close();
+  };
+  window.setTimeout(() => document.addEventListener('mousedown', onDocDown), 0);
+  render();
+  window.setTimeout(() => input.focus(), 0);
+  return { dom, destroy: () => document.removeEventListener('mousedown', onDocDown) };
+}
+
+const insertMenuField = StateField.define<Tooltip | null>({
+  create: () => null,
+  update(v, tr) {
+    let next = v;
+    for (const e of tr.effects) {
+      if (e.is(openInsertMenu)) {
+        if (e.value == null || e.value >= tr.state.doc.lines) next = null;
+        else {
+          const lineNo = e.value;
+          next = {
+            pos: tr.state.doc.line(lineNo + 1).from,
+            above: false,
+            arrow: false,
+            create: (view) => {
+              const { dom, destroy } = buildInsertMenu(view, lineNo);
+              return { dom, destroy, offset: { x: -20, y: 4 } };
+            },
+          };
+        }
+      }
+    }
+    return tr.docChanged ? null : next;
+  },
+  provide: (f) => showTooltip.from(f),
+});
+
 // --- Token colouring (numbers, loads, tempo, modifiers, notes) ---------------
 const TOKENS: { re: RegExp; cls: string }[] = [
   { re: /\/\/.*$/g, cls: 'rt-note' },
+  { re: /\([^()]*\)\s*$/g, cls: 'rt-usernote' },
   { re: /\btempo\s*:?\s*[0-9xX][-/. ]?[0-9xX][-/. ]?[0-9xX][-/. ]?[0-9xX]\b/gi, cls: 'rt-tempo' },
   { re: /[@+]\s*(?:\d+(?:[.,]\d+)?(?:\s*\/\s*\d+(?:[.,]\d+)?)?\s*(?:kg|lb|lbs|%)?|rpe\s*\d+(?:\.\d+)?|corporal|bw)/gi, cls: 'rt-load' },
   { re: /\b(?:c\/(?:lado|u|l)|por lado|cada lado|desc(?:anso)?\s+\S+|rest\s+\S+)/gi, cls: 'rt-mod' },
@@ -491,6 +754,70 @@ const theme = EditorView.theme({
   '.rt-tempo': { color: '#267f99' },
   '.rt-mod': { color: '#001080' },
   '.rt-note': { color: '#008000', fontStyle: 'italic' },
+  '.rt-usernote': { color: '#0b7285', fontStyle: 'italic' },
+  '.rt-notes': { color: '#0b7285', fontStyle: 'italic' },
+  // "+" gutter
+  '.rt-gutter-add': { width: '16px' },
+  '.rt-gutter-add .cm-gutterElement': { padding: '0 0 0 2px' },
+  '.rt-add': {
+    width: '14px',
+    height: '16px',
+    marginTop: '3px',
+    borderRadius: '4px',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '14px',
+    lineHeight: '16px',
+    textAlign: 'center',
+    color: 'var(--color-muted)',
+    cursor: 'pointer',
+    opacity: '0',
+    userSelect: 'none',
+  },
+  '.rt-add.hot': { opacity: '1' },
+  '.rt-add:hover': { backgroundColor: 'var(--color-accent-tint)', color: 'var(--color-accent-dark)' },
+  // Insert menu
+  '.rt-insert': { width: '320px', padding: '6px', fontFamily: 'var(--font-sans)' },
+  '.rt-insert-search': {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '7px 10px',
+    border: '1px solid var(--color-line-2)',
+    borderRadius: '8px',
+    background: 'var(--color-surface-2)',
+    fontFamily: 'var(--font-sans)',
+    fontSize: '13px',
+    color: 'var(--color-ink)',
+    outline: 'none',
+  },
+  '.rt-insert-search:focus': { borderColor: 'var(--color-accent)' },
+  '.rt-insert-list': { maxHeight: '300px', overflowY: 'auto', marginTop: '4px' },
+  '.rt-insert-group': {
+    padding: '8px 8px 3px',
+    fontFamily: 'var(--font-mono)',
+    fontSize: '10px',
+    fontWeight: '600',
+    letterSpacing: '0.1em',
+    textTransform: 'uppercase',
+    color: 'var(--color-muted)',
+  },
+  '.rt-insert-item': {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: '1px',
+    width: '100%',
+    textAlign: 'left',
+    padding: '6px 8px',
+    border: 'none',
+    borderRadius: '8px',
+    background: 'transparent',
+    fontFamily: 'var(--font-sans)',
+    cursor: 'pointer',
+  },
+  '.rt-insert-item .t': { fontSize: '13px', fontWeight: '600', color: 'var(--color-ink)' },
+  '.rt-insert-item .d': { fontSize: '12px', color: 'var(--color-muted)', lineHeight: '1.3' },
+  '.rt-insert-item:hover, .rt-insert-item.active': { background: 'var(--color-accent-tint)' },
+  '.rt-insert-empty': { padding: '10px 8px', fontSize: '12px', color: 'var(--color-muted)' },
   '.cm-lintRange-error': {
     backgroundImage: 'none',
     textDecoration: 'underline wavy #e51400',
@@ -610,6 +937,7 @@ export function RutinaTextEditor({
   parsed,
   onCreateExercise,
   extras,
+  inserts,
   onInsertBlock,
   onSaveBlock,
   apiRef,
@@ -639,7 +967,7 @@ export function RutinaTextEditor({
     if (!host.current) return;
 
     // Insert a saved block / rutina as whole lines at [from, to).
-    const insertBlock = (view: EditorView, kind: 'snippet' | 'rutina', id: string, from: number, to: number) => {
+    const insertBlock = (view: EditorView, kind: InsertKind, id: string, from: number, to: number) => {
       onInsertRef.current?.(kind, id).then((text) => {
         if (!text) return;
         const body = text.replace(/\s+$/, '');
@@ -678,9 +1006,9 @@ export function RutinaTextEditor({
           apply:
             o.type === 'create'
               ? () => onCreateRef.current?.(o.apply)
-              : o.type === 'snippet' || o.type === 'rutina'
+              : o.type === 'snippet' || o.type === 'rutina' || o.type === 'template'
                 ? (view: EditorView, _c: unknown, from: number, to: number) =>
-                    insertBlock(view, o.type as 'snippet' | 'rutina', o.apply, from, to)
+                    insertBlock(view, o.type as InsertKind, o.apply, from, to)
                 : o.apply,
         })),
       };
@@ -819,6 +1147,12 @@ export function RutinaTextEditor({
           indentUnit.of('  '),
           handlersField,
           diagsField,
+          parsedLinesField,
+          insertsField,
+          hoverLineField,
+          hoverTracker,
+          addGutter,
+          insertMenuField,
           diagGutter,
           gutterTipField,
           lineNumbers(),
@@ -868,6 +1202,7 @@ export function RutinaTextEditor({
       effects: setHandlers.of({
         create: onCreateRef.current ? (n) => onCreateRef.current?.(n) : null,
         save: onSaveRef.current ? (t) => onSaveRef.current?.(t) : null,
+        insert: (k, id) => onInsertRef.current?.(k, id) ?? Promise.resolve(null),
       }),
     });
     if (autoFocus) view.focus();
@@ -907,9 +1242,14 @@ export function RutinaTextEditor({
       });
     }
     view.dispatch(setDiagnostics(view.state, diags), {
-      effects: [setParsedDiags.of(parsed.diagnostics)],
+      effects: [setParsedDiags.of(parsed.diagnostics), setParsedLines.of(parsed.lines)],
     });
   }, [parsed]);
+
+  // The "+" menu's contents follow the lists loaded by the form.
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: setInserts.of(inserts ?? []) });
+  }, [inserts]);
 
   return <div ref={host} className={className} />;
 }

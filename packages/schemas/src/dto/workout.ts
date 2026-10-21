@@ -68,6 +68,9 @@ export const createWorkoutSchema = z.object({
   videoAssetId: uuidSchema.nullish(),
   videoDurationSeconds: z.number().int().positive().nullish(),
   scoringGoal: goalSchema.nullish(),
+  // The rutina as the admin wrote it (comments and spacing included); the
+  // editor reopens this text instead of regenerating it from the blocks.
+  sourceText: z.string().max(50000).nullish(),
   // Variants ("RX" / "Escalada" / "Principiante"): a variant is a full rutina
   // row linked to its base. Lists hide variants; the base's detail lists them.
   variantOfId: uuidSchema.nullish(),
@@ -113,6 +116,7 @@ export const workoutSchema = z.object({
   videoAssetId: uuidSchema.nullable(),
   videoDurationSeconds: z.number().nullable(),
   scoringGoal: goalSchema.nullable(),
+  sourceText: z.string().nullable(),
   variantOfId: uuidSchema.nullable(),
   variantLabel: z.string().nullable(),
   /** For a base rutina: its variants in creation order. Empty for a variant. */
@@ -126,6 +130,7 @@ export type Workout = z.infer<typeof workoutSchema>;
 export const workoutListItemSchema = workoutSchema.omit({
   blocks: true,
   scoringGoal: true,
+  sourceText: true,
   variants: true,
 });
 export type WorkoutListItem = z.infer<typeof workoutListItemSchema>;

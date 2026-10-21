@@ -110,6 +110,7 @@ async function loadFull(db: Database, w: WorkoutRow) {
     ...base(w),
     variants: variants.map((v) => ({ id: v.id, label: v.label ?? '' })),
     scoringGoal: w.scoringGoal ?? null,
+    sourceText: w.sourceText ?? null,
     blocks: nestBlocks(blocks).map((b) => ({
       ...serializeBlock(b, byBlock),
       blocks: b.blocks.map((c) => ({ ...serializeBlock(c, byBlock), blocks: [] })),
@@ -297,6 +298,7 @@ workoutsRoute.openapi(
         videoAssetId: structured ? null : (input.videoAssetId ?? null),
         videoDurationSeconds: structured ? null : (input.videoDurationSeconds ?? null),
         scoringGoal: input.scoringGoal ?? null,
+        sourceText: structured ? (input.sourceText ?? null) : null,
         variantOfId: input.variantOfId ?? null,
         variantLabel: input.variantLabel ?? null,
       })
@@ -342,6 +344,7 @@ workoutsRoute.openapi(
     }
     if (input.blocks !== undefined) set.estimatedDurationSeconds = estimateDurationSeconds(input.blocks);
     if (input.scoringGoal !== undefined) set.scoringGoal = input.scoringGoal ?? null;
+    if (input.sourceText !== undefined) set.sourceText = input.sourceText ?? null;
     if (input.variantOfId !== undefined) set.variantOfId = input.variantOfId ?? null;
     if (input.variantLabel !== undefined) set.variantLabel = input.variantLabel ?? null;
 

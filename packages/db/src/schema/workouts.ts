@@ -36,6 +36,8 @@ export const workouts = pgTable('workouts', {
   estimatedDurationSeconds: integer(),
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   scoringGoal: jsonb().$type<Goal>(),
+  // The text the admin wrote in the editor; blocks are derived from it on save.
+  sourceText: text(),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   videoDurationSeconds: integer(),
   // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.
