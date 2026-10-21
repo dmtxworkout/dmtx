@@ -683,14 +683,18 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   };
 
   rawLines.forEach((raw, i) => {
-    const f = foldKeep(raw);
+    // Structural lines (headers, rests) may end in "# comentario" (dropped) or
+    // "// nota" (kept as the block's note); items handle their own tails.
+    const bare = raw.replace(/#.*$/, '');
+    const headerNote = bare.match(/\/\/(.*)$/)?.[1]?.trim() || null;
+    const f = foldKeep(bare.replace(/\/\/.*$/, ''));
     const trimmed = f.trim();
-    const indent = f.length - f.trimStart().length;
+    const indent = raw.length - raw.trimStart().length;
     const info = (kind: LineInfo['kind']) => lines.push({ kind, section });
 
     // Blank lines separate nothing: only indentation scopes (as in Python).
-    if (!trimmed) return info('blank');
-    if (/^\s*#/.test(f)) return info('comment');
+    if (!raw.trim()) return info('blank');
+    if (/^\s*#/.test(raw)) return info('comment');
 
     const sec = trimmed.match(SECTION_RE);
     if (sec) {
@@ -760,6 +764,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
             format: parsed.config,
             children: [],
           };
+          b.notes = headerNote;
           openContainer(b, indent, null, null);
         }
         seen[section] = true;
@@ -770,7 +775,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     const rest = trimmed.match(REST_LINE_RE);
     if (rest) {
       const seconds = parseDuration(rest[1] ?? rest[2] ?? '') ?? 0;
-      const item: ParsedItem = { ...emptyItem(i), kind: 'rest', measure: 'time', workSeconds: seconds };
+      const item: ParsedItem = { ...emptyItem(i), kind: 'rest', measure: 'time', workSeconds: seconds, notes: headerNote };
       if (holdsItems(top())) top()!.block.items.push(item);
       else siblings().push({ ...looseRun(i), kind: 'rest', items: [item] });
       seen[section] = true;
@@ -784,6 +789,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       const n = Number(slot[1]);
       const b = openGroup(i, indent, undefined, null, `intervalo ${n}`);
       b.type = 'emom';
+      b.notes = headerNote;
       top()!.slot = Math.max(0, n - 1);
       seen[section] = true;
       return info('group');
@@ -795,7 +801,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       const kw = g ? g[1] : gk![1];
       const rounds = g ? Number(g[2]) : gk![2] ? Number(gk![2]) : null;
       const tail = g ? (g[4] ?? '') : (gk![3] ?? '');
-      openGroup(i, indent, kw, rounds, tail);
+      openGroup(i, indent, kw, rounds, tail).notes = headerNote;
       seen[section] = true;
       return info('group');
     }

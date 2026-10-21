@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, Snippet, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
 import {
   Catalog,
   formatDistance,
@@ -286,25 +286,38 @@ function previewFrom(
 
 // ---- Component --------------------------------------------------------------
 
-export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; kind?: WorkoutKind }) {
+export function RutinaForm({
+  workout,
+  kind = 'rutina',
+  snippet,
+}: {
+  workout?: Workout;
+  kind?: WorkoutKind;
+  /** A saved block: the same editor on one piece of text (null → a new block). */
+  snippet?: Snippet | null;
+}) {
   const router = useRouter();
   const qc = useQueryClient();
+  // A saved block ("bloque guardado") is plain rutina text with a name: the
+  // same editor and preview, one tab, no versions, settings or status.
+  const snippetMode = snippet !== undefined;
   // A segment is a reusable warmup/cooldown piece: same editor, but no nested
   // warmup/cooldown sections, and it lives under /segmentos.
-  const segmentMode = (workout?.kind ?? kind) === 'segment';
-  const basePath = segmentMode ? '/segmentos' : '/rutinas';
-  const listTitle = segmentMode ? es.segments.title : es.workouts.title;
-  const newLabel = segmentMode ? es.segments.new : es.workouts.new;
+  const segmentMode = snippetMode || (workout?.kind ?? kind) === 'segment';
+  const basePath = snippetMode ? '/bloques' : segmentMode ? '/segmentos' : '/rutinas';
+  const listTitle = snippetMode ? es.snippets.title : segmentMode ? es.segments.title : es.workouts.title;
+  const newLabel = snippetMode ? 'Nuevo bloque' : segmentMode ? es.segments.new : es.workouts.new;
+  const isNew = snippetMode ? !snippet : !workout;
   const [serverError, setServerError] = useState<string | null>(null);
   const [nameError, setNameError] = useState(false);
 
-  const [name, setName] = useState(workout?.name ?? '');
+  const [name, setName] = useState(workout?.name ?? snippet?.name ?? '');
   const [description, setDescription] = useState(workout?.description ?? '');
   const [difficulty, setDifficulty] = useState(workout?.difficulty ?? 'beginner');
   const [status, setStatus] = useState(workout?.status ?? 'draft');
   const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   // A new rutina asks for name + type in one dialog, then opens the editor.
-  const [createOpen, setCreateOpen] = useState(!workout);
+  const [createOpen, setCreateOpen] = useState(!workout && !snippetMode);
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? null);
   const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -331,9 +344,9 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const [activeSection, setActiveSection] = useState<BlockSection>('main');
   useEffect(() => {
     if (sections === null && catalogReady && !createOpen) {
-      setSections(splitSections(initialText(workout, catalog)));
+      setSections(snippetMode ? { ...EMPTY_SECTIONS, main: snippet?.text ?? '' } : splitSections(initialText(workout, catalog)));
     }
-  }, [sections, catalogReady, createOpen, workout, catalog]);
+  }, [sections, catalogReady, createOpen, workout, catalog, snippetMode, snippet]);
 
   // Variants (RX / Escalada / …): versions of the whole rutina, switched from
   // the tab bar. Each is a full rutina row linked to this one; loaded once the
@@ -558,6 +571,20 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
       blocks: (structure?.blocks ?? []).map((b) => (segmentMode ? { ...b, section: 'main' as const } : b)),
     };
   };
+  const saveSnippet = useMutation({
+    mutationFn: async () => {
+      const input = { name: name.trim(), text: (sections ?? EMPTY_SECTIONS).main.replace(/\s+$/, '') + '\n' };
+      return snippet ? api.snippets.update(snippet.id, input) : api.snippets.create(input);
+    },
+    onSuccess: (saved) => {
+      setBaseline({ ...currentRef.current });
+      qc.setQueryData(['snippet', saved.id], saved);
+      qc.invalidateQueries({ queryKey: ['snippets'] });
+      toast('Bloque guardado');
+      if (!snippet) router.replace(`/bloques/${saved.id}`);
+    },
+    onError: (e) => setServerError(e instanceof Error ? e.message : es.app.error),
+  });
   const save = useMutation({
     mutationFn: async () => {
       const basePayload = payloadFor(sections ?? EMPTY_SECTIONS, null);
@@ -618,7 +645,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   }, [baseline, editorReady]);
   const dirty = baseline !== null && (JSON.stringify(current) !== JSON.stringify(baseline) || removedVariantIds.length > 0);
   const discard = () => {
-    if (!workout) {
+    if (isNew) {
       router.push(basePath);
       return;
     }
@@ -714,9 +741,11 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
         }
       }
     }
-    save.mutate();
+    if (snippetMode) saveSnippet.mutate();
+    else save.mutate();
   };
   doSaveRef.current = doSave;
+  const saving = save.isPending || saveSnippet.isPending;
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -734,7 +763,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
             <button
               type="button"
               onClick={discard}
-              disabled={save.isPending}
+              disabled={saving}
               className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-white/85 hover:bg-white/15 hover:text-white disabled:opacity-50"
             >
               Descartar
@@ -742,10 +771,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
             <button
               type="button"
               onClick={doSave}
-              disabled={save.isPending || (type === 'structured' && !editorReady)}
+              disabled={saving || (type === 'structured' && !editorReady)}
               className="rounded-full bg-white px-3.5 py-1.5 text-[13px] font-bold text-ink hover:bg-white/90 disabled:opacity-60"
             >
-              {save.isPending ? es.app.saving : es.app.save}
+              {saving ? es.app.saving : es.app.save}
             </button>
           </div>
         </div>
@@ -758,7 +787,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
               {listTitle}
             </button>
             <span>/</span>
-            <span className="text-ink-2">{workout ? 'Editar' : 'Nueva'}</span>
+            <span className="text-ink-2">{isNew ? (snippetMode ? 'Nuevo' : 'Nueva') : 'Editar'}</span>
           </div>
           <input
             value={name}
@@ -776,22 +805,32 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
             <span className="text-xs font-medium text-accent-dark">{es.app.nameRequired}</span>
           )}
           <div className="flex items-center gap-2">
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"
-              style={{ background: '#fdf0d9', color: '#8a5a12' }}
-            >
-              {es.status[status]}
-            </span>
-            <span className="font-mono text-xs font-medium text-muted">{metaLine}</span>
+            {snippetMode ? (
+              <span className="font-mono text-xs font-medium text-muted">
+                Bloque guardado · aparece como sugerencia al escribir su nombre
+              </span>
+            ) : (
+              <>
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold"
+                  style={{ background: '#fdf0d9', color: '#8a5a12' }}
+                >
+                  {es.status[status]}
+                </span>
+                <span className="font-mono text-xs font-medium text-muted">{metaLine}</span>
+              </>
+            )}
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setGuideOpen(true)}>
             Guía
           </Button>
-          <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
-            Ajustes
-          </Button>
+          {!snippetMode && (
+            <Button type="button" variant="outline" onClick={() => setSettingsOpen(true)}>
+              Ajustes
+            </Button>
+          )}
         </div>
       </header>
 
@@ -820,7 +859,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                           : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
                     )}
                   >
-                    {SECTION_TAB[sec]}
+                    {snippetMode ? 'Bloque' : SECTION_TAB[sec]}
                   </div>
                 );
               })}
@@ -955,14 +994,18 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                   catalog={catalog}
                   parsed={parsedTab}
                   placeholder={PLACEHOLDER}
-                  autoFocus={!workout}
+                  autoFocus={isNew}
                   extras={extras}
                   inserts={inserts}
                   onInsertBlock={insertBlock}
-                  onSaveBlock={(t) => {
-                    setServerError(null);
-                    setSnippetModal({ name: '', text: t.trim() });
-                  }}
+                  onSaveBlock={
+                    snippetMode
+                      ? undefined
+                      : (t) => {
+                          setServerError(null);
+                          setSnippetModal({ name: '', text: t.trim() });
+                        }
+                  }
                   apiRef={editorApi}
                   onCreateExercise={(n) => setNewExercise({ name: titleCase(n), difficulty: 'beginner' })}
                   className="h-full"

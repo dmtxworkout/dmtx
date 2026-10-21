@@ -13,6 +13,9 @@ export function snippetsApi(http: Http) {
     list(query?: Partial<PaginationQuery>): Promise<Paginated<Snippet>> {
       return http.request(`/api/snippets${listQuery(query)}`);
     },
+    get(id: string): Promise<Snippet> {
+      return http.request(`/api/snippets/${id}`);
+    },
     create(input: CreateSnippetInput): Promise<Snippet> {
       return http.request('/api/snippets', { method: 'POST', body: JSON.stringify(input) });
     },

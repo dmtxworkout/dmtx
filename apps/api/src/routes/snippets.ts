@@ -78,6 +78,26 @@ snippetsRoute.openapi(
 
 snippetsRoute.openapi(
   createRoute({
+    method: 'get',
+    path: '/{id}',
+    tags: ['snippets'],
+    request: { params: idParam },
+    responses: {
+      200: { description: 'Bloque', content: { 'application/json': { schema: snippetSchema } } },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const db = c.get('db');
+    const { id } = c.req.valid('param');
+    const [row] = await db.select().from(rutinaSnippets).where(eq(rutinaSnippets.id, id));
+    if (!row) return c.json({ error: 'No encontrado' }, 404);
+    return c.json(serialize(row), 200);
+  },
+);
+
+snippetsRoute.openapi(
+  createRoute({
     method: 'patch',
     path: '/{id}',
     tags: ['snippets'],

@@ -1,9 +1,10 @@
 'use client';
 
 // Saved blocks ("bloques guardados"): reusable rutina text the editor suggests
-// by name. Created from the rutina editor ("Guardar bloque"); here they can be
-// renamed, edited or deleted.
+// by name. Created from the rutina editor ("Guardar bloque") or here; each
+// opens in the full rutina editor at /bloques/[id].
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Snippet } from '@dmtx/schemas';
 import { api } from '@/lib/api';
@@ -11,15 +12,13 @@ import { es } from '@/i18n/es';
 import { formatDateEs } from '@/lib/utils';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
-import { Dialog } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 
 const COLS = 'grid-cols-[minmax(0,1fr)_minmax(0,2fr)_130px_34px] items-center gap-3 px-4';
 
 export function SnippetList() {
   const qc = useQueryClient();
+  const router = useRouter();
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState<{ id: string; name: string; text: string } | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['snippets', 'list', search],
@@ -28,14 +27,6 @@ export function SnippetList() {
   });
   const invalidate = () => qc.invalidateQueries({ queryKey: ['snippets'] });
   const remove = useMutation({ mutationFn: (id: string) => api.snippets.remove(id), onSuccess: invalidate });
-  const update = useMutation({
-    mutationFn: (s: { id: string; name: string; text: string }) =>
-      api.snippets.update(s.id, { name: s.name, text: s.text }),
-    onSuccess: () => {
-      invalidate();
-      setEditing(null);
-    },
-  });
 
   const items = data?.data ?? [];
 
@@ -44,6 +35,11 @@ export function SnippetList() {
       <PageHeader
         title={es.snippets.title}
         subtitle={data ? `${es.snippets.count(data.total)} · ${es.snippets.subtitle}` : es.snippets.subtitle}
+        actions={
+          <Button type="button" onClick={() => router.push('/bloques/nuevo')}>
+            Nuevo bloque
+          </Button>
+        }
       >
         <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
           <span className="text-muted-2">⌕</span>
@@ -76,7 +72,7 @@ export function SnippetList() {
             {items.map((sn: Snippet) => (
               <div
                 key={sn.id}
-                onClick={() => setEditing({ id: sn.id, name: sn.name, text: sn.text })}
+                onClick={() => router.push(`/bloques/${sn.id}`)}
                 className={`group grid cursor-pointer border-b border-line-2 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-surface-2 ${COLS}`}
               >
                 <span className="truncate font-semibold text-ink">{sn.name}</span>
@@ -100,38 +96,6 @@ export function SnippetList() {
         )}
       </div>
 
-      <Dialog open={editing !== null} onClose={() => setEditing(null)} title="Editar bloque" className="max-w-lg">
-        <div className="flex flex-col gap-4 p-5">
-          <div>
-            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre</div>
-            <Input
-              autoFocus
-              value={editing?.name ?? ''}
-              onChange={(e) => setEditing((m) => (m ? { ...m, name: e.target.value } : m))}
-            />
-          </div>
-          <div>
-            <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Contenido</div>
-            <textarea
-              value={editing?.text ?? ''}
-              onChange={(e) => setEditing((m) => (m ? { ...m, text: e.target.value } : m))}
-              className="min-h-40 w-full rounded-lg border border-line-2 bg-surface px-3 py-2 font-mono text-[13px] leading-relaxed"
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setEditing(null)}>
-              {es.app.cancel}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => editing && update.mutate(editing)}
-              disabled={update.isPending || !editing?.name.trim() || !editing?.text.trim()}
-            >
-              {update.isPending ? es.app.saving : es.app.save}
-            </Button>
-          </div>
-        </div>
-      </Dialog>
     </div>
   );
 }

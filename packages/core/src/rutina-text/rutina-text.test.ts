@@ -623,3 +623,19 @@ describe('sets x reps after the name', () => {
     expect(at('sentadilla 3x10 te')?.options[0]?.label).toMatch(/^tempo/);
   });
 });
+
+describe('comments and notes on structural lines', () => {
+  it('ignores "# …" and keeps "// …" as the note of headers and rests', () => {
+    const p = parse(`AMRAP 12 min // a tope # revisar
+  3 rondas // sin parar # ojo
+    10 burpees
+    descanso 1 min // respira # interno
+`);
+    expect(p.diagnostics).toEqual([]);
+    const w = toWorkoutInput(p);
+    expect(w.blocks[0]).toMatchObject({ kind: 'part', format: 'amrap', notes: 'a tope' });
+    const g = w.blocks[0]!.blocks[0]!;
+    expect(g).toMatchObject({ rounds: 3, notes: 'sin parar' });
+    expect(g.items[1]).toMatchObject({ kind: 'rest', workSeconds: 60, notes: 'respira' });
+  });
+});
