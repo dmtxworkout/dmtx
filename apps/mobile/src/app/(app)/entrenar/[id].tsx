@@ -23,7 +23,9 @@ import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '..
 import { mmss } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
 import { formatDistance, formatWeight } from '../../../lib/units';
-import { es } from '../../../i18n';
+import { es, formatLabel } from '../../../i18n';
+
+const elapsedSince = (startMs: number) => Math.round((Date.now() - startMs) / 1000);
 
 interface Mark {
   exerciseId: string;
@@ -55,20 +57,52 @@ export default function Entrenar() {
   return <Session workout={q.data} />;
 }
 
-const sectionWorkout = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail => {
-  // Each section runs on its OWN format: the main's, or a referenced segment's.
-  // Inline warmup/cooldown blocks have no separate format → 'circuit' (a plain
-  // sequential walk honouring block rounds), never the main's EMOM/AMRAP timing.
-  const format =
-    section === 'main'
-      ? w.format
-      : (section === 'warmup' ? w.warmupFormat : w.cooldownFormat) ?? 'circuit';
-  const formatConfig =
-    section === 'main' ? w.formatConfig : section === 'warmup' ? w.warmupFormatConfig : w.cooldownFormatConfig;
-  return { ...w, format, formatConfig, blocks: w.blocks.filter((b) => (b.section ?? 'main') === section) };
+/**
+ * A section as a list of PARTS, each a workout-shaped slice with its own format:
+ * part blocks (AMRAP/EMOM/… holding blocks) become one part each; blocks outside
+ * any part are grouped into format-less parts (a plain sequential walk). Legacy
+ * data without part blocks is one part on the section's format.
+ */
+const sectionParts = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown'): WorkoutDetail[] => {
+  const blocks = w.blocks.filter((b) => (b.section ?? 'main') === section);
+  const hasParts = blocks.some((b) => b.kind === 'part');
+  if (!hasParts) {
+    const format =
+      section === 'main'
+        ? w.format
+        : ((section === 'warmup' ? w.warmupFormat : w.cooldownFormat) ?? 'circuit');
+    const formatConfig =
+      section === 'main' ? w.formatConfig : section === 'warmup' ? w.warmupFormatConfig : w.cooldownFormatConfig;
+    return blocks.length ? [{ ...w, format, formatConfig, blocks }] : [];
+  }
+  const parts: WorkoutDetail[] = [];
+  let loose: WorkoutDetail['blocks'] = [];
+  const flushLoose = () => {
+    if (loose.length) parts.push({ ...w, format: 'circuit', formatConfig: null, blocks: loose });
+    loose = [];
+  };
+  for (const b of blocks) {
+    if (b.kind === 'part') {
+      flushLoose();
+      parts.push({ ...w, format: b.format ?? 'circuit', formatConfig: b.formatConfig, blocks: b.blocks });
+    } else loose.push(b);
+  }
+  flushLoose();
+  return parts;
 };
 const hasExercises = (w: WorkoutDetail) =>
   w.blocks.some((b) => b.items.some((it) => it.kind === 'exercise' && it.exercise));
+
+/** What one tracked part reports when it ends, merged into a single log at the end. */
+export interface PartResult {
+  format: WorkoutDetail['format'];
+  durationSeconds: number;
+  roundsCompleted: number | null;
+  totalVolume: number | null;
+  results: SetResultInput[];
+  stats: { k: string; v: string }[];
+  marks: MarkRow[];
+}
 
 /**
  * Sequences the optional warmup and cooldown around the tracked main workout.
@@ -76,21 +110,49 @@ const hasExercises = (w: WorkoutDetail) =>
  */
 function Session({ workout }: { workout: WorkoutDetail }) {
   const router = useRouter();
-  const warmup = useMemo(() => sectionWorkout(workout, 'warmup'), [workout]);
-  const main = useMemo(() => sectionWorkout(workout, 'main'), [workout]);
-  const cooldown = useMemo(() => sectionWorkout(workout, 'cooldown'), [workout]);
-  const hasWarmup = useMemo(() => hasExercises(warmup), [warmup]);
-  const hasCooldown = useMemo(() => hasExercises(cooldown), [cooldown]);
+  const { units } = useUnits();
+  const warmupParts = useMemo(() => sectionParts(workout, 'warmup').filter(hasExercises), [workout]);
+  const mainParts = useMemo(() => sectionParts(workout, 'main'), [workout]);
+  const cooldownParts = useMemo(() => sectionParts(workout, 'cooldown').filter(hasExercises), [workout]);
+  // Whole-section views for the intros (all parts, flattened by CircuitView).
+  const warmupView = useMemo<WorkoutDetail>(
+    () => ({ ...workout, blocks: workout.blocks.filter((b) => b.section === 'warmup') }),
+    [workout],
+  );
+  const mainView = useMemo<WorkoutDetail>(
+    () => ({ ...workout, blocks: workout.blocks.filter((b) => (b.section ?? 'main') === 'main') }),
+    [workout],
+  );
+  const cooldownView = useMemo<WorkoutDetail>(
+    () => ({ ...workout, blocks: workout.blocks.filter((b) => b.section === 'cooldown') }),
+    [workout],
+  );
+  const hasWarmup = warmupParts.length > 0;
+  const hasCooldown = cooldownParts.length > 0;
 
-  const [phase, setPhase] = useState<'warmup-intro' | 'warmup' | 'warmup-done' | 'main'>(
+  const [phase, setPhase] = useState<'warmup-intro' | 'warmup' | 'warmup-done' | 'main' | 'cooldown' | 'summary'>(
     hasWarmup ? 'warmup-intro' : 'main',
   );
+  const [warmupIdx, setWarmupIdx] = useState(0);
+  const [mainIdx, setMainIdx] = useState(0);
+  const [results, setResults] = useState<PartResult[]>([]);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const startRef = useRef(0);
+  useEffect(() => {
+    startRef.current = Date.now();
+  }, []);
   const exit = () => router.back();
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: CreateWorkoutLogInput) => api.saveLog(payload),
+    onSuccess: exit,
+    onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
+  });
 
   if (phase === 'warmup-intro') {
     return (
       <SectionIntro
-        workout={warmup}
+        workout={warmupView}
         title="Calentamiento"
         subtitle="¿Quieres calentar?"
         note="Calentar reduce el riesgo de lesión y te prepara para rendir mejor."
@@ -103,12 +165,23 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     );
   }
   if (phase === 'warmup') {
-    return <SegmentPlayer workout={warmup} onComplete={() => setPhase('warmup-done')} onExit={exit} />;
+    const part = warmupParts[warmupIdx]!;
+    return (
+      <SegmentPlayer
+        key={`w${warmupIdx}`}
+        workout={part}
+        onComplete={() => {
+          if (warmupIdx + 1 < warmupParts.length) setWarmupIdx(warmupIdx + 1);
+          else setPhase('warmup-done');
+        }}
+        onExit={exit}
+      />
+    );
   }
   if (phase === 'warmup-done') {
     return (
       <SectionIntro
-        workout={main}
+        workout={mainView}
         title="Calentamiento completo"
         subtitle="Ahora empieza la rutina"
         doLabel="Empezar rutina"
@@ -118,24 +191,89 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     );
   }
 
-  // The cooldown runs inside the player, after the work but before the results,
-  // so the player keeps its logged marks while the athlete cools down (or skips).
+  // The cooldown runs after the work but before the results.
   const renderCooldown = hasCooldown
-    ? (onDone: () => void) => <CooldownFlow workout={cooldown} onDone={onDone} />
+    ? (onDone: () => void) => <CooldownFlow workout={cooldownView} parts={cooldownParts} onDone={onDone} />
     : undefined;
-  if (workout.format === 'amrap') return <AmrapPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
-  if (workout.format === 'emom') return <EmomPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
-  return <Player workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
+
+  // One main part: the players own their summary and save, as before.
+  if (mainParts.length <= 1) {
+    const main = mainParts[0] ?? { ...workout, blocks: [] };
+    if (main.format === 'amrap') return <AmrapPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
+    if (main.format === 'emom') return <EmomPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
+    return <Player workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
+  }
+
+  // Several parts: each player reports its result; one combined summary + log.
+  if (phase === 'main') {
+    const part = mainParts[mainIdx]!;
+    const onPartDone = (r: PartResult) => {
+      const next = [...results, r];
+      setResults(next);
+      if (mainIdx + 1 < mainParts.length) setMainIdx(mainIdx + 1);
+      else setPhase(hasCooldown ? 'cooldown' : 'summary');
+    };
+    const key = `m${mainIdx}`;
+    if (part.format === 'amrap') return <AmrapPlayer key={key} workout={part} partIndex={mainIdx + 1} partCount={mainParts.length} onPartDone={onPartDone} />;
+    if (part.format === 'emom') return <EmomPlayer key={key} workout={part} partIndex={mainIdx + 1} partCount={mainParts.length} onPartDone={onPartDone} />;
+    return <Player key={key} workout={part} partIndex={mainIdx + 1} partCount={mainParts.length} onPartDone={onPartDone} />;
+  }
+  if (phase === 'cooldown' && renderCooldown) {
+    return <>{renderCooldown(() => setPhase('summary'))}</>;
+  }
+
+  // Combined summary.
+  const elapsed = results.reduce((s, r) => s + r.durationSeconds, 0);
+  const volume = results.reduce((s, r) => s + (r.totalVolume ?? 0), 0);
+  const rounds = results.find((r) => r.roundsCompleted != null)?.roundsCompleted ?? null;
+  const stats: { k: string; v: string }[] = [{ k: 'Partes', v: String(results.length) }];
+  if (rounds != null) stats.push({ k: 'Rondas', v: String(rounds) });
+  stats.push({ k: 'Tiempo', v: mmss(elapsed) });
+  if (volume > 0) stats.push({ k: 'Volumen', v: workout.format === 'strength' ? formatWeight(volume, units.weight) : `${volume}` });
+  const marks: MarkRow[] = results.flatMap((r, i) => [
+    { name: `— ${formatLabel(r.format) || 'Parte'} ${i + 1} —`, value: mmss(r.durationSeconds), prev: null, improved: false },
+    ...r.marks,
+  ]);
+  const save = () => {
+    setSaveError(null);
+    let pos = 0;
+    saveMutation.mutate({
+      workoutId: workout.id,
+      workoutName: workout.name,
+      format: mainParts[0]?.format ?? workout.format,
+      startedAt: new Date(startRef.current).toISOString(),
+      completedAt: new Date().toISOString(),
+      durationSeconds: elapsed,
+      roundsCompleted: rounds,
+      totalVolume: volume || null,
+      results: results.flatMap((r) => r.results.map((x) => ({ ...x, position: pos++ }))),
+    });
+  };
+  return (
+    <SummaryScreen
+      name={workout.name}
+      stats={stats}
+      marks={marks}
+      onSave={save}
+      saving={saveMutation.isPending}
+      error={saveError}
+    />
+  );
 }
 
 function Player({
   workout,
   onFinish,
   renderCooldown,
+  onPartDone,
 }: {
   workout: NonNullable<Awaited<ReturnType<typeof api.workout>>>;
   onFinish?: () => void;
   renderCooldown?: (onDone: () => void) => ReactNode;
+  /** Multi-part session: report instead of showing the summary. */
+  onPartDone?: (r: PartResult) => void;
+  partIndex?: number;
+  partCount?: number;
 }) {
   const router = useRouter();
   const { units } = useUnits();
@@ -175,8 +313,42 @@ function Player({
   const step: Step | undefined = session.steps[stepIndex];
 
   const finish = () => {
-    setElapsed(Math.round((Date.now() - startRef.current) / 1000));
+    const secs = elapsedSince(startRef.current);
+    setElapsed(secs);
+    if (onPartDone) {
+      onPartDone(partResult(secs));
+      return;
+    }
     setPhase(renderCooldown ? 'cooldown' : 'summary');
+  };
+  // The part's outcome from the current marks (shared by summary and onPartDone).
+  const partResult = (secs: number): PartResult => {
+    const list = Object.values(marks);
+    const isStrength = session.format === 'strength';
+    const tonnage = list.reduce((sum, m) => sum + (m.reps || 0) * (m.loadKg || 0), 0);
+    const repVolume = list.reduce((sum, m) => sum + (m.reps || 0), 0);
+    const volume = isStrength ? tonnage : repVolume;
+    const roundsCompleted = session.mode === 'amrap' ? Math.max(0, round - 1) : null;
+    return {
+      format: session.format,
+      durationSeconds: secs,
+      roundsCompleted,
+      totalVolume: volume || null,
+      results: list.map((m, i) => ({
+        exerciseId: m.exerciseId,
+        exerciseName: m.name,
+        position: i,
+        round: m.round,
+        setNumber: m.setNumber,
+        measure: m.measure,
+        reps: m.reps,
+        seconds: m.seconds,
+        distanceMeters: m.distanceMeters,
+        loadKg: m.loadKg,
+      })),
+      stats: [],
+      marks: list.map((m) => ({ name: m.name, value: m.display, prev: m.prevDisplay, improved: m.improved })),
+    };
   };
   const finishRef = useRef(finish);
   useEffect(() => {

@@ -105,13 +105,17 @@ export interface WorkoutItem {
 
 export interface WorkoutBlock {
   id: string;
-  kind: 'group' | 'rest';
+  /** `part`: a format (AMRAP/EMOM/…) holding the blocks in `blocks`. */
+  kind: 'group' | 'rest' | 'part';
   section: 'warmup' | 'main' | 'cooldown';
   type: 'single' | 'superset' | 'circuit' | 'emom' | 'tabata';
   label: string | null;
   rounds: number | null;
   notes: string | null;
+  format: WorkoutFormat | null;
+  formatConfig: unknown;
   items: WorkoutItem[];
+  blocks: WorkoutBlock[];
 }
 
 export interface WorkoutDetail {
@@ -133,6 +137,10 @@ export interface WorkoutDetail {
   cooldownFormat: WorkoutFormat | null;
   cooldownFormatConfig: unknown;
   scoringGoal: Goal | null;
+  /** Variants (RX / Escalada / …) of a base rutina; a variant points back via variantOfId. */
+  variantOfId: string | null;
+  variantLabel: string | null;
+  variants: { id: string; label: string }[];
   lastLog: {
     roundsCompleted: number | null;
     totalVolume: number | null;

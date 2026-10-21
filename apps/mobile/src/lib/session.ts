@@ -247,14 +247,19 @@ export function buildSession(workout: WorkoutDetail): Session {
 
     case 'circuit': {
       const cfg = config(workout, 'circuit');
-      return { ...base, mode: 'sequential', capSeconds: null, circuitLength: 0, steps: buildSequential(workout, cfg?.rounds ?? 1) };
+      // A time cap ends the session when it runs out (the player counts it down).
+      return { ...base, mode: 'sequential', capSeconds: cfg?.timeCapSeconds ?? null, circuitLength: 0, steps: buildSequential(workout, cfg?.rounds ?? 1) };
     }
     case 'for_time': {
       const cfg = config(workout, 'for_time');
-      return { ...base, mode: 'sequential', capSeconds: null, circuitLength: 0, steps: buildSequential(workout, cfg?.rounds ?? 1) };
+      return { ...base, mode: 'sequential', capSeconds: cfg?.timeCapSeconds ?? null, circuitLength: 0, steps: buildSequential(workout, cfg?.rounds ?? 1) };
+    }
+    case 'chipper': {
+      const cfg = config(workout, 'chipper');
+      return { ...base, mode: 'sequential', capSeconds: cfg?.timeCapSeconds ?? null, circuitLength: 0, steps: buildSequential(workout, 1) };
     }
     default:
-      // strength, chipper, or unspecified → one pass, honour item sets.
+      // strength or unspecified → one pass, honour item sets.
       return { ...base, mode: 'sequential', capSeconds: null, circuitLength: 0, steps: buildSequential(workout, 1) };
   }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { api } from '../lib/api';
 import { mmss } from '../lib/format';
 import { CircuitView } from './circuit-view';
 import type { WorkoutDetail } from '../lib/types';
+import type { PartResult } from '../app/(app)/entrenar/[id]';
 
 /**
  * EMOM player: a per-interval countdown that resets each interval and auto-
@@ -18,10 +19,17 @@ export function EmomPlayer({
   workout,
   onFinish,
   renderCooldown,
+  onPartDone,
+  partIndex,
+  partCount,
 }: {
   workout: WorkoutDetail;
   onFinish?: () => void;
   renderCooldown?: (onDone: () => void) => ReactNode;
+  /** Multi-part session: report the result instead of showing the summary. */
+  onPartDone?: (r: PartResult) => void;
+  partIndex?: number;
+  partCount?: number;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -29,6 +37,17 @@ export function EmomPlayer({
   const cfg = workout.formatConfig as { intervalSeconds?: number; rounds?: number } | null;
   const intervalSec = cfg?.intervalSeconds && cfg.intervalSeconds > 0 ? cfg.intervalSeconds : 60;
   const totalIntervals = cfg?.rounds && cfg.rounds > 0 ? cfg.rounds : 1;
+  // The rotation: one exercise per interval, in order ("min 1: …" prefixes fix
+  // a slot), repeating until the EMOM ends. Minute 1 → first, minute 2 → second…
+  const rotation = useMemo(() => {
+    const items = workout.blocks
+      .flatMap((b) => (b.kind === 'part' ? b.blocks : [b]))
+      .flatMap((b) => b.items)
+      .filter((it) => it.kind === 'exercise' && it.exercise);
+    const withSlot = items.map((it, i) => ({ it, slot: it.intervalIndex ?? i }));
+    return withSlot.sort((a, b) => a.slot - b.slot).map((x) => x.it);
+  }, [workout]);
+  const slotOf = (interval: number) => (rotation.length ? rotation[(interval - 1) % rotation.length] : undefined);
 
   const [current, setCurrent] = useState(1);
   const [remaining, setRemaining] = useState(intervalSec);
@@ -43,7 +62,20 @@ export function EmomPlayer({
   }, []);
 
   const finish = () => {
-    setElapsed(Math.round((Date.now() - startRef.current) / 1000));
+    const secs = Math.round((Date.now() - startRef.current) / 1000);
+    setElapsed(secs);
+    if (onPartDone) {
+      onPartDone({
+        format: 'emom',
+        durationSeconds: secs,
+        roundsCompleted: currentRef.current,
+        totalVolume: null,
+        results: [],
+        stats: [],
+        marks: [{ name: 'Intervalos', value: `${currentRef.current} / ${totalIntervals}`, prev: null, improved: false }],
+      });
+      return;
+    }
     setPhase(renderCooldown ? 'cooldown' : 'summary');
   };
   const finishRef = useRef(finish);
@@ -153,7 +185,7 @@ export function EmomPlayer({
           <Text className="text-[18px] text-ink-3">✕</Text>
         </Pressable>
         <Text numberOfLines={1} className="flex-1 text-center font-semibold text-[14px] text-ink">
-          {workout.name} · EMOM
+          {workout.name} · EMOM{partCount && partCount > 1 ? ` · parte ${partIndex}/${partCount}` : ''}
         </Text>
         <View className="h-10 w-10" />
       </View>
@@ -175,8 +207,26 @@ export function EmomPlayer({
         ))}
       </View>
 
+      {rotation.length > 0 ? (
+        <View className="mx-5 mb-3 rounded-2xl bg-surface p-4">
+          <Text className="font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
+            Este intervalo
+          </Text>
+          <Text className="mt-1 font-extrabold text-[22px] leading-tight text-ink">
+            {slotOf(current)?.reps != null ? `${slotOf(current)!.reps} ` : ''}
+            {slotOf(current)?.exercise?.name}
+          </Text>
+          {current < totalIntervals && rotation.length > 1 ? (
+            <Text className="mt-1.5 font-mono text-[11px] text-ink-3">
+              Siguiente: {slotOf(current + 1)?.reps != null ? `${slotOf(current + 1)!.reps} ` : ''}
+              {slotOf(current + 1)?.exercise?.name}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
       <Text className="px-5 pb-1 font-mono-medium text-[10px] uppercase tracking-widest text-ink-3">
-        El trabajo
+        Rotación
       </Text>
       <ScrollView contentContainerClassName="gap-3 px-5 pb-4">
         <CircuitView workout={workout} />

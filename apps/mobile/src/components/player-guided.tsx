@@ -83,8 +83,19 @@ export function SectionIntro({
  * prompt to do it or skip straight to results, then guide it (untracked).
  * `onDone` fires for skip, exit, or completion — all lead to the results screen.
  */
-export function CooldownFlow({ workout, onDone }: { workout: WorkoutDetail; onDone: () => void }) {
+export function CooldownFlow({
+  workout,
+  parts,
+  onDone,
+}: {
+  workout: WorkoutDetail;
+  /** The cooldown's parts; defaults to the whole section as one. */
+  parts?: WorkoutDetail[];
+  onDone: () => void;
+}) {
   const [p, setP] = useState<'intro' | 'run'>('intro');
+  const [idx, setIdx] = useState(0);
+  const list = parts && parts.length ? parts : [workout];
   if (p === 'intro') {
     return (
       <SectionIntro
@@ -100,7 +111,15 @@ export function CooldownFlow({ workout, onDone }: { workout: WorkoutDetail; onDo
       />
     );
   }
-  return <SegmentPlayer workout={workout} onComplete={onDone} onExit={onDone} />;
+  const part = list[idx]!;
+  return (
+    <SegmentPlayer
+      key={`c${idx}`}
+      workout={part}
+      onComplete={() => (idx + 1 < list.length ? setIdx(idx + 1) : onDone())}
+      onExit={onDone}
+    />
+  );
 }
 
 /**

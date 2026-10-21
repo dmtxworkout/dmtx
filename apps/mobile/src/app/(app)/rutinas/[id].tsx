@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,6 +80,14 @@ export default function RutinaDetalle() {
   const insets = useSafeAreaInsets();
   const { units } = useUnits();
   const q = useQuery({ queryKey: ['workout', id], queryFn: () => api.workout(id) });
+  // Variants (RX / Escalada / …): the base page offers a level; the chosen
+  // variant's content replaces the base's below and is what gets played.
+  const [variantId, setVariantId] = useState<string | null>(null);
+  const vq = useQuery({
+    queryKey: ['workout', variantId],
+    queryFn: () => api.workout(variantId!),
+    enabled: !!variantId,
+  });
 
   if (q.isLoading) return <Loading />;
   if (q.isError || !q.data) {
@@ -89,7 +98,12 @@ export default function RutinaDetalle() {
     );
   }
 
-  const w = q.data;
+  const base = q.data;
+  const w = variantId && vq.data ? vq.data : base;
+  const levels = base.variants.length
+    ? [{ id: base.id, label: base.variantLabel || 'Principal' }, ...base.variants]
+    : [];
+  const playId = variantId ?? id;
   const stats = [
     { k: 'Formato', v: w.type === 'video' ? 'Video' : formatLabel(w.format) || '—' },
     { k: 'Duración', v: w.estimatedDurationSeconds ? mmss(w.estimatedDurationSeconds) : '—' },
@@ -104,22 +118,38 @@ export default function RutinaDetalle() {
     const h = formatHeadline(fmt, cfg);
     return `${base} · ${formatLabel(fmt)}${h ? ` ${h}` : ''}`;
   };
+  // Each section lists its parts (a format + its blocks); legacy data without
+  // part blocks shows the section's own format.
+  const partsOf = (section: 'warmup' | 'main' | 'cooldown', base: string, fmt: WorkoutFormat | null, cfg: unknown) => {
+    const blocks = w.blocks.filter((b) => (b.section ?? 'main') === section);
+    if (!blocks.some((b) => b.kind === 'part')) {
+      const label = section === 'main' ? `${formatLabel(fmt) || 'Rutina'}${headline ? ` ${headline}` : ''}` : segLabel(base, fmt, cfg);
+      return [{ key: section, label, units: unitsFor(blocks) }];
+    }
+    const out: { key: string; label: string; units: PvUnit[] }[] = [];
+    let loose: WorkoutBlock[] = [];
+    const flush = () => {
+      if (loose.length) out.push({ key: `${section}-l${out.length}`, label: base, units: unitsFor(loose) });
+      loose = [];
+    };
+    blocks.forEach((b) => {
+      if (b.kind === 'part') {
+        flush();
+        const h = formatHeadline(b.format, b.formatConfig);
+        out.push({
+          key: b.id,
+          label: `${base === 'Rutina' ? '' : `${base} · `}${formatLabel(b.format)}${h ? ` ${h}` : ''}`,
+          units: unitsFor(b.blocks),
+        });
+      } else loose.push(b);
+    });
+    flush();
+    return out;
+  };
   const sections = [
-    {
-      key: 'warmup',
-      label: segLabel('Calentamiento', w.warmupFormat, w.warmupFormatConfig),
-      units: unitsFor(w.blocks.filter((b) => b.section === 'warmup')),
-    },
-    {
-      key: 'main',
-      label: `${formatLabel(w.format) || 'Rutina'}${headline ? ` ${headline}` : ''}`,
-      units: unitsFor(w.blocks.filter((b) => (b.section ?? 'main') === 'main')),
-    },
-    {
-      key: 'cooldown',
-      label: segLabel('Enfriamiento', w.cooldownFormat, w.cooldownFormatConfig),
-      units: unitsFor(w.blocks.filter((b) => b.section === 'cooldown')),
-    },
+    ...partsOf('warmup', 'Calentamiento', w.warmupFormat, w.warmupFormatConfig),
+    ...partsOf('main', 'Rutina', w.format, w.formatConfig),
+    ...partsOf('cooldown', 'Enfriamiento', w.cooldownFormat, w.cooldownFormatConfig),
   ].filter((s) => s.units.length > 0);
 
   return (
@@ -155,7 +185,7 @@ export default function RutinaDetalle() {
         {/* Body */}
         <View className="gap-4 px-5 pt-3">
           <Text className="font-extrabold text-[26px] leading-tight tracking-tight text-ink">
-            {w.name}
+            {base.name}
           </Text>
 
           <View className="flex-row border-y border-line-2">
@@ -169,8 +199,30 @@ export default function RutinaDetalle() {
             ))}
           </View>
 
-          {w.description ? (
-            <Text className="font-sans text-[14px] leading-6 text-ink-2">{w.description}</Text>
+          {base.description ? (
+            <Text className="font-sans text-[14px] leading-6 text-ink-2">{base.description}</Text>
+          ) : null}
+
+          {levels.length > 0 ? (
+            <View className="gap-2">
+              <Text className="font-mono-semibold text-[10px] uppercase tracking-widest text-ink-3">Nivel</Text>
+              <View className="flex-row flex-wrap gap-2">
+                {levels.map((lv) => {
+                  const on = (variantId ?? base.id) === lv.id;
+                  return (
+                    <Pressable
+                      key={lv.id}
+                      onPress={() => setVariantId(lv.id === base.id ? null : lv.id)}
+                      className={`rounded-full border px-3.5 py-2 ${on ? 'border-accent bg-accent' : 'border-line-2 bg-surface-2'}`}
+                    >
+                      <Text className={`font-mono-semibold text-[12px] uppercase tracking-wider ${on ? 'text-white' : 'text-ink-2'}`}>
+                        {lv.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
           ) : null}
 
           {/* Blocks — grouped by section (calentamiento · rutina · enfriamiento) */}
@@ -242,7 +294,11 @@ export default function RutinaDetalle() {
         <Pressable className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2">
           <Text className="text-[19px] text-ink">♡</Text>
         </Pressable>
-        <Button label="Empezar rutina" className="flex-1" onPress={() => router.push(`/(app)/entrenar/${id}`)} />
+        <Button
+          label={variantId && !vq.data ? 'Cargando…' : 'Empezar rutina'}
+          className="flex-1"
+          onPress={() => router.push(`/(app)/entrenar/${playId}`)}
+        />
       </View>
     </View>
   );

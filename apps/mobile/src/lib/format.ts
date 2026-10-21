@@ -50,6 +50,13 @@ export function loadLabel(load: LoadPrescription | null | undefined, weightUnit?
       return weightUnit ? `+${formatWeight(kg, weightUnit)}` : `+${load.addedValue} ${load.unit ?? 'kg'}`;
     }
     case 'absolute': {
+      // Dual prescription ("135/95 lb") shows both; men's first.
+      if (load.womenValue != null) {
+        if (!weightUnit) return `${load.value}/${load.womenValue} ${load.unit}`;
+        const men = formatWeight(weightToKg(load.value, load.unit), weightUnit);
+        const women = formatWeight(weightToKg(load.womenValue, load.unit), weightUnit);
+        return `${men.replace(/\s*\S+$/, '')}/${women}`;
+      }
       const kg = weightToKg(load.value, load.unit);
       return weightUnit ? formatWeight(kg, weightUnit) : `${load.value} ${load.unit}`;
     }

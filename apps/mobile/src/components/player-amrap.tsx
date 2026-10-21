@@ -11,6 +11,7 @@ import { useUnits } from '../lib/units-context';
 import { formatDistance, formatWeight, weightToKg } from '../lib/units';
 import type { DistanceUnit } from '../lib/units';
 import type { WorkoutDetail, WorkoutItem } from '../lib/types';
+import type { PartResult } from '../app/(app)/entrenar/[id]';
 
 const loadKgOf = (it: WorkoutItem): number | null => {
   const l = it.loadPrescription;
@@ -40,10 +41,17 @@ export function AmrapPlayer({
   workout,
   onFinish,
   renderCooldown,
+  onPartDone,
+  partIndex,
+  partCount,
 }: {
   workout: WorkoutDetail;
   onFinish?: () => void;
   renderCooldown?: (onDone: () => void) => ReactNode;
+  /** Multi-part session: report the result instead of showing the summary. */
+  onPartDone?: (r: PartResult) => void;
+  partIndex?: number;
+  partCount?: number;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -130,9 +138,8 @@ export function AmrapPlayer({
     onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
   });
 
-  const save = () => {
-    setSaveError(null);
-    const results: SetResultInput[] = repsItems.map(({ it, blockRounds }, i) => ({
+  const resultsList = (): SetResultInput[] =>
+    repsItems.map(({ it, blockRounds }, i) => ({
       exerciseId: it.exerciseId!,
       exerciseName: it.exercise!.name,
       position: i,
@@ -140,6 +147,24 @@ export function AmrapPlayer({
       reps: blockRounds * (it.reps ?? 0) * rounds + (partial[it.id] ?? 0),
       loadKg: loadKgOf(it),
     }));
+  const reportPart = () =>
+    onPartDone?.({
+      format: 'amrap',
+      durationSeconds: elapsed,
+      roundsCompleted: rounds,
+      totalVolume: totals.volume,
+      results: resultsList(),
+      stats: [],
+      marks: [
+        { name: 'Rondas completas', value: String(rounds), prev: null, improved: false },
+        ...repsItems
+          .filter(({ it }) => (partial[it.id] ?? 0) > 0)
+          .map(({ it }) => ({ name: it.exercise?.name ?? '', value: `+${partial[it.id]}`, prev: null, improved: false })),
+      ],
+    });
+  const save = () => {
+    setSaveError(null);
+    const results = resultsList();
     saveMutation.mutate({
       workoutId: workout.id,
       workoutName: workout.name,
@@ -163,7 +188,7 @@ export function AmrapPlayer({
             <Text className="text-[18px] text-ink-3">✕</Text>
           </Pressable>
           <Text numberOfLines={1} className="flex-1 text-center font-semibold text-[14px] text-ink">
-            {workout.name} · AMRAP
+            {workout.name} · AMRAP{partCount && partCount > 1 ? ` · parte ${partIndex}/${partCount}` : ''}
           </Text>
           <View className="h-10 w-10" />
         </View>
@@ -316,10 +341,10 @@ export function AmrapPlayer({
         </ScrollView>
         <View style={{ paddingBottom: insets.bottom + 12, paddingTop: 12 }}>
           <Pressable
-            onPress={() => setPhase(renderCooldown ? 'cooldown' : 'summary')}
+            onPress={() => (onPartDone ? reportPart() : setPhase(renderCooldown ? 'cooldown' : 'summary'))}
             className="h-[54px] items-center justify-center rounded-xl bg-accent active:opacity-80"
           >
-            <Text className="font-bold text-[17px] text-white">Ver resumen</Text>
+            <Text className="font-bold text-[17px] text-white">{onPartDone ? 'Siguiente parte' : 'Ver resumen'}</Text>
           </Pressable>
         </View>
 

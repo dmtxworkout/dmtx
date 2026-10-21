@@ -4,7 +4,25 @@ import { mmss } from '../lib/format';
 import { useUnits } from '../lib/units-context';
 import { formatDistance, formatWeight, weightToKg } from '../lib/units';
 import type { DistanceUnit, WeightUnit } from '../lib/units';
-import type { WorkoutDetail, WorkoutItem } from '../lib/types';
+import type { WorkoutBlock, WorkoutDetail, WorkoutItem } from '../lib/types';
+import { formatLabel } from '../i18n';
+
+/** "AMRAP 12 min"-style label for a part block. */
+export function partLabel(b: WorkoutBlock): string {
+  const cfg = (b.formatConfig ?? {}) as Record<string, number | undefined>;
+  const fmt = formatLabel(b.format);
+  const dur = (s?: number) => (s ? (s % 60 === 0 ? `${s / 60} min` : `${s}s`) : '');
+  switch (b.format) {
+    case 'amrap':
+      return `${fmt} ${dur(cfg.totalSeconds)}`.trim();
+    case 'emom':
+      return `${fmt} ${cfg.rounds ?? ''} x ${dur(cfg.intervalSeconds ?? 60)}`.trim();
+    case 'tabata':
+      return `${fmt} ${cfg.rounds ?? 8} x ${cfg.workSeconds ?? 20}/${cfg.restSeconds ?? 10}`;
+    default:
+      return fmt || 'Parte';
+  }
+}
 
 const loadKgOf = (it: WorkoutItem): number | null => {
   const l = it.loadPrescription;
@@ -28,17 +46,25 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
   const { units } = useUnits();
   const du: DistanceUnit = units.distance;
   const wu: WeightUnit = units.weight;
-  const blocksView = useMemo(
-    () =>
-      workout.blocks
-        .map((b) => ({
-          name: b.label,
-          rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
-          items: b.items.filter((it) => it.kind === 'rest' || it.exercise),
-        }))
-        .filter((bv) => bv.items.length > 0),
-    [workout],
-  );
+  // Parts (a format holding blocks) flatten to a header plus their blocks.
+  const blocksView = useMemo(() => {
+    const flat: { block: WorkoutBlock; partOf: WorkoutBlock | null }[] = [];
+    for (const b of workout.blocks) {
+      if (b.kind === 'part') b.blocks.forEach((c) => flat.push({ block: c, partOf: b }));
+      else flat.push({ block: b, partOf: null });
+    }
+    return flat
+      .map(({ block: b, partOf }, i) => ({
+        // The part's label shows once, on its first block.
+        name:
+          [partOf && (i === 0 || flat[i - 1]?.partOf !== partOf) ? partLabel(partOf) : null, b.label]
+            .filter(Boolean)
+            .join(' · ') || null,
+        rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
+        items: b.items.filter((it) => it.kind === 'rest' || it.exercise),
+      }))
+      .filter((bv) => bv.items.length > 0);
+  }, [workout]);
 
   return (
     <>
