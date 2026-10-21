@@ -173,6 +173,26 @@ export function TagTable({ kind }: { kind: Kind }) {
             <span className="text-right font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2">Ejercicios</span>
           </div>
 
+          {/* The add row opens the list: type a name, Enter, and keep typing the next one. */}
+          <div className={`grid ${COLS} items-center border-b border-line-4 py-2`}>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => onKey(e, () => void add())}
+              placeholder={`+ ${kind.singular === 'equipo' ? 'Equipo' : 'Músculo'} (Enter para agregar)`}
+              aria-label={kind.singular === 'equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
+              className="col-span-2 h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
+            />
+            <span />
+          </div>
+          {adding.map((name, i) => (
+            <div key={`adding-${i}`} className={`grid ${COLS} items-center border-b border-line-4 py-2.5 opacity-70`} aria-busy="true">
+              <span className="ml-0.5 block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-2 border-t-ink" aria-hidden />
+              <span className="truncate text-sm font-semibold text-ink">{name}</span>
+              <span className="text-right font-mono text-[12px] text-muted">Agregando…</span>
+            </div>
+          ))}
+
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted">{es.app.loading}</div>
           ) : isError ? (
@@ -185,7 +205,7 @@ export function TagTable({ kind }: { kind: Kind }) {
               return (
                 <div
                   key={r.id}
-                  className={cn(`grid ${COLS} items-center border-b border-line-4 py-2.5`, on ? 'bg-accent-tint/40' : 'hover:bg-surface-2/60')}
+                  className={cn(`grid ${COLS} items-center border-b border-line-4 py-2.5 last:border-0`, on ? 'bg-accent-tint/40' : 'hover:bg-surface-2/60')}
                 >
                   <Checkbox
                     checked={on}
@@ -226,27 +246,6 @@ export function TagTable({ kind }: { kind: Kind }) {
             })
           )}
 
-          {adding.map((name, i) => (
-            <div key={`adding-${i}`} className={`grid ${COLS} items-center border-b border-line-4 py-2.5 opacity-70`} aria-busy="true">
-              <span className="ml-0.5 block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-2 border-t-ink" aria-hidden />
-              <span className="truncate text-sm font-semibold text-ink">{name}</span>
-              <span className="text-right font-mono text-[12px] text-muted">Agregando…</span>
-            </div>
-          ))}
-
-          {/* The add row closes the list: type a name, Enter, and keep typing the next one. */}
-          <div className={`grid ${COLS} items-center border-t border-line-4 py-2`}>
-            <span />
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => onKey(e, () => void add())}
-              placeholder={`+ ${kind.singular === 'equipo' ? 'Equipo' : 'Músculo'} (Enter para agregar)`}
-              aria-label={kind.singular === 'equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
-              className="h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
-            />
-            <span />
-          </div>
         </div>
       </div>
 
