@@ -46,14 +46,16 @@ export interface CompletionResult {
 
 // --- Static option lists ------------------------------------------------------
 
+// Only the keyword is inserted (plus a space where a parameter follows): the
+// author writes the time/rounds, and the next suggestion offers them.
 const FORMATS: Completion[] = [
-  { label: 'AMRAP', detail: 'máximas rondas en un tiempo', type: 'format', apply: 'AMRAP 12 min' },
-  { label: 'EMOM', detail: 'cada minuto, al minuto', type: 'format', apply: 'EMOM 10 min' },
-  { label: 'Tabata', detail: 'intervalos trabajo/descanso', type: 'format', apply: 'Tabata 8 x 20/10' },
+  { label: 'AMRAP', detail: 'máximas rondas en un tiempo · AMRAP 12 min', type: 'format', apply: 'AMRAP ' },
+  { label: 'EMOM', detail: 'cada intervalo, al intervalo · EMOM 10 x 90s', type: 'format', apply: 'EMOM ' },
+  { label: 'Tabata', detail: 'trabajo/descanso · Tabata 8 x 20/10', type: 'format', apply: 'Tabata ' },
   { label: 'For time', detail: 'completar lo más rápido posible', type: 'format', apply: 'For time' },
   { label: 'Chipper', detail: 'lista completada una vez, por tiempo', type: 'format', apply: 'Chipper' },
   { label: 'Fuerza', detail: 'series y repeticiones', type: 'format', apply: 'Fuerza' },
-  { label: 'Circuito', detail: 'rondas con descanso', type: 'format', apply: 'Circuito 3 rondas' },
+  { label: 'Circuito', detail: 'rondas con descanso · Circuito 3 rondas', type: 'format', apply: 'Circuito ' },
 ];
 
 type FormatKey = 'amrap' | 'emom' | 'tabata' | 'for_time' | 'chipper' | 'strength' | 'circuit';
@@ -172,8 +174,15 @@ const MODIFIERS: Completion[] = [
 ];
 const ALL_MODIFIERS: Completion[] = [...LOADS, ...TEMPOS, ...MODIFIERS.slice(2)];
 
-const REST_LINE: Completion = { label: 'descanso 60s', detail: 'descanso', type: 'keyword', apply: 'descanso 60s' };
-const REST_LINE_EN: Completion = { label: 'rest 60s', detail: 'descanso', type: 'keyword', apply: 'rest 60s' };
+const REST_LINE: Completion = { label: 'descanso', detail: 'descanso · descanso 60s', type: 'keyword', apply: 'descanso ' };
+const REST_LINE_EN: Completion = { label: 'rest', detail: 'descanso · rest 60s', type: 'keyword', apply: 'rest ' };
+const REST_DURATIONS: Completion[] = ['30s', '60s', '90s', '2 min', '3 min'].map((d) => ({
+  label: d,
+  detail: 'duración del descanso',
+  type: 'keyword',
+  apply: d,
+}));
+const REST_WORD_RE = /^\s*(?:descanso|desc|rest|pausa)\s+$/;
 /** "des…" / "re…" → the rest line in the spelling being typed. */
 const restOptions = (q: string): Completion[] =>
   q && 'descanso'.startsWith(q) ? [REST_LINE] : q && 'rest'.startsWith(q) ? [REST_LINE_EN] : [];
@@ -253,9 +262,9 @@ export function completionsAt(
   }
 
   // C. Format line: a format can start a PART on any line. With the keyword
-  // complete, offer its parameters/units; at a section start, offer formats first.
+  // complete (a space typed after it), offer its parameters/units.
   const fm = typed.match(FORMAT_LINE_RE);
-  if (fm && fm[2] !== undefined) {
+  if (fm && (fm[2] !== undefined || /\s$/.test(before))) {
     const key = formatKey(fm[1]!);
     const tail = fm[2] ?? '';
     const num = tail.match(NUM_TAIL_RE);
@@ -272,6 +281,11 @@ export function completionsAt(
     if (formats.length || sections.length) {
       return { from: lineStart + indent, to: lineEnd, options: [...formats, ...sections] };
     }
+  }
+
+  // C2. "descanso " → how long.
+  if (REST_WORD_RE.test(typed) || REST_WORD_RE.test(before)) {
+    return { from: offset, to: offset, options: REST_DURATIONS };
   }
 
   // D. A bare number, maybe with a partial word: "3 r" → "3 rondas:", "800 met" →

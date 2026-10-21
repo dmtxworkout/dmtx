@@ -333,9 +333,9 @@ describe('completionsAt', () => {
 
   it('suggests exercises after a count inside a group, and formats by prefix anywhere', () => {
     expect(at('For time\n3 rondas:\n  10 bur')?.options[0]?.label).toBe('Burpees');
-    expect(at('For time\n3 rondas:\n  am')?.options[0]?.label).toBe('AMRAP');
-    expect(at('3 rondas:\n  des')?.options[0]?.label).toBe('descanso 60s');
-    expect(at('3 rondas:\n  re')?.options[0]?.label).toBe('rest 60s');
+    expect(at('For time\n3 rondas:\n  am')?.options[0]).toMatchObject({ label: 'AMRAP', apply: 'AMRAP ' });
+    expect(at('3 rondas:\n  des')?.options[0]).toMatchObject({ label: 'descanso', apply: 'descanso ' });
+    expect(at('3 rondas:\n  re')?.options[0]).toMatchObject({ label: 'rest', apply: 'rest ' });
   });
 });
 
@@ -599,5 +599,15 @@ describe('nested parts', () => {
 
 40 Burpees
 `);
+  });
+});
+
+describe('after a keyword', () => {
+  const at = (text: string) => completionsAt(text, text.length, catalog);
+  it('offers the parameters once the keyword is complete, and rest durations after "descanso "', () => {
+    expect(at('AMRAP ')?.options.map((o) => o.label)).toEqual(['12 min', '20 min']);
+    expect(at('3 rondas:\n  EMOM ')?.options[0]?.label).toBe('10 min');
+    expect(at('descanso ')?.options.map((o) => o.label)).toEqual(['30s', '60s', '90s', '2 min', '3 min']);
+    expect(at('  rest ')?.options[0]?.label).toBe('30s');
   });
 });

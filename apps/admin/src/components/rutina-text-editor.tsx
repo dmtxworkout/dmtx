@@ -555,10 +555,10 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
 
   // A small three-level navigation: categories → items (searchable) → preview + insert.
   type Screen =
-    | { level: 'root' }
+    | { level: 'root'; query: string }
     | { level: 'list'; group: InsertGroup; query: string }
     | { level: 'preview'; group: InsertGroup; item: InsertItem; text: string | null };
-  let screen: Screen = allowed.length === 1 ? { level: 'list', group: allowed[0]!, query: '' } : { level: 'root' };
+  let screen: Screen = allowed.length === 1 ? { level: 'list', group: allowed[0]!, query: '' } : { level: 'root', query: '' };
   let rows: HTMLButtonElement[] = [];
   let active = 0;
   const paint = () => rows.forEach((r, i) => r.classList.toggle('active', i === active));
@@ -594,7 +594,7 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   };
   const back = () => {
     if (screen.level === 'preview') go({ level: 'list', group: screen.group, query: '' });
-    else if (screen.level === 'list' && allowed.length > 1) go({ level: 'root' });
+    else if (screen.level === 'list' && allowed.length > 1) go({ level: 'root', query: '' });
     else {
       close();
       view.focus();
@@ -618,15 +618,59 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
     active = 0;
     if (screen.level === 'root') {
       header('Insertar aquí', null);
+      // Search across every category; with nothing typed, the categories.
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Buscar plantilla, bloque o rutina…';
+      input.className = 'rt-insert-search';
+      input.value = screen.query;
+      dom.appendChild(input);
       const list = el('div', 'rt-insert-list');
-      for (const g of allowed) {
-        const b = button('rt-insert-item rt-insert-cat', list, () => go({ level: 'list', group: g, query: '' }));
-        b.innerHTML = `<span class="t">${escape(g.title)}</span><span class="n">${g.items.length}</span>${CHEVRON_ICON}`;
-        rows.push(b);
-      }
-      if (!allowed.length) el('div', 'rt-insert-empty', 'Nada que insertar aquí.', list);
-      paint();
-      window.setTimeout(() => rows[0]?.focus(), 0);
+      const fill = () => {
+        const q = foldText(input.value.trim());
+        list.textContent = '';
+        rows = [];
+        if (!q) {
+          for (const g of allowed) {
+            const b = button('rt-insert-item rt-insert-cat', list, () => go({ level: 'list', group: g, query: '' }));
+            b.innerHTML = `<span class="t">${escape(g.title)}</span><span class="n">${g.items.length}</span>${CHEVRON_ICON}`;
+            rows.push(b);
+          }
+          if (!allowed.length) el('div', 'rt-insert-empty', 'Nada que insertar aquí.', list);
+        } else {
+          for (const g of allowed) {
+            const items = g.items.filter((it) => foldText(`${it.title} ${it.desc ?? ''}`).includes(q));
+            if (!items.length) continue;
+            el('div', 'rt-insert-group', g.title, list);
+            for (const it of items) {
+              const b = button('rt-insert-item', list, () => openPreview(g, it));
+              b.innerHTML = `<span class="t">${escape(it.title)}</span>${it.desc ? `<span class="d">${escape(it.desc)}</span>` : ''}`;
+              rows.push(b);
+            }
+          }
+          if (!rows.length) el('div', 'rt-insert-empty', 'Nada con ese nombre.', list);
+        }
+        active = 0;
+        paint();
+      };
+      input.addEventListener('input', () => {
+        if (screen.level === 'root') screen.query = input.value;
+        fill();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!rows.length) return;
+          active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+          paint();
+          rows[active]?.scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          rows[active]?.click();
+        }
+      });
+      fill();
+      window.setTimeout(() => input.focus(), 0);
       return;
     }
     if (screen.level === 'list') {
@@ -691,7 +735,7 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
       e.preventDefault();
       e.stopPropagation();
       back();
-    } else if (screen.level !== 'list' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    } else if (screen.level === 'preview' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       if (!rows.length) return;
       active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
@@ -1153,7 +1197,19 @@ export function RutinaTextEditor({
               : o.type === 'snippet' || o.type === 'rutina' || o.type === 'template'
                 ? (view: EditorView, _c: unknown, from: number, to: number) =>
                     insertBlock(view, o.type as InsertKind, o.apply, from, to)
-                : o.apply,
+                : o.apply.endsWith(' ')
+                  ? // A keyword that takes a parameter ("AMRAP ", "descanso "): insert
+                    // it and reopen the suggestions so the parameter is offered next.
+                    (view: EditorView, _c: unknown, from: number, to: number) => {
+                      view.dispatch({
+                        changes: { from, to, insert: o.apply },
+                        selection: { anchor: from + o.apply.length },
+                        userEvent: 'input',
+                      });
+                      // After the accept closes this popup, open the next one.
+                      window.setTimeout(() => startCompletion(view), 0);
+                    }
+                  : o.apply,
         })),
       };
     };
