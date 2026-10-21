@@ -178,6 +178,22 @@ function exerciseAt(state: EditorState, pos: number): (ExerciseRef & { docFrom: 
   return ref ? { ...ref, docFrom: line.from + ref.from, docTo: line.from + ref.to } : null;
 }
 
+// Every recognised name gets a mark; with Cmd/Ctrl held the editor root carries
+// `rt-mod` and the marks turn into links (pointer + underline on hover).
+const exerciseMark = Decoration.mark({ class: 'rt-ex' });
+const exerciseLinks = EditorView.decorations.compute([exerciseRefsField], (state) => {
+  const marks: { from: number; to: number }[] = [];
+  for (const r of state.field(exerciseRefsField)) {
+    if (r.line + 1 > state.doc.lines) continue;
+    const line = state.doc.line(r.line + 1);
+    const from = line.from + r.from;
+    const to = Math.min(line.from + r.to, line.to);
+    if (to > from) marks.push({ from, to });
+  }
+  marks.sort((a, b) => a.from - b.from);
+  return Decoration.set(marks.map((m) => exerciseMark.range(m.from, m.to)));
+});
+
 const setParsedLines = StateEffect.define<LineInfo[]>();
 const parsedLinesField = StateField.define<LineInfo[]>({
   create: () => [],
@@ -1116,6 +1132,8 @@ const theme = EditorView.theme({
   '.cm-content': { padding: '10px 16px 40vh 8px', caretColor: 'var(--color-accent)' },
   '.cm-line': { padding: '0 2px' },
   '&.cm-focused': { outline: 'none' },
+  '&.rt-mod .rt-ex': { cursor: 'pointer' },
+  '&.rt-mod .rt-ex:hover': { textDecoration: 'underline', textUnderlineOffset: '3px', color: 'var(--color-accent-dark)' },
   '.cm-activeLine': { backgroundColor: 'rgba(0,0,0,0.03)' },
   '.rt-line-error': { backgroundColor: 'rgba(229, 20, 0, 0.06)' },
   '.rt-line-warn': { backgroundColor: 'rgba(191, 136, 3, 0.07)' },
@@ -1668,6 +1686,7 @@ export function RutinaTextEditor({
           indentUnit.of('  '),
           handlersField,
           exerciseRefsField,
+          exerciseLinks,
           diagsField,
           catalogField,
           parsedLinesField,
@@ -1756,8 +1775,18 @@ export function RutinaTextEditor({
         describe: (id) => describeRef.current?.(id) ?? null,
       }),
     });
+    // Cmd/Ctrl held → recognised exercises look clickable (Cmd+click edits them).
+    const setMod = (held: boolean) => view.dom.classList.toggle('rt-mod', held);
+    const onModKey = (e: KeyboardEvent) => setMod(e.metaKey || e.ctrlKey);
+    const onBlur = () => setMod(false);
+    document.addEventListener('keydown', onModKey);
+    document.addEventListener('keyup', onModKey);
+    window.addEventListener('blur', onBlur);
     if (autoFocus) view.focus();
     return () => {
+      document.removeEventListener('keydown', onModKey);
+      document.removeEventListener('keyup', onModKey);
+      window.removeEventListener('blur', onBlur);
       view.destroy();
       viewRef.current = null;
     };
