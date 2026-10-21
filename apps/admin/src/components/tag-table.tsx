@@ -62,6 +62,8 @@ export function TagTable({ kind }: { kind: Kind }) {
   const { data, isLoading, isError } = useQuery({ queryKey: ['taxonomy'], queryFn: () => api.taxonomy.get() });
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState('');
+  // Names being created right now: shown as ghost rows until the list refetches.
+  const [adding, setAdding] = useState<string[]>([]);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
@@ -80,12 +82,15 @@ export function TagTable({ kind }: { kind: Kind }) {
     const name = draft.trim();
     if (!name) return;
     setDraft('');
+    setAdding((xs) => [...xs, name]);
     try {
       await kind.create(name);
       await refresh();
     } catch (e) {
       setDraft(name);
       fail(e);
+    } finally {
+      setAdding((xs) => xs.filter((x) => x !== name));
     }
   };
   const submitRename = async () => {
@@ -128,8 +133,26 @@ export function TagTable({ kind }: { kind: Kind }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <PageHeader title={kind.title} subtitle={data ? `${all.length} ${all.length === 1 ? kind.singular : kind.plural}` : kind.subtitle}>
-        <div className="flex flex-wrap items-center gap-2.5">
+      <PageHeader
+        title={kind.title}
+        subtitle={data ? `${all.length} ${all.length === 1 ? kind.singular : kind.plural}` : kind.subtitle}
+        actions={
+          <div className="flex items-center gap-2">
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => onKey(e, () => void add())}
+              placeholder={kind.title === 'Equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
+              aria-label={kind.title === 'Equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
+              className="h-[38px] w-[220px] rounded-lg border border-line-2 bg-surface px-3 text-sm text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
+            />
+            <Button type="button" onClick={() => void add()} disabled={!draft.trim()}>
+              Agregar
+            </Button>
+          </div>
+        }
+      >
+        <div className="flex flex-col gap-2.5">
           <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
             <span className="text-muted-2">⌕</span>
             <input
@@ -174,23 +197,19 @@ export function TagTable({ kind }: { kind: Kind }) {
             <span className="text-right font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2">Ejercicios</span>
           </div>
 
-          <div className={`grid ${COLS} items-center border-b border-line-4 py-2`}>
-            <span />
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => onKey(e, () => void add())}
-              placeholder={`+ ${kind.title === 'Equipo' ? 'Equipo' : 'Músculo'} (Enter para agregar)`}
-              className="h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
-            />
-            <span />
-          </div>
+          {adding.map((name, i) => (
+            <div key={`adding-${i}`} className={`grid ${COLS} items-center border-b border-line-4 py-2.5 opacity-70`} aria-busy="true">
+              <span className="ml-0.5 block h-3.5 w-3.5 animate-spin rounded-full border-2 border-line-2 border-t-ink" aria-hidden />
+              <span className="truncate text-sm font-semibold text-ink">{name}</span>
+              <span className="text-right font-mono text-[12px] text-muted">Agregando…</span>
+            </div>
+          ))}
 
           {isLoading ? (
             <div className="p-8 text-center text-sm text-muted">{es.app.loading}</div>
           ) : isError ? (
             <div className="p-8 text-center text-sm text-accent-dark">{es.app.error}</div>
-          ) : rows.length === 0 ? (
+          ) : rows.length === 0 && adding.length === 0 ? (
             <div className="p-10 text-center text-sm text-muted">{q ? 'Sin resultados.' : kind.empty}</div>
           ) : (
             rows.map((r) => {
