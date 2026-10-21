@@ -32,7 +32,8 @@ to it: items under `3 rondas` form that block; lines under a format header
 (`AMRAP 5 min`) are that format's content; lines under `Calentamiento` form the
 warmup. Dedenting back to the column of the header returns to the main
 rutina. Colons after section and group headers are optional. There is no flat
-mode: a header with nothing indented under it is simply empty.
+mode: a header with nothing indented under it is simply empty (and warned
+about), and blank lines never close anything.
 
 The admin edits each section in its own tab (Rutina · Calentamiento ·
 Enfriamiento), so the headers are never typed there: `splitSections` /
@@ -46,7 +47,7 @@ switched from the same bar.
 |---|---|
 | `Calentamiento` / `Enfriamiento` (/ `Rutina`) | Section header (`warmup` / `cooldown` / `main`). Content indented under it belongs to it; dedent returns to `main`. Also `Warmup`, `Cooldown`, `Vuelta a la calma`. |
 | `AMRAP 12 min` | **Part**: a format header; the blocks indented under it play on that format. A section can hold several parts in sequence, plus loose blocks outside any part (played once, in order). Main without any part defaults to `For time`. |
-| `3 rondas, descanso 1 min - Pierna:` | **Group header** → block with `rounds`, optional trailing rest item and label. Also `Superserie`, `Circuito 3 rondas`, `Bloque:`, `5 series`. Items follow until a blank line (or until indentation drops back). |
+| `3 rondas, descanso 1 min - Pierna:` | **Group header** → block with `rounds`, optional trailing rest item and label. Also `Superserie`, `Circuito 3 rondas`, `Bloque:`, `5 series`. Its items are the lines indented under it; blank lines change nothing, dedenting to the header's column leaves the group. A header with no exercise indented under it gets an `empty_group` warning. |
 | `41 burpees` | **Item**: count + exercise + modifiers (see below). A loose item is its own single block. |
 | `descanso 90s` | Rest line: rest item inside a group, or a loose rest block. |
 | `# comentario` | Internal comment: never stored in the structure nor shown to the athlete. Survives because the rutina keeps its `sourceText`. |

@@ -30,9 +30,9 @@ describe('parseRutina', () => {
     const p = parse(`41 burpess
 
 3 Rondas
-19 Power Clean @135/95 lb
-10 Bar Muscle Ups
-41 single cross overs
+  19 Power Clean @135/95 lb
+  10 Bar Muscle Ups
+  41 single cross overs
 
 41 burpees
 `);
@@ -535,5 +535,31 @@ describe('intervals outside an EMOM', () => {
       [2, 'warning', 'interval_outside_emom'],
     ]);
     expect(flat(toWorkoutInput(p).blocks)[0]!.items[0]).toMatchObject({ reps: 20, intervalIndex: null });
+  });
+});
+
+describe('blank lines inside a group', () => {
+  it('keeps items at the group indentation inside it; a dedented line leaves it', () => {
+    const w = toWorkoutInput(parse(`EMOM 5 x 5 min
+  3 rondas:
+    10 burpees
+
+    800 m carrera
+
+  40 burpees
+`));
+    const part = w.blocks[0]!;
+    expect(part.blocks.map((b) => [b.rounds, b.items.length])).toEqual([
+      [3, 2],
+      [null, 1],
+    ]);
+  });
+});
+
+describe('empty groups', () => {
+  it('warns when nothing is indented under a group header', () => {
+    const p = parse('3 rondas:\n10 burpees\n');
+    expect(p.diagnostics.map((d) => [d.line, d.severity, d.code])).toEqual([[0, 'warning', 'empty_group']]);
+    expect(toWorkoutInput(p).blocks.map((b) => b.items.length)).toEqual([0, 1]);
   });
 });

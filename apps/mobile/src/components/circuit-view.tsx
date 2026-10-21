@@ -55,11 +55,9 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
     }
     return flat
       .map(({ block: b, partOf }, i) => ({
-        // The part's label shows once, on its first block.
-        name:
-          [partOf && (i === 0 || flat[i - 1]?.partOf !== partOf) ? partLabel(partOf) : null, b.label]
-            .filter(Boolean)
-            .join(' · ') || null,
+        // The part's label shows once, above its first block.
+        part: partOf && (i === 0 || flat[i - 1]?.partOf !== partOf) ? partLabel(partOf) : null,
+        label: b.label ? b.label.replace(/^\p{L}/u, (c) => c.toUpperCase()) : null,
         rounds: b.rounds && b.rounds > 0 ? b.rounds : 1,
         // Notes written for the athlete: the part's (once, on its first block) and the block's.
         note:
@@ -74,53 +72,76 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
   return (
     <>
       {blocksView.map((bv, i) => {
-        const label = [bv.name, bv.rounds > 1 ? `× ${bv.rounds} rondas` : '']
-          .filter(Boolean)
-          .join('  ·  ');
+        // A group (rounds, a label or several exercises) is boxed with a plain
+        // heading, so it is clear what repeats together and what sits outside.
+        const grouped = bv.rounds > 1 || !!bv.label || bv.items.length > 1;
+        const rows = bv.items.map((it) =>
+          it.kind === 'rest' ? (
+            <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
+              <Text className="w-14 font-mono-semibold text-[15px] text-ink-4">
+                {it.workSeconds != null
+                  ? it.workSeconds >= 60
+                    ? mmss(it.workSeconds)
+                    : `${it.workSeconds} s`
+                  : '—'}
+              </Text>
+              <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink-3">
+                Descanso
+              </Text>
+            </View>
+          ) : (
+            <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
+              <Text className="w-14 font-mono-semibold text-[15px] text-accent">
+                {targetText(it, du)}
+              </Text>
+              <View className="min-w-0 flex-1">
+                <Text numberOfLines={1} className="font-semibold text-[15px] text-ink">
+                  {it.exercise?.name}
+                </Text>
+                {it.notes ? (
+                  <Text className="font-sans text-[12px] italic leading-4 text-ink-3">{it.notes}</Text>
+                ) : null}
+              </View>
+              {loadKgOf(it) != null ? (
+                <Text className="font-mono text-[12px] text-ink-3">
+                  {formatWeight(loadKgOf(it), wu)}
+                </Text>
+              ) : null}
+            </View>
+          ),
+        );
         return (
-          <View key={i} className="gap-0.5">
-            {label ? (
+          <View key={i} className="gap-1">
+            {bv.part ? (
               <Text className="pb-0.5 font-mono-semibold text-[11px] uppercase tracking-wider text-accent">
-                {label}
+                {bv.part}
               </Text>
             ) : null}
-            {bv.note ? (
-              <Text className="pb-1 font-sans text-[13px] italic leading-5 text-ink-3">{bv.note}</Text>
-            ) : null}
-            {bv.items.map((it) =>
-              it.kind === 'rest' ? (
-                <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
-                  <Text className="w-14 font-mono-semibold text-[15px] text-ink-4">
-                    {it.workSeconds != null
-                      ? it.workSeconds >= 60
-                        ? mmss(it.workSeconds)
-                        : `${it.workSeconds} s`
-                      : '—'}
+            {grouped ? (
+              <View className="rounded-xl border border-line-2 bg-surface-2 px-3 py-2">
+                <View className="flex-row flex-wrap items-baseline gap-x-2 pb-1">
+                  <Text className="font-bold text-[15px] text-ink">
+                    {bv.rounds > 1 ? `${bv.rounds} rondas` : (bv.label ?? 'Bloque')}
                   </Text>
-                  <Text numberOfLines={1} className="min-w-0 flex-1 font-semibold text-[15px] text-ink-3">
-                    Descanso
-                  </Text>
-                </View>
-              ) : (
-                <View key={it.id} className="flex-row items-center gap-3 border-b border-line-2 py-2">
-                  <Text className="w-14 font-mono-semibold text-[15px] text-accent">
-                    {targetText(it, du)}
-                  </Text>
-                  <View className="min-w-0 flex-1">
-                    <Text numberOfLines={1} className="font-semibold text-[15px] text-ink">
-                      {it.exercise?.name}
-                    </Text>
-                    {it.notes ? (
-                      <Text className="font-sans text-[12px] italic leading-4 text-ink-3">{it.notes}</Text>
-                    ) : null}
-                  </View>
-                  {loadKgOf(it) != null ? (
-                    <Text className="font-mono text-[12px] text-ink-3">
-                      {formatWeight(loadKgOf(it), wu)}
-                    </Text>
+                  {bv.rounds > 1 && bv.label ? (
+                    <Text className="font-sans text-[13px] text-ink-3">· {bv.label}</Text>
                   ) : null}
+                  <Text className="font-sans text-[13px] text-ink-3">
+                    {bv.rounds > 1 ? `repite estos ejercicios ${bv.rounds} veces` : 'seguidos'}
+                  </Text>
                 </View>
-              ),
+                {bv.note ? (
+                  <Text className="pb-1 font-sans text-[13px] italic leading-5 text-ink-3">{bv.note}</Text>
+                ) : null}
+                <View className="border-l-2 border-accent/40 pl-3">{rows}</View>
+              </View>
+            ) : (
+              <View>
+                {bv.note ? (
+                  <Text className="pb-1 font-sans text-[13px] italic leading-5 text-ink-3">{bv.note}</Text>
+                ) : null}
+                {rows}
+              </View>
             )}
           </View>
         );

@@ -546,7 +546,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   // it; dedenting back to the header's column returns to the main section.
   let sectionHeaderIndent = -1;
   let group: ParsedBlock | null = null;
-  let groupIndent: number | null = null;
   let groupHeaderIndent = 0;
   // Interval slot of the open "intervalo N:" group (0-based), stamped on its items.
   let groupSlot: number | null = null;
@@ -555,8 +554,19 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   let partIndent = -1;
 
   const closeGroup = () => {
+    // A header with no exercise indented under it is almost always a missed indent.
+    if (group && !group.items.some((it) => it.kind === 'exercise')) {
+      const headerLine = rawLines[group.line] ?? '';
+      diag(ctx, {
+        line: group.line,
+        from: headerLine.length - headerLine.trimStart().length,
+        to: headerLine.trimEnd().length,
+        severity: 'warning',
+        code: 'empty_group',
+        message: 'Este bloque está vacío: indenta debajo los ejercicios que van dentro.',
+      });
+    }
     group = null;
-    groupIndent = null;
     groupSlot = null;
   };
   const closePart = () => {
@@ -601,7 +611,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     if (t) b.label = t;
     pushBlock(b);
     group = b;
-    groupIndent = null;
     return { block: b, restAfter };
   };
   // Pending "descanso" from a group header, appended after the group's items.
@@ -624,11 +633,8 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     const indent = f.length - f.trimStart().length;
     const info = (kind: LineInfo['kind']) => lines.push({ kind, section });
 
-    if (!trimmed) {
-      flushGroupRest();
-      closeGroup();
-      return info('blank');
-    }
+    // Blank lines separate nothing: only indentation scopes (as in Python).
+    if (!trimmed) return info('blank');
     if (/^\s*#/.test(f)) return info('comment');
 
     const sec = trimmed.match(SECTION_RE);
@@ -655,8 +661,8 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       closeGroup();
       closePart();
     }
-    // A group whose items are indented past its header closes on dedent.
-    if (group && groupIndent != null && groupIndent > groupHeaderIndent && indent <= groupHeaderIndent) {
+    // A group holds what is indented past its header; dedenting to its column closes it.
+    if (group && indent <= groupHeaderIndent) {
       flushGroupRest();
       closeGroup();
     }
@@ -671,7 +677,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       const container = part ? (part.children ?? []) : blocks;
       const last = container[container.length - 1];
       const target: { notes: string | null } | null =
-        group && !(groupIndent != null && groupIndent > groupHeaderIndent && indent <= groupHeaderIndent)
+        group && indent > groupHeaderIndent
           ? (group.items[group.items.length - 1] ?? group)
           : last
             ? last.loose
@@ -732,7 +738,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       const seconds = parseDuration(rest[1] ?? rest[2] ?? '') ?? 0;
       const item: ParsedItem = { ...emptyItem(i), kind: 'rest', measure: 'time', workSeconds: seconds };
       if (group) {
-        if (groupIndent == null) groupIndent = indent;
         (group as ParsedBlock).items.push(item);
       } else {
         flushGroupRest();
@@ -810,7 +815,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     // Exercise line.
     const item = parseItemLine(raw, i, ctx, { format: part?.format?.format ?? null });
     if (group) {
-      if (groupIndent == null) groupIndent = indent;
       if (groupSlot != null && item.intervalIndex == null) item.intervalIndex = groupSlot;
       (group as ParsedBlock).items.push(item);
     } else {
