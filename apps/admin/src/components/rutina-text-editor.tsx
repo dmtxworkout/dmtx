@@ -993,6 +993,8 @@ export function RutinaTextEditor({
       const r = completionsAt(ctx.state.doc.toString(), ctx.pos, catalogRef.current, {
         explicit: ctx.explicit,
         extras: extrasRef.current,
+        // Sections are edited in their own tabs; no header suggestions.
+        sections: false,
       });
       if (!r || !r.options.length) return null;
       return {

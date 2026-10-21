@@ -34,6 +34,12 @@ warmup. Dedenting back to the column of the header returns to the main
 rutina. Colons after section and group headers are optional. There is no flat
 mode: a header with nothing indented under it is simply empty.
 
+The admin edits each section in its own tab (Rutina · Calentamiento ·
+Enfriamiento), so the headers are never typed there: `splitSections` /
+`joinSections` in `@dmtx/core` turn the stored document into three unindented
+texts and back. Variants (RX / Escalada) are whole versions of the rutina,
+switched from the same bar.
+
 ## Lines
 
 | Line | Meaning |

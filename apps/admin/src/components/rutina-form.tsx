@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { CreateWorkoutInput, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, Workout, WorkoutFormat, WorkoutKind } from '@dmtx/schemas';
 import {
   Catalog,
   formatDistance,
@@ -23,6 +23,9 @@ import {
   type ParsedItem,
   type ParsedRutina,
   estimateDurationSeconds,
+  joinSections,
+  splitSections,
+  type SectionTexts,
 } from '@dmtx/core';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
@@ -54,6 +57,8 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
 };
 
 
+const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Calentamiento', cooldown: 'Enfriamiento' };
+const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '' };
 const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque guardado…';
 
 // Complete reference shown in the right column.
@@ -68,7 +73,7 @@ const GUIDE_SECTIONS: { title: string; rows: GuideRow[] }[] = [
       { k: 'Superserie:', v: 'bloque tipo superserie (admite "Superserie 3 rondas:")' },
       { k: '3 rondas, descanso 1 min:', v: 'descanso al final de cada ronda' },
       { k: 'descanso 90s', v: 'descanso suelto entre ejercicios' },
-      { k: 'Calentamiento · Enfriamiento', v: 'secciones opcionales: lo indentado debajo pertenece a ellas; al volver a la columna 0 sigue la rutina' },
+      { k: 'Calentamiento · Enfriamiento', v: 'cada uno tiene su pestaña arriba; se escriben igual que la rutina' },
       { k: 'Sangría', v: 'como en Python: lo indentado va dentro de la línea de arriba (sección, formato o bloque)' },
       { k: '// nota', v: 'comentario de línea completa' },
     ],
@@ -184,13 +189,8 @@ Fuerza
   {
     id: 'partes',
     title: 'For time con partes',
-    desc: 'Calentamiento, varias partes y enfriamiento.',
-    text: (ex) => `# Lo indentado pertenece a la línea de arriba (sección, formato o bloque)
-Calentamiento
-  AMRAP 5 min
-    10 ${ex(0)}
-    plancha 30s
-
+    desc: 'Varias partes seguidas, cada una con su formato.',
+    text: (ex) => `# Lo indentado pertenece a la línea de arriba (formato o bloque)
 For time cap 20 min
   3 rondas
     15 ${ex(0)}
@@ -199,8 +199,9 @@ For time cap 20 min
 
 40 ${ex(0)}
 
-Enfriamiento
-  ${ex(1)} 1 min
+AMRAP 5 min
+  10 ${ex(1)}
+  ${ex(2)} 30s
 `,
   },
   {
@@ -329,18 +330,20 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   );
   const catalogReady = !!exList;
 
-  // The rutina text. Seeded once the catalog is available (names come from it).
-  const [text, setText] = useState<string | null>(null);
+  // The rutina text, one piece per section (each section is a tab). Seeded once
+  // the catalog is available (names come from it).
+  const [sections, setSections] = useState<SectionTexts | null>(null);
+  const [activeSection, setActiveSection] = useState<BlockSection>('main');
   useEffect(() => {
-    if (text === null && catalogReady && !createOpen) {
-      setText(initialText(workout, catalog));
+    if (sections === null && catalogReady && !createOpen) {
+      setSections(splitSections(initialText(workout, catalog)));
     }
-  }, [text, catalogReady, createOpen, workout, catalog]);
+  }, [sections, catalogReady, createOpen, workout, catalog]);
 
-  // Variants (RX / Escalada / …): one tab each, after the base tab. Each is a
-  // full rutina row linked to this one; loaded (and serialized) once the
+  // Variants (RX / Escalada / …): versions of the whole rutina, switched from
+  // the tab bar. Each is a full rutina row linked to this one; loaded once the
   // catalog is ready, saved/created/removed alongside the base on "Guardar".
-  type VariantTab = { id: string | null; label: string; text: string };
+  type VariantTab = { id: string | null; label: string; sections: SectionTexts };
   const [baseLabel, setBaseLabel] = useState(workout?.variantLabel ?? '');
   const [variants, setVariants] = useState<VariantTab[] | null>(workout?.variants?.length ? null : []);
   const [removedVariantIds, setRemovedVariantIds] = useState<string[]>([]);
@@ -353,7 +356,13 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     Promise.all(workout.variants.map((v) => api.workouts.get(v.id)))
       .then((rows) => {
         if (cancelled) return;
-        setVariants(rows.map((w) => ({ id: w.id, label: w.variantLabel ?? '', text: w.sourceText ?? serializeRutina(w, catalog) })));
+        setVariants(
+          rows.map((w) => ({
+            id: w.id,
+            label: w.variantLabel ?? '',
+            sections: splitSections(w.sourceText ?? serializeRutina(w, catalog)),
+          })),
+        );
       })
       .catch((e) => setServerError(e instanceof Error ? e.message : es.app.error));
     return () => {
@@ -362,14 +371,20 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   }, [variants, catalogReady, workout, catalog]);
   const tabs = variants ?? [];
   const activeVariant = activeTab > 0 ? tabs[activeTab - 1] : undefined;
-  const value = activeVariant ? activeVariant.text : (text ?? '');
+  const activeSections = activeVariant ? activeVariant.sections : (sections ?? EMPTY_SECTIONS);
+  const value = activeSections[activeSection];
   const setValue = (v: string) => {
-    if (activeTab === 0) setText(v);
-    else setVariants((vs) => (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, text: v } : t)));
+    if (activeTab === 0) setSections((sc) => ({ ...(sc ?? EMPTY_SECTIONS), [activeSection]: v }));
+    else
+      setVariants((vs) =>
+        (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, sections: { ...t.sections, [activeSection]: v } } : t)),
+      );
   };
-  const editorReady = text !== null && variants !== null;
+  // The whole rutina (all sections) of the active version, as one document.
+  const doc = useMemo(() => joinSections(activeSections), [activeSections]);
+  const editorReady = sections !== null && variants !== null;
   const addVariant = (label: string) => {
-    setVariants((vs) => [...(vs ?? []), { id: null, label, text: value }]);
+    setVariants((vs) => [...(vs ?? []), { id: null, label, sections: { ...activeSections } }]);
     setActiveTab(tabs.length + 1);
   };
   const removeVariant = (index: number) => {
@@ -387,7 +402,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const canUndo = editorApi.current?.canUndo() ?? false;
   const canRedo = editorApi.current?.canRedo() ?? false;
 
-  const parsed = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
+  // Preview, duration and saving read the whole document; the editor's
+  // diagnostics follow the active tab alone (its line numbers).
+  const parsed = useMemo(() => parseRutina(doc, { catalog }), [doc, catalog]);
+  const parsedTab = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
   const format = parsed.main?.format ?? 'for_time';
 
   const previewModel = useMemo(
@@ -502,9 +520,10 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   const titleCase = (s: string) => s.trim().replace(/^\p{L}/u, (c) => c.toUpperCase());
 
   // ---- Save -----------------------------------------------------------------
-  // The payload for one tab's text; metadata is shared by base and variants.
-  const payloadFor = (tabText: string, variant: { ofId: string; label: string } | null): CreateWorkoutInput => {
+  // The payload for one version's sections; metadata is shared by base and variants.
+  const payloadFor = (secs: SectionTexts, variant: { ofId: string; label: string } | null): CreateWorkoutInput => {
     const structured = type === 'structured';
+    const tabText = joinSections(secs);
     const structure = structured ? toWorkoutInput(parseRutina(tabText, { catalog })) : null;
     return {
       name,
@@ -524,14 +543,14 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
   };
   const save = useMutation({
     mutationFn: async () => {
-      const basePayload = payloadFor(text ?? '', null);
+      const basePayload = payloadFor(sections ?? EMPTY_SECTIONS, null);
       const saved = workout ? await api.workouts.update(workout.id, basePayload) : await api.workouts.create(basePayload);
       // Variants: create the new ones, update the rest, drop the removed.
       const savedVariants: VariantTab[] = [];
       for (const v of tabs) {
-        const p = payloadFor(v.text, { ofId: saved.id, label: v.label });
+        const p = payloadFor(v.sections, { ofId: saved.id, label: v.label });
         const row = v.id ? await api.workouts.update(v.id, p) : await api.workouts.create(p);
-        savedVariants.push({ id: row.id, label: v.label, text: v.text });
+        savedVariants.push({ id: row.id, label: v.label, sections: v.sections });
       }
       await Promise.all(removedVariantIds.map((id) => api.workouts.remove(id)));
       return { saved, savedVariants };
@@ -556,12 +575,14 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
     }
     setNameError(false);
     if (type === 'structured') {
-      const all = [{ label: baseLabel.trim() || 'Principal', text: text ?? '' }, ...tabs];
+      const all = [{ label: baseLabel.trim() || 'Principal', sections: sections ?? EMPTY_SECTIONS }, ...tabs];
       for (let i = 0; i < all.length; i += 1) {
-        const p = parseRutina(all[i]!.text, { catalog });
-        const n = p.diagnostics.filter((d) => d.severity === 'error').length;
+        const p = parseRutina(joinSections(all[i]!.sections), { catalog });
+        const errors = p.diagnostics.filter((d) => d.severity === 'error');
+        const n = errors.length;
         if (n > 0) {
           setActiveTab(i);
+          setActiveSection(p.lines[errors[0]!.line]?.section ?? 'main');
           setServerError(
             (n === 1 ? 'Hay 1 línea con error' : `Hay ${n} líneas con error`) +
               (all.length > 1 ? ` en «${all[i]!.label}»` : '') +
@@ -637,48 +658,69 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
-              {!segmentMode &&
-                [{ id: 'base', label: baseLabel.trim() || 'Principal' }, ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label }))].map(
-                  (t, i) => (
-                    <div
-                      key={t.id}
-                      onClick={() => setActiveTab(i)}
-                      onDoubleClick={() => setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label })}
-                      title={i === 0 ? 'Rutina principal · doble clic para nombrar el nivel' : 'Variante · doble clic para renombrar'}
-                      className={cn(
-                        'group flex cursor-pointer items-center gap-2 border-r border-line px-4 font-mono text-[12px]',
-                        activeTab === i
-                          ? 'bg-surface text-ink shadow-[inset_0_-2px_0_var(--color-accent)]'
+              {(segmentMode ? (['main'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
+                const empty = !activeSections[sec].trim();
+                return (
+                  <div
+                    key={sec}
+                    onClick={() => setActiveSection(sec)}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 border-r border-line px-4 font-mono text-[12px]',
+                      activeSection === sec
+                        ? 'bg-surface text-ink shadow-[inset_0_-2px_0_var(--color-accent)]'
+                        : empty
+                          ? 'text-faint-2 hover:bg-surface-3 hover:text-ink-2'
                           : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
-                      )}
-                    >
-                      <span>{t.label || 'Sin nombre'}</span>
-                      {i > 0 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setConfirmRemove({ index: i - 1, label: t.label });
-                          }}
-                          className="rounded px-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
-                          title="Eliminar variante"
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ),
-                )}
+                    )}
+                  >
+                    {SECTION_TAB[sec]}
+                  </div>
+                );
+              })}
               {!segmentMode && (
-                <button
-                  type="button"
-                  onClick={() => setTabDialog({ mode: 'add', index: tabs.length + 1, label: tabs.length === 0 ? 'Escalada' : '' })}
-                  disabled={!editorReady}
-                  className="px-3 font-mono text-[14px] text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-40"
-                  title="Añadir variante (copia la pestaña activa)"
-                >
-                  +
-                </button>
+                <div className="ml-3 flex items-center gap-1 font-mono text-[11px]">
+                  <span className="mr-1 text-muted">Versión</span>
+                  {[{ id: 'base', label: baseLabel.trim() || 'Principal' }, ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label }))].map(
+                    (t, i) => (
+                      <span
+                        key={t.id}
+                        onClick={() => setActiveTab(i)}
+                        onDoubleClick={() => setTabDialog({ mode: 'rename', index: i, label: i === 0 ? baseLabel : t.label })}
+                        title={i === 0 ? 'Versión principal · doble clic para nombrar el nivel' : 'Variante · doble clic para renombrar'}
+                        className={cn(
+                          'group inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5',
+                          activeTab === i
+                            ? 'border-accent bg-accent-tint text-accent-dark'
+                            : 'border-line-2 text-ink-3 hover:border-line hover:text-ink-2',
+                        )}
+                      >
+                        {t.label || 'Sin nombre'}
+                        {i > 0 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirmRemove({ index: i - 1, label: t.label });
+                            }}
+                            className="rounded px-0.5 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
+                            title="Eliminar variante"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
+                    ),
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setTabDialog({ mode: 'add', index: tabs.length + 1, label: tabs.length === 0 ? 'Escalada' : '' })}
+                    disabled={!editorReady}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[13px] text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-40"
+                    title="Añadir variante (copia la versión activa)"
+                  >
+                    +
+                  </button>
+                </div>
               )}
               <span className="flex-1" />
               <div className="flex items-center gap-0.5 px-2">
@@ -715,11 +757,11 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
               ) : (
                 <RutinaTextEditor
-                  key={activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}
+                  key={`${activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
                   value={value}
                   onChange={setValue}
                   catalog={catalog}
-                  parsed={parsed}
+                  parsed={parsedTab}
                   placeholder={PLACEHOLDER}
                   autoFocus={!workout}
                   extras={extras}
@@ -778,7 +820,7 @@ export function RutinaForm({ workout, kind = 'rutina' }: { workout?: Workout; ki
             />
             <p className="mt-2 text-[12px] leading-snug text-muted">
               {tabDialog?.mode === 'add'
-                ? 'Se crea copiando el contenido de la pestaña activa. En la app el usuario elige el nivel antes de empezar.'
+                ? 'Se crea copiando la versión activa (sus tres pestañas). En la app el usuario elige el nivel antes de empezar.'
                 : 'Así verá el usuario este nivel en la app. Déjalo vacío para "Principal".'}
             </p>
           </div>

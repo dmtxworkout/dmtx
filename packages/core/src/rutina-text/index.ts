@@ -19,3 +19,5 @@ export type {
   CompletionExtra,
   CompletionOptions,
 } from './completion';
+export { joinSections, splitSections } from './sections';
+export type { SectionTexts } from './sections';

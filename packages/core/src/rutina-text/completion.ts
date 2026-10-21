@@ -23,6 +23,8 @@ export interface CompletionExtra {
 export interface CompletionOptions {
   explicit?: boolean;
   extras?: CompletionExtra[];
+  /** Offer "Calentamiento" / "Enfriamiento" headers (off when sections are edited in tabs). */
+  sections?: boolean;
 }
 
 export interface Completion {
@@ -227,6 +229,7 @@ export function completionsAt(
   const before = text.slice(lineStart, offset);
   const indent = before.length - before.trimStart().length;
   const typed = fold(before);
+  const sectionOpts = opts.sections === false ? [] : SECTIONS;
   const atSectionStart = isSectionStart(text, lineStart);
   const wordStart = lineStart + before.lastIndexOf(' ') + 1;
   const word = fold(before.slice(before.lastIndexOf(' ') + 1));
@@ -234,13 +237,13 @@ export function completionsAt(
   // A. Nothing typed yet: list what can go on this line.
   if (!typed) {
     const options: Completion[] = atSectionStart
-      ? [...FORMATS, ...SECTIONS]
-      : [GROUP_LINE, REST_LINE, ...SECTIONS, ...extraOptions(opts, ''), ...exerciseOptions(cat, '')];
+      ? [...FORMATS, ...sectionOpts]
+      : [GROUP_LINE, REST_LINE, ...sectionOpts, ...extraOptions(opts, ''), ...exerciseOptions(cat, '')];
     return { from: offset, to: offset, options };
   }
 
   // B. Section headers are whole-line things.
-  const sections = SECTIONS.filter(prefixOf(typed));
+  const sections = sectionOpts.filter(prefixOf(typed));
   if (sections.length && !atSectionStart) {
     return { from: lineStart + indent, to: lineEnd, options: sections };
   }
