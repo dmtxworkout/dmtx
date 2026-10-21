@@ -429,8 +429,8 @@ const diagGutter = gutter({
 
 // --- "+" gutter: insert a template / saved block / rutina at a line ----------
 // The "+" sits left of the line number on the hovered line and on the cursor's
-// line; clicking it opens a searchable menu. What the menu offers depends on
-// where the line sits: inside a format or a group only saved blocks fit.
+// line; clicking it opens a searchable menu. Inside a format or a group, whole
+// rutinas are left out (they only fit at the top level).
 const setInserts = StateEffect.define<InsertGroup[]>();
 const insertsField = StateField.define<InsertGroup[]>({
   create: () => [],
@@ -547,8 +547,8 @@ function buildInsertMenu(view: EditorView, lineNo: number): { dom: HTMLElement; 
   const { insert } = view.state.field(handlersField);
   const parent = parentKindOf(view, lineNo);
   const nested = parent === 'format' || parent === 'group';
-  // Inside a format or a group only saved blocks fit.
-  const allowed = groups.filter((g) => !nested || g.kind === 'snippet');
+  // Formats and groups nest freely; a whole rutina only fits at the top level.
+  const allowed = groups.filter((g) => !nested || g.kind !== 'rutina');
   const dom = document.createElement('div');
   dom.className = 'rt-insert';
   const close = () => view.dispatch({ effects: openInsertMenu.of(null) });

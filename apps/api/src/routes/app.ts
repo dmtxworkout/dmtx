@@ -16,7 +16,7 @@ import {
 import type { Database } from '@dmtx/db';
 import { createWorkoutLogSchema } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
-import { nestBlocks } from './workouts';
+import { nestBlocks, type Nested } from './workouts';
 import { resolveMediaUrls } from '../lib/media';
 import { resolveEntitlement } from '../lib/entitlement';
 import { requireAccess, requireUser } from '../middleware/auth';
@@ -373,13 +373,13 @@ appRoute.get('/workouts/:id', async (c) => {
           completedAt: lastLog.completedAt ? lastLog.completedAt.toISOString() : null,
         }
       : null,
-    blocks: nestBlocks(blocks).map((b) => ({
-      ...appBlock(b),
-      blocks: b.blocks.map((c) => ({ ...appBlock(c), blocks: [] })),
-    })),
+    blocks: nestBlocks(blocks).map(function tree(b: Nested<AppBlockRow>): AppBlockOut {
+      return { ...appBlock(b), blocks: b.blocks.map(tree) };
+    }),
   });
 
   type AppBlockRow = (typeof blocks)[number];
+  type AppBlockOut = ReturnType<typeof appBlock> & { blocks: AppBlockOut[] };
   function appBlock(b: AppBlockRow) {
     return {
       id: b.id,

@@ -250,22 +250,17 @@ function pvItem(it: ParsedItem, inSlot = false): PvItem {
     interval: !inSlot && it.intervalIndex != null ? it.intervalIndex + 1 : null,
   };
 }
+/** Parsed blocks → preview blocks, nesting kept (parts show their header, groups their box). */
 const pvBlock = (b: ParsedBlock): PvBlock => ({
   title: b.label,
   rounds: b.rounds,
   note: b.notes,
+  loose: b.loose,
+  part: b.kind === 'part' ? (b.format ? formatHeader(b.format.format, b.format) : 'Parte') : null,
   items: b.items.map((it) => pvItem(it, b.type === 'emom')),
+  blocks: (b.children ?? []).map(pvBlock),
 });
-/** Parts become a header entry followed by their blocks. */
-const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] =>
-  blocks.flatMap((b) =>
-    b.kind === 'part'
-      ? [
-          { title: null, rounds: null, items: [], part: b.format ? formatHeader(b.format.format, b.format) : 'Parte', note: b.notes },
-          ...(b.children ?? []).map(pvBlock),
-        ]
-      : [pvBlock(b)],
-  );
+const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
 
 function previewFrom(
   parsed: ParsedRutina,

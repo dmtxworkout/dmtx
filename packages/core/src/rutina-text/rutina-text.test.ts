@@ -331,9 +331,11 @@ describe('completionsAt', () => {
     expect(at('For time\n10 burpees\n\nEnf')?.options[0]?.label).toBe('Enfriamiento');
   });
 
-  it('suggests exercises inside a group, not formats', () => {
-    const c = at('For time\n3 rondas:\n  10 bur');
-    expect(c?.options[0]?.label).toBe('Burpees');
+  it('suggests exercises after a count inside a group, and formats by prefix anywhere', () => {
+    expect(at('For time\n3 rondas:\n  10 bur')?.options[0]?.label).toBe('Burpees');
+    expect(at('For time\n3 rondas:\n  am')?.options[0]?.label).toBe('AMRAP');
+    expect(at('3 rondas:\n  des')?.options[0]?.label).toBe('descanso 60s');
+    expect(at('3 rondas:\n  re')?.options[0]?.label).toBe('rest 60s');
   });
 });
 
@@ -561,5 +563,41 @@ describe('empty groups', () => {
     const p = parse('3 rondas:\n10 burpees\n');
     expect(p.diagnostics.map((d) => [d.line, d.severity, d.code])).toEqual([[0, 'warning', 'empty_group']]);
     expect(toWorkoutInput(p).blocks.map((b) => b.items.length)).toEqual([0, 1]);
+  });
+});
+
+describe('nested parts', () => {
+  it('lets a format live inside a group inside a part, and round-trips', () => {
+    const text = `EMOM 5 x 5 min
+  3 rondas:
+    AMRAP 3 min
+      10 burpees
+      descanso 60s
+    20 flexiones
+
+40 burpees
+`;
+    const p = parse(text);
+    expect(p.diagnostics).toEqual([]);
+    const w = toWorkoutInput(p);
+    const emom = w.blocks[0]!;
+    expect(emom).toMatchObject({ kind: 'part', format: 'emom' });
+    const rounds = emom.blocks[0]!;
+    expect(rounds).toMatchObject({ kind: 'group', rounds: 3, items: [] });
+    expect(rounds.blocks.map((b) => [b.kind, b.format ?? null, b.items.length])).toEqual([
+      ['part', 'amrap', 0],
+      ['group', null, 1],
+    ]);
+    expect(rounds.blocks[0]!.blocks.map((b) => b.items[0]!.kind)).toEqual(['exercise', 'rest']);
+    expect(serializeRutina(w, catalog)).toBe(`EMOM 5 x 5 min
+  3 rondas:
+    AMRAP 3 min
+      10 Burpees
+      descanso 1 min
+
+    20 Flexiones de pecho
+
+40 Burpees
+`);
   });
 });

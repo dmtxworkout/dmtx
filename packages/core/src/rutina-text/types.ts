@@ -84,7 +84,7 @@ export interface ParsedBlock {
   loose: boolean;
   /** For a part: its format + timing. */
   format?: FormatConfig | null;
-  /** For a part: the blocks it contains, in order. */
+  /** Blocks nested under this one (a part's content, or a group holding parts/blocks). A container holds either `items` or `children`, not both. */
   children?: ParsedBlock[];
 }
 

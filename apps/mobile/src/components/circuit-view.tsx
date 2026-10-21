@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { flattenBlocks } from '../lib/blocks';
 import { Text, View } from 'react-native';
 import { mmss } from '../lib/format';
 import { useUnits } from '../lib/units-context';
@@ -50,8 +51,8 @@ export function CircuitView({ workout }: { workout: WorkoutDetail }) {
   const blocksView = useMemo(() => {
     const flat: { block: WorkoutBlock; partOf: WorkoutBlock | null }[] = [];
     for (const b of workout.blocks) {
-      if (b.kind === 'part') b.blocks.forEach((c) => flat.push({ block: c, partOf: b }));
-      else flat.push({ block: b, partOf: null });
+      if (b.kind === 'part') flattenBlocks(b.blocks).forEach((c) => flat.push({ block: c, partOf: b }));
+      else flattenBlocks([b]).forEach((c) => flat.push({ block: c, partOf: null }));
     }
     return flat
       .map(({ block: b, partOf }, i) => ({

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { flattenBlocks } from '../../../lib/blocks';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -73,8 +74,8 @@ const sectionParts = (w: WorkoutDetail, section: 'warmup' | 'main' | 'cooldown')
   for (const b of blocks) {
     if (b.kind === 'part') {
       flushLoose();
-      parts.push({ ...w, format: b.format ?? 'circuit', formatConfig: b.formatConfig, blocks: b.blocks });
-    } else loose.push(b);
+      parts.push({ ...w, format: b.format ?? 'circuit', formatConfig: b.formatConfig, blocks: flattenBlocks(b.blocks) });
+    } else loose.push(...flattenBlocks([b]));
   }
   flushLoose();
   return parts;

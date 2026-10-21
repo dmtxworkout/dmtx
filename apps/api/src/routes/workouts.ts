@@ -65,18 +65,22 @@ function base(w: WorkoutRow) {
   };
 }
 
-/** Rows → nested blocks: top-level blocks with their children (parts) in `blocks`. */
+export type Nested<T> = T & { blocks: Nested<T>[] };
+/** Rows → a tree of blocks (parts and groups nest to any depth) in position order. */
 export function nestBlocks<T extends { id: string; parentBlockId: string | null; position: number }>(
   rows: T[],
-): (T & { blocks: T[] })[] {
+): Nested<T>[] {
   const byParent = new Map<string | null, T[]>();
   for (const r of rows) {
     const arr = byParent.get(r.parentBlockId) ?? [];
     arr.push(r);
     byParent.set(r.parentBlockId, arr);
   }
-  const sorted = (xs: T[] | undefined) => [...(xs ?? [])].sort((a, b) => a.position - b.position);
-  return sorted(byParent.get(null)).map((b) => ({ ...b, blocks: sorted(byParent.get(b.id)) }));
+  const build = (parent: string | null): Nested<T>[] =>
+    [...(byParent.get(parent) ?? [])]
+      .sort((a, b) => a.position - b.position)
+      .map((b) => ({ ...b, blocks: build(b.id) }));
+  return build(null);
 }
 
 async function loadFull(db: Database, w: WorkoutRow) {
@@ -111,13 +115,13 @@ async function loadFull(db: Database, w: WorkoutRow) {
     variants: variants.map((v) => ({ id: v.id, label: v.label ?? '' })),
     scoringGoal: w.scoringGoal ?? null,
     sourceText: w.sourceText ?? null,
-    blocks: nestBlocks(blocks).map((b) => ({
-      ...serializeBlock(b, byBlock),
-      blocks: b.blocks.map((c) => ({ ...serializeBlock(c, byBlock), blocks: [] })),
-    })),
+    blocks: nestBlocks(blocks).map(function tree(b): WorkoutBlockOut {
+      return { ...serializeBlock(b, byBlock), blocks: b.blocks.map(tree) };
+    }),
   };
 }
 
+type WorkoutBlockOut = ReturnType<typeof serializeBlock> & { blocks: WorkoutBlockOut[] };
 function serializeBlock(b: BlockRow, byBlock: Map<string, ItemRow[]>) {
   return {
     id: b.id,

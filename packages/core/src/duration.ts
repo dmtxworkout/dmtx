@@ -47,9 +47,13 @@ function itemSeconds(it: DurationItem): number {
   return work * sets + rest + TRANSITION_SECONDS;
 }
 
+function blockSeconds(b: DurationBlock): number {
+  return b.kind === 'part' ? partSeconds(b) : groupSeconds(b);
+}
+
 function groupSeconds(b: DurationBlock): number {
   if (b.kind === 'rest') return b.items.reduce((s, it) => s + (it.workSeconds ?? 0), 0);
-  const once = b.items.reduce((s, it) => s + itemSeconds(it), 0) + b.blocks.reduce((s, c) => s + groupSeconds(c), 0);
+  const once = b.items.reduce((s, it) => s + itemSeconds(it), 0) + b.blocks.reduce((s, c) => s + blockSeconds(c), 0);
   return once * Math.max(1, b.rounds ?? 1);
 }
 
@@ -83,7 +87,7 @@ function partSeconds(b: DurationBlock): number {
 
 /** Whole seconds, rounded up to the minute; null for an empty rutina. */
 export function estimateDurationSeconds(blocks: DurationBlock[]): number | null {
-  const total = blocks.reduce((s, b) => s + (b.kind === 'part' ? partSeconds(b) : groupSeconds(b)), 0);
+  const total = blocks.reduce((s, b) => s + blockSeconds(b), 0);
   if (total <= 0) return null;
   return Math.ceil(total / 60) * 60;
 }

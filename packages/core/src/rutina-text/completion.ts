@@ -173,6 +173,10 @@ const MODIFIERS: Completion[] = [
 const ALL_MODIFIERS: Completion[] = [...LOADS, ...TEMPOS, ...MODIFIERS.slice(2)];
 
 const REST_LINE: Completion = { label: 'descanso 60s', detail: 'descanso', type: 'keyword', apply: 'descanso 60s' };
+const REST_LINE_EN: Completion = { label: 'rest 60s', detail: 'descanso', type: 'keyword', apply: 'rest 60s' };
+/** "des…" / "re…" → the rest line in the spelling being typed. */
+const restOptions = (q: string): Completion[] =>
+  q && 'descanso'.startsWith(q) ? [REST_LINE] : q && 'rest'.startsWith(q) ? [REST_LINE_EN] : [];
 const GROUP_LINE: Completion = { label: '3 rondas:', detail: 'bloque de rondas', type: 'group', apply: '3 rondas:' };
 
 const prefixOf = (q: string) => (c: Completion) => q.length > 0 && fold(c.label).startsWith(q);
@@ -347,11 +351,14 @@ export function completionsAt(
     }
   }
   const options: Completion[] = exerciseOptions(cat, query);
-  if (nameStart === 0 && 'descanso'.startsWith(fold(query))) options.unshift(REST_LINE);
+  // Nothing but indentation before the word: whole-line things are possible.
+  const atLineStart = before.slice(0, nameStart).trim() === '';
+  if (atLineStart) options.unshift(...restOptions(fold(query)));
+  // A format can start a part anywhere, nested included: when the word being
+  // typed is the start of one ("am" → AMRAP), it goes first.
+  if (atLineStart && !query.includes(' ')) options.unshift(...FORMATS.filter(prefixOf(fold(query))));
   // Whole blocks / rutinas only make sense at the start of a line (no count before).
-  if (nameStart === 0) options.push(...extraOptions(opts, query));
-  // A new part can start here too: formats matching the first word, after the exercises.
-  if (nameStart === 0 && !query.includes(' ')) options.push(...FORMATS.filter(prefixOf(fold(query))));
+  if (atLineStart) options.push(...extraOptions(opts, query));
   // No exact match → always offer to create the exercise as written.
   if (!exact) {
     options.push({

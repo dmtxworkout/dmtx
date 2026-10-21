@@ -160,10 +160,25 @@ export function serializeRutina(
   // Set right after a format header so the first group under it has no blank line above.
   let afterHeader = false;
 
-  // One block (group / loose item / rest) at indentation `pad`.
+  // One block at indentation `pad`: a part (format header + its blocks), a
+  // group (header + its exercises or its blocks), or a loose line.
   const writeBlock = (b: SerializableBlock, pad: string, fmt: WorkoutFormat | null) => {
+    const children = b.blocks ?? [];
+    if (b.kind === 'part') {
+      if (out.length && out[out.length - 1] !== '' && !afterHeader) out.push('');
+      const f = b.format ?? 'for_time';
+      out.push(pad + formatHeader(f, b.formatConfig));
+      if (b.notes) out.push(`${pad}  // ${b.notes}`);
+      afterHeader = true;
+      children.forEach((c) => writeBlock(c, pad + '  ', f));
+      b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), f)}`));
+      out.push('');
+      afterHeader = false;
+      return;
+    }
     const loose =
-      b.kind === 'rest' || (b.items.length === 1 && !b.rounds && !b.label && b.type !== 'superset');
+      b.kind === 'rest' ||
+      (!children.length && b.items.length === 1 && !b.rounds && !b.label && b.type !== 'superset');
     if (loose) {
       const it = b.items[0];
       if (it) out.push(pad + itemLine(it, nameOf(it.exerciseId), fmt));
@@ -177,21 +192,21 @@ export function serializeRutina(
     const slot = b.items.find((it) => it.kind === 'exercise')?.intervalIndex;
     if (fmt === 'emom' && slot != null && !b.rounds && b.type === 'emom') {
       out.push(`${pad}intervalo ${slot + 1}:`);
-      if (b.notes) out.push(`${pad}  // ${b.notes}`);
-      b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), null)}`));
-      out.push('');
-      return;
+    } else {
+      const head: string[] = [];
+      if (b.type === 'superset') head.push('Superserie');
+      if (b.rounds) head.push(`${b.rounds} rondas`);
+      if (!head.length) head.push('Bloque');
+      let line = head.join(' ');
+      if (b.label) line += ` - ${b.label}`;
+      out.push(`${pad}${line}:`);
     }
-    const head: string[] = [];
-    if (b.type === 'superset') head.push('Superserie');
-    if (b.rounds) head.push(`${b.rounds} rondas`);
-    if (!head.length) head.push('Bloque');
-    let line = head.join(' ');
-    if (b.label) line += ` - ${b.label}`;
-    out.push(`${pad}${line}:`);
     if (b.notes) out.push(`${pad}  // ${b.notes}`);
-    b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), fmt)}`));
+    afterHeader = true;
+    children.forEach((c) => writeBlock(c, pad + '  ', fmt));
+    b.items.forEach((it) => out.push(`${pad}  ${itemLine(it, nameOf(it.exerciseId), b.type === 'emom' ? null : fmt)}`));
     out.push('');
+    afterHeader = false;
   };
 
   // Warmup/cooldown are written Python-style: a title line, then everything
@@ -204,25 +219,14 @@ export function serializeRutina(
     const pad = section === 'main' ? '' : '  ';
     if (out.length) out.push('');
     if (section !== 'main') out.push(SECTION_TITLE[section]);
-    blocks.forEach((b, i) => {
-      // Blank line between top-level parts/blocks, not after the section title.
-      if (i > 0 && out[out.length - 1] !== '') out.push('');
-      if (b.kind === 'part') {
-        const fmt = b.format ?? 'for_time';
-        out.push(pad + formatHeader(fmt, b.formatConfig));
-        if (b.notes) out.push(`${pad}  // ${b.notes}`);
-        afterHeader = true;
-        (b.blocks ?? []).forEach((c) => writeBlock(c, pad + '  ', fmt));
-        out.push('');
-      } else {
-        writeBlock(b, pad, null);
-      }
-    });
+    afterHeader = section !== 'main';
+    blocks.forEach((b) => writeBlock(b, pad, null));
     while (out[out.length - 1] === '') out.pop();
   };
 
   writeSection('warmup');
   writeSection('main');
   writeSection('cooldown');
-  return out.join('\n') + '\n';
+  // Nested closings can stack blank lines; one is enough.
+  return (out.join('\n') + '\n').replace(/\n{3,}/g, '\n\n');
 }

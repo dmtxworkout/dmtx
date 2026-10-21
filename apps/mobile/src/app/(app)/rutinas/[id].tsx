@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { flattenBlocks } from '../../../lib/blocks';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -126,9 +127,9 @@ export default function RutinaDetalle() {
         out.push({
           key: b.id,
           label: `${base === 'Rutina' ? '' : `${base} · `}${formatLabel(b.format)}${h ? ` ${h}` : ''}`,
-          units: unitsFor(b.blocks),
+          units: unitsFor(flattenBlocks(b.blocks)),
         });
-      } else loose.push(b);
+      } else loose.push(...flattenBlocks([b]));
     });
     flush();
     return out;

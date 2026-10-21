@@ -25,6 +25,10 @@ export type PvBlock = {
   items: PvItem[];
   /** A part header ("AMRAP 12 min"): rendered as a sub-heading before its blocks. */
   part?: string | null;
+  /** Blocks nested inside (a part's content, or a group holding parts/blocks). */
+  blocks?: PvBlock[];
+  /** A run of loose exercise lines: plain lines, never boxed. */
+  loose?: boolean;
 };
 export type PvSection = { name: string | null; formatLabel?: string | null; blocks: PvBlock[] };
 export type PvModel = {
@@ -62,87 +66,83 @@ function Line({ item }: { item: PvItem }) {
   );
 }
 
-// A block counts as a "real block" (worth its own gap + rounds header) when it
-// has more than one exercise or repeats for multiple rounds. Otherwise it's a
-// loose exercise that should sit tight against its neighbours.
-const isBlock = (b: PvBlock) => b.items.length > 1 || (b.rounds != null && b.rounds > 1);
+const cap = (t: string) => t.replace(/^\p{L}/u, (c) => c.toUpperCase());
 
-type Unit = { rounds: number | null; loose: boolean; items: PvItem[]; part?: string; title?: string | null; note?: string | null };
+/**
+ * Blocks at one nesting level. A part shows its header and then its blocks at
+ * the same level; a group is a box with a plain heading ("3 rondas · repite
+ * estos ejercicios 3 veces") holding its exercises or its own nested blocks;
+ * loose exercises are plain lines. Boxes nest, so what is inside what is
+ * always visible.
+ */
+function Blocks({ blocks }: { blocks: PvBlock[] }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map((b, i) => {
+        if (b.part) {
+          return (
+            <div key={i} className="flex flex-col gap-2">
+              <div>
+                <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-dark">{b.part}</div>
+                {b.note && <div className="mt-1 text-[12px] italic leading-5 text-muted">{b.note}</div>}
+              </div>
+              {!!b.blocks?.length && <Blocks blocks={b.blocks} />}
+              {b.items.map((it, j) => (
+                <Line key={j} item={it} />
+              ))}
+            </div>
+          );
+        }
+        const rounds = b.rounds != null && b.rounds > 1 ? b.rounds : null;
+        const grouped = !b.loose && (rounds != null || !!b.title || b.items.length > 1 || !!b.blocks?.length);
+        if (!grouped) {
+          return (
+            <div key={i}>
+              {b.note && <div className="text-[12px] italic leading-5 text-muted">{b.note}</div>}
+              {b.items.map((it, j) => (
+                <Line key={j} item={it} />
+              ))}
+            </div>
+          );
+        }
+        const title = b.title ? cap(b.title) : null;
+        const nested = b.blocks?.length ? b.blocks : null;
+        return (
+          <div key={i} className="rounded-lg border border-line-2 bg-surface-2/70 px-3 py-2">
+            <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
+              <span className="text-[13px] font-bold text-ink">{rounds != null ? `${rounds} rondas` : (title ?? 'Bloque')}</span>
+              {rounds != null && title && <span className="text-[12px] text-ink-3">· {title}</span>}
+              {rounds != null && <span className="text-[12px] text-muted">repite todo esto {rounds} veces</span>}
+              {rounds == null && !nested && b.items.length > 1 && (
+                <span className="text-[12px] text-muted">seguidos, sin descanso entre ellos</span>
+              )}
+            </div>
+            {b.note && <div className="mb-1 text-[12px] italic leading-5 text-muted">{b.note}</div>}
+            <div className="border-l-2 border-accent/40 pl-3">
+              {nested ? (
+                <Blocks blocks={nested} />
+              ) : (
+                b.items.map((it, j) => <Line key={j} item={it} />)
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
-  // Build display units WITHOUT mutating the incoming block arrays (they belong
-  // to the live model and must stay intact across re-renders).
-  const units: Unit[] = [];
-  for (const b of blocks) {
-    if (b.part) {
-      units.push({ rounds: null, loose: false, items: [], part: b.part, note: b.note });
-      continue;
-    }
-    if (b.items.length === 0) continue;
-    if (isBlock(b) || b.title || b.note) {
-      units.push({ rounds: b.rounds, loose: false, items: [...b.items], title: b.title, note: b.note });
-    } else {
-      const last = units[units.length - 1];
-      // Merge consecutive loose exercises into one tight run.
-      if (last && last.loose) last.items.push(...b.items);
-      else units.push({ rounds: null, loose: true, items: [...b.items] });
-    }
-  }
-
+  const empty = !blocks.some((b) => b.items.length || b.blocks?.length);
   return (
-    <section className="flex flex-col gap-1.5">
-      <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
+    <section className="px-4 py-3.5">
+      <div className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">
         {label}
       </div>
-      {units.length === 0 ? (
-        <div className="text-[12px] text-muted">Sin ejercicios</div>
+      {empty ? (
+        <div className="text-[13px] text-muted">Sin ejercicios</div>
       ) : (
-        <div className="flex flex-col gap-3">
-          {units.map((u, i) => {
-            // A part header: the format the blocks below it play on.
-            if (u.part) {
-              return (
-                <div key={i} className="-mb-1">
-                  <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-accent-dark">{u.part}</div>
-                  {u.note && <div className="mt-1 text-[12px] italic leading-5 text-muted">{u.note}</div>}
-                </div>
-              );
-            }
-            const rounds = u.rounds != null && u.rounds > 1 ? u.rounds : null;
-            // A run of loose exercises is never a group, however long it is.
-            const grouped = !u.loose && (rounds != null || !!u.title || u.items.length > 1);
-            // Loose exercises: plain lines, one after another.
-            if (!grouped) {
-              return (
-                <div key={i}>
-                  {u.note && <div className="text-[12px] italic leading-5 text-muted">{u.note}</div>}
-                  {u.items.map((it, j) => (
-                    <Line key={j} item={it} />
-                  ))}
-                </div>
-              );
-            }
-            // A group: a box with its own heading, so it is obvious which
-            // exercises repeat together and which sit outside.
-            const title = u.title ? u.title.replace(/^\p{L}/u, (c) => c.toUpperCase()) : null;
-            return (
-              <div key={i} className="rounded-lg border border-line-2 bg-surface-2/70 px-3 py-2">
-                <div className="mb-1 flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-[13px] font-bold text-ink">{rounds != null ? `${rounds} rondas` : (title ?? 'Bloque')}</span>
-                  {rounds != null && title && <span className="text-[12px] text-ink-3">· {title}</span>}
-                  {rounds != null && <span className="text-[12px] text-muted">repite estos ejercicios {rounds} veces</span>}
-                  {rounds == null && u.items.length > 1 && <span className="text-[12px] text-muted">seguidos, sin descanso entre ellos</span>}
-                </div>
-                {u.note && <div className="mb-1 text-[12px] italic leading-5 text-muted">{u.note}</div>}
-                <div className="border-l-2 border-accent/40 pl-3">
-                  {u.items.map((it, j) => (
-                    <Line key={j} item={it} />
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <Blocks blocks={blocks} />
       )}
     </section>
   );

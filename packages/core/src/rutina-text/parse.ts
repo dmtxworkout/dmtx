@@ -545,20 +545,95 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
   // Python-style scoping: content indented under a section header belongs to
   // it; dedenting back to the header's column returns to the main section.
   let sectionHeaderIndent = -1;
-  let group: ParsedBlock | null = null;
-  let groupHeaderIndent = 0;
-  // Interval slot of the open "intervalo N:" group (0-based), stamped on its items.
-  let groupSlot: number | null = null;
-  // The open part (a format header + what is indented under it). Parts never nest.
-  let part: ParsedBlock | null = null;
-  let partIndent = -1;
 
-  const closeGroup = () => {
-    // A header with no exercise indented under it is almost always a missed indent.
-    if (group && !group.items.some((it) => it.kind === 'exercise')) {
-      const headerLine = rawLines[group.line] ?? '';
+  // Open containers, innermost last. A container is a part (format header) or
+  // a group (rounds / "intervalo N:" header); anything indented past its header
+  // belongs to it, so parts and groups nest freely.
+  type Frame = {
+    block: ParsedBlock;
+    indent: number;
+    /** "intervalo N:" group: the 0-based slot stamped on its exercises. */
+    slot: number | null;
+    /** "3 rondas, descanso 1 min": a rest item appended when the group closes. */
+    pendingRest: number | null;
+  };
+  const stack: Frame[] = [];
+  const top = (): Frame | null => stack[stack.length - 1] ?? null;
+  /** The innermost open part: the format the exercises play on. */
+  const innerFormat = (): WorkoutFormat | null => {
+    for (let k = stack.length - 1; k >= 0; k -= 1) {
+      const b = stack[k]!.block;
+      if (b.kind === 'part') return b.format?.format ?? null;
+    }
+    return null;
+  };
+  const innerSlot = (): number | null => {
+    for (let k = stack.length - 1; k >= 0; k -= 1) {
+      const slot = stack[k]!.slot;
+      if (slot != null) return slot;
+    }
+    return null;
+  };
+  /** The list the next block lands in: the innermost container's children, or the section. */
+  const siblings = (): ParsedBlock[] => {
+    const t = top();
+    if (!t) return blocks;
+    return (t.block.children ??= []);
+  };
+  const looseRun = (line: number): ParsedBlock => ({
+    line,
+    section,
+    kind: 'group',
+    type: 'single',
+    rounds: null,
+    label: null,
+    notes: null,
+    items: [],
+    loose: true,
+  });
+  /** A group holds either exercise lines or child blocks: once it has children,
+   *  further lines become loose runs among them (order kept). A part always
+   *  holds blocks, so its lines are loose runs from the start. */
+  const holdsItems = (t: Frame | null) => !!t && t.block.kind !== 'part' && !t.block.children?.length;
+  const addItem = (item: ParsedItem, line: number) => {
+    const t = top();
+    const slot = innerSlot();
+    if (slot != null && item.intervalIndex == null && item.kind === 'exercise') item.intervalIndex = slot;
+    if (holdsItems(t)) {
+      t!.block.items.push(item);
+      return;
+    }
+    const list = siblings();
+    const last = list[list.length - 1];
+    if (last?.loose && last.kind !== 'rest') last.items.push(item);
+    else list.push({ ...looseRun(line), items: [item] });
+  };
+  const openContainer = (block: ParsedBlock, indent: number, slot: number | null, pendingRest: number | null) => {
+    const t = top();
+    // Items already in the container move into a loose run so the new block follows them.
+    if (t && t.block.items.length) {
+      const run = { ...looseRun(t.block.items[0]!.line), items: t.block.items };
+      t.block.items = [];
+      (t.block.children ??= []).push(run);
+    }
+    siblings().push(block);
+    stack.push({ block, indent, slot, pendingRest });
+  };
+  const closeTop = () => {
+    const t = stack.pop();
+    if (!t) return;
+    const b = t.block;
+    if (t.pendingRest) {
+      const rest: ParsedItem = { ...emptyItem(b.line), kind: 'rest', measure: 'time', workSeconds: t.pendingRest };
+      if (b.children?.length) b.children.push({ ...looseRun(b.line), kind: 'rest', items: [rest] });
+      else b.items.push(rest);
+    }
+    // A group header with nothing indented under it is almost always a missed indent.
+    const hasWork = b.items.some((it) => it.kind === 'exercise') || (b.children?.length ?? 0) > 0;
+    if (b.kind === 'group' && !hasWork) {
+      const headerLine = rawLines[b.line] ?? '';
       diag(ctx, {
-        line: group.line,
+        line: b.line,
         from: headerLine.length - headerLine.trimStart().length,
         to: headerLine.trimEnd().length,
         severity: 'warning',
@@ -566,17 +641,13 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
         message: 'Este bloque está vacío: indenta debajo los ejercicios que van dentro.',
       });
     }
-    group = null;
-    groupSlot = null;
   };
-  const closePart = () => {
-    part = null;
-    partIndent = -1;
+  /** Close every container whose header sits at `indent` or deeper. */
+  const dedentTo = (indent: number) => {
+    while (top() && indent <= top()!.indent) closeTop();
   };
-  /** Append a block to the open part, or to the section. */
-  const pushBlock = (b: ParsedBlock) => {
-    if (part) (part.children ??= []).push(b);
-    else blocks.push(b);
+  const closeAll = () => {
+    while (top()) closeTop();
   };
   const kindOf = (k: string | undefined, rounds: number | null): BlockType => {
     const f = k ? foldKeep(k).replace(/\s+/g, '') : '';
@@ -585,8 +656,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     if (f) return 'single';
     return rounds ? 'circuit' : 'single';
   };
-  const openGroup = (line: number, kw: string | undefined, rounds: number | null, tail: string) => {
-    closeGroup();
+  const openGroup = (line: number, indent: number, kw: string | undefined, rounds: number | null, tail: string) => {
     const b: ParsedBlock = {
       line,
       section,
@@ -598,7 +668,6 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       items: [],
       loose: false,
     };
-    groupHeaderIndent = rawLines[line]!.length - rawLines[line]!.trimStart().length;
     // "3 rondas, descanso 1 min · Pierna" → trailing rest item + label.
     let t = tail;
     const rb = t.match(new RegExp(String.raw`${REST_KW}\.?\s*:?\s*(?:de\s+)?(${DUR})`));
@@ -609,22 +678,8 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     }
     t = t.replace(/^[-–:,.;·]+\s*|\s*[-–:,.;·]+$/g, '').trim();
     if (t) b.label = t;
-    pushBlock(b);
-    group = b;
-    return { block: b, restAfter };
-  };
-  // Pending "descanso" from a group header, appended after the group's items.
-  let pendingGroupRest: { block: ParsedBlock; seconds: number } | null = null;
-  const flushGroupRest = () => {
-    if (pendingGroupRest) {
-      pendingGroupRest.block.items.push({
-        ...emptyItem(pendingGroupRest.block.line),
-        kind: 'rest',
-        measure: 'time',
-        workSeconds: pendingGroupRest.seconds,
-      });
-      pendingGroupRest = null;
-    }
+    openContainer(b, indent, null, restAfter);
+    return b;
   };
 
   rawLines.forEach((raw, i) => {
@@ -639,9 +694,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
 
     const sec = trimmed.match(SECTION_RE);
     if (sec) {
-      flushGroupRest();
-      closeGroup();
-      closePart();
+      closeAll();
       section = SECTION_OF[sec[1]!.replace(/\s+/g, ' ')] ?? 'main';
       sectionHeaderIndent = indent;
       return info('section');
@@ -649,41 +702,27 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
 
     // Content line: dedenting to the section header's column returns to main.
     if (section !== 'main' && indent <= sectionHeaderIndent) {
-      flushGroupRest();
-      closeGroup();
-      closePart();
+      closeAll();
       section = 'main';
       sectionHeaderIndent = -1;
     }
-    // A part scopes by indentation too: dedenting to its header's column leaves it.
-    if (part && indent <= partIndent) {
-      flushGroupRest();
-      closeGroup();
-      closePart();
-    }
-    // A group holds what is indented past its header; dedenting to its column closes it.
-    if (group && indent <= groupHeaderIndent) {
-      flushGroupRest();
-      closeGroup();
-    }
+    // Dedenting to a container's header column leaves it (and anything inside).
+    dedentTo(indent);
 
     // "// texto" alone on a line: a note the athlete sees, attached to what is
-    // right above it — the last exercise of the open group (or the group itself
-    // when it has none yet), else the last block of the open part/section (or
-    // the part itself when it is still empty).
+    // right above it — the last exercise or block in the open container (or
+    // the container itself when it is still empty).
     const noteLine = raw.trim().match(/^\/\/([^#]*)/);
     if (noteLine) {
       const text = noteLine[1]!.trim();
-      const container = part ? (part.children ?? []) : blocks;
-      const last = container[container.length - 1];
-      const target: { notes: string | null } | null =
-        group && indent > groupHeaderIndent
-          ? (group.items[group.items.length - 1] ?? group)
-          : last
-            ? last.loose
-              ? last.items[0]!
-              : last
-            : part;
+      const t = top();
+      let target: { notes: string | null } | null;
+      if (t && t.block.items.length) target = t.block.items[t.block.items.length - 1]!;
+      else {
+        const list = siblings();
+        const last = list[list.length - 1];
+        target = last ? (last.loose ? last.items[last.items.length - 1]! : last) : (t?.block ?? null);
+      }
       if (!target) {
         diag(ctx, {
           line: i,
@@ -705,12 +744,9 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
       // "Circuito 3 rondas" inside existing content is a group, not a new part.
       const isCircuitGroup = /^circuit/.test(kw) && seen[section] && /\d/.test(fm[3] ?? '');
       if (!isCircuitGroup) {
-        flushGroupRest();
-        closeGroup();
-        closePart();
         const parsed = parseFormat(ctx, i, kw, fm[2], fm[3] ?? '');
         if (parsed) {
-          if (!formats[section]) formats[section] = parsed;
+          if (!formats[section] && stack.length === 0) formats[section] = parsed;
           const b: ParsedBlock = {
             line: i,
             section,
@@ -724,9 +760,7 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
             format: parsed.config,
             children: [],
           };
-          blocks.push(b);
-          part = b;
-          partIndent = indent;
+          openContainer(b, indent, null, null);
         }
         seen[section] = true;
         return info('format');
@@ -737,23 +771,8 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     if (rest) {
       const seconds = parseDuration(rest[1] ?? rest[2] ?? '') ?? 0;
       const item: ParsedItem = { ...emptyItem(i), kind: 'rest', measure: 'time', workSeconds: seconds };
-      if (group) {
-        (group as ParsedBlock).items.push(item);
-      } else {
-        flushGroupRest();
-        closeGroup();
-        pushBlock({
-          line: i,
-          section,
-          kind: 'rest',
-          type: 'single',
-          rounds: null,
-          label: null,
-          notes: null,
-          items: [item],
-          loose: true,
-        });
-      }
+      if (holdsItems(top())) top()!.block.items.push(item);
+      else siblings().push({ ...looseRun(i), kind: 'rest', items: [item] });
       seen[section] = true;
       return info('rest');
     }
@@ -761,12 +780,11 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     // "intervalo 2:" (or "min 2:") alone → a group holding that interval's work.
     const slot = trimmed.match(SLOT_RE);
     if (slot) {
-      flushGroupRest();
-      if (part?.format?.format !== 'emom') intervalOutsideEmom(ctx, i, raw, trimmed);
+      if (innerFormat() !== 'emom') intervalOutsideEmom(ctx, i, raw, trimmed);
       const n = Number(slot[1]);
-      const { block } = openGroup(i, undefined, null, `intervalo ${n}`);
-      groupSlot = Math.max(0, n - 1);
-      block.type = 'emom';
+      const b = openGroup(i, indent, undefined, null, `intervalo ${n}`);
+      b.type = 'emom';
+      top()!.slot = Math.max(0, n - 1);
       seen[section] = true;
       return info('group');
     }
@@ -774,12 +792,10 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     const g = f.match(GROUP_RE) ?? null;
     const gk = g ? null : f.match(GROUP_KW_RE);
     if (g || gk) {
-      flushGroupRest();
       const kw = g ? g[1] : gk![1];
       const rounds = g ? Number(g[2]) : gk![2] ? Number(gk![2]) : null;
       const tail = g ? (g[4] ?? '') : (gk![3] ?? '');
-      const { block, restAfter } = openGroup(i, kw, rounds, tail);
-      if (restAfter) pendingGroupRest = { block, seconds: restAfter };
+      openGroup(i, indent, kw, rounds, tail);
       seen[section] = true;
       return info('group');
     }
@@ -813,27 +829,11 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     }
 
     // Exercise line.
-    const item = parseItemLine(raw, i, ctx, { format: part?.format?.format ?? null });
-    if (group) {
-      if (groupSlot != null && item.intervalIndex == null) item.intervalIndex = groupSlot;
-      (group as ParsedBlock).items.push(item);
-    } else {
-      pushBlock({
-        line: i,
-        section,
-        kind: 'group',
-        type: 'single',
-        rounds: null,
-        label: null,
-        notes: null,
-        items: [item],
-        loose: true,
-      });
-    }
+    addItem(parseItemLine(raw, i, ctx, { format: innerFormat() }), i);
     seen[section] = true;
     return info('item');
   });
-  flushGroupRest();
+  closeAll();
 
   return {
     main: formats.main,
@@ -851,6 +851,12 @@ export type RutinaStructureInput = Pick<CreateWorkoutInput, 'format' | 'blocks'>
 
 type BlockInput = CreateWorkoutInput['blocks'][number];
 
+/** A parsed block as API blocks: a loose run becomes one single-item block per line. */
+function blockInputs(b: ParsedBlock): BlockInput[] {
+  if (b.loose && b.items.length > 1) return b.items.map((it) => blockInput({ ...b, items: [it] }));
+  return [blockInput(b)];
+}
+
 function blockInput(b: ParsedBlock): BlockInput {
   return {
     kind: b.kind,
@@ -861,7 +867,7 @@ function blockInput(b: ParsedBlock): BlockInput {
     notes: b.notes,
     format: b.kind === 'part' ? (b.format?.format ?? null) : null,
     formatConfig: b.kind === 'part' ? (b.format ?? null) : null,
-    blocks: b.kind === 'part' ? (b.children ?? []).map(blockInput) : [],
+    blocks: (b.children ?? []).flatMap(blockInputs),
     items: b.items.map((it) => {
       const rest = it.kind === 'rest';
       return {
@@ -892,6 +898,6 @@ function blockInput(b: ParsedBlock): BlockInput {
 export function toWorkoutInput(p: ParsedRutina): RutinaStructureInput {
   return {
     format: p.main?.format ?? null,
-    blocks: p.blocks.map(blockInput),
+    blocks: p.blocks.flatMap(blockInputs),
   };
 }
