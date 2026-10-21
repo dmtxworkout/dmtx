@@ -36,10 +36,10 @@ export function Toaster() {
     };
   }, []);
 
-  // Top centre, solid colour: green for success, red for errors. Hard to miss,
-  // out of the way of the save bar and the editor.
+  // Bottom centre (where Shopify puts them), solid colour: green for success,
+  // red for errors. Hard to miss, and never over the save bar at the top.
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-5 z-[100] flex flex-col items-center gap-2 px-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[100] flex flex-col items-center gap-2 px-4">
       {toasts.map((t) => (
         <div
           key={t.id}
