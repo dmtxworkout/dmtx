@@ -131,9 +131,10 @@ const dayLabel = (d: DayState | undefined, i: number) => d?.title.trim() || `Dí
 const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
 
 /**
- * The weeks of a program as a strip of day cells: click selects the day the
- * editor shows, drag moves a day, each week can be duplicated or removed and
- * new weeks are appended empty or as a copy of the last one.
+ * One bar for the program's calendar: a "Semana N" dropdown (switch week,
+ * duplicate or remove one, add an empty one) and the seven days of that week
+ * as cells — click selects the day the editor shows, drag moves a day within
+ * the week. A dot marks a day with content; hatched cells are rest days.
  */
 function WeekStrip({
   days,
@@ -148,124 +149,197 @@ function WeekStrip({
   active: number;
   onSelect: (i: number) => void;
   onMove: (from: number, to: number) => void;
-  onAddWeek: (copyLast: boolean) => void;
+  onAddWeek: () => void;
   onDuplicateWeek: (week: number) => void;
   onRemoveWeek: (week: number) => void;
 }) {
   const weeks = Math.ceil(days.length / 7);
+  const week = Math.floor(active / 7);
   const dragFrom = useRef<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
   const [confirmWeek, setConfirmWeek] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) {
+      setConfirmWeek(null);
+      return;
+    }
+    const onDown = (e: MouseEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+  const weekHasContent = (w: number) => days.slice(w * 7, w * 7 + 7).some((d) => d.isRestDay || dayHasContent(d));
   return (
-    <div className="flex shrink-0 flex-col gap-1.5 border-b border-line bg-surface-2/60 px-4 py-2.5">
-      {Array.from({ length: weeks }).map((_, w) => (
-        <div key={w} className="group/week flex h-8 items-center gap-1.5">
-          <span className="w-[74px] shrink-0 font-mono text-[11px] text-muted">
-            {es.programs.week} {w + 1}
+    <div className="flex items-center gap-1.5">
+      <div ref={menuRef} className="relative mr-1">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className={cn(
+            'inline-flex h-8 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] hover:bg-surface-3',
+            open ? 'bg-surface-3 text-ink' : 'text-ink-2',
+          )}
+          title="Semana del programa"
+        >
+          <span className="font-semibold text-ink">
+            {es.programs.week} {week + 1}
           </span>
-          {Array.from({ length: 7 }).map((_, j) => {
-            const i = w * 7 + j;
-            const d = days[i];
-            if (!d) return null;
-            const has = dayHasContent(d);
-            const isActive = active === i;
-            return (
-              <button
-                key={i}
-                type="button"
-                draggable
-                onClick={() => onSelect(i)}
-                onDragStart={(e) => {
-                  dragFrom.current = i;
-                  e.dataTransfer.effectAllowed = 'move';
-                }}
-                onDragOver={(e) => {
-                  if (dragFrom.current === null) return;
-                  e.preventDefault();
-                  setOver((o) => (o === i ? o : i));
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  if (dragFrom.current !== null) onMove(dragFrom.current, i);
-                  dragFrom.current = null;
-                  setOver(null);
-                }}
-                onDragEnd={() => {
-                  dragFrom.current = null;
-                  setOver(null);
-                }}
-                title={d.isRestDay ? `${dayLabel(d, i)} · ${es.programs.restDay}` : dayLabel(d, i)}
+          <span className="text-muted">de {weeks}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-3">
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+        {open && (
+          <div className="absolute left-0 top-full z-20 mt-1 w-80 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+            {Array.from({ length: weeks }).map((_, w) => (
+              <div
+                key={w}
                 className={cn(
-                  'flex h-8 w-12 shrink-0 items-center justify-center gap-1 rounded-md border font-mono text-[11px]',
-                  isActive
-                    ? 'border-accent bg-accent-tint font-semibold text-accent-dark'
-                    : d.isRestDay
-                      ? 'border-line-2 text-muted hover:border-line-3'
-                      : has
-                        ? 'border-line-2 bg-surface text-ink hover:border-line-3'
-                        : 'border-dashed border-line-2 bg-surface text-faint-2 hover:text-ink-2',
-                  over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
+                  'group flex items-center gap-1 rounded-lg pl-2.5 pr-1 text-[13px]',
+                  week === w ? 'bg-accent-tint text-accent-dark' : 'text-ink-2 hover:bg-surface-2',
                 )}
-                style={d.isRestDay && !isActive ? { background: HATCH } : undefined}
               >
-                {i + 1}
-                {has && !d.isRestDay && <span className={cn('h-1.5 w-1.5 rounded-full', d.type === 'video' ? 'bg-[#0451a5]' : 'bg-accent')} />}
-              </button>
-            );
-          })}
-          <span className="ml-1 flex items-center gap-1 opacity-0 group-hover/week:opacity-100 focus-within:opacity-100">
-            {confirmWeek === w ? (
-              <>
-                <span className="text-[12px] text-ink-2">¿Eliminar la semana {w + 1}?</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setConfirmWeek(null);
-                    onRemoveWeek(w);
-                  }}
-                  className="rounded-md bg-accent-dark px-2 py-1 text-[12px] font-semibold text-white hover:opacity-90"
-                >
-                  Eliminar
-                </button>
-                <button type="button" onClick={() => setConfirmWeek(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" aria-label="Cancelar">
-                  ✕
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => onDuplicateWeek(w)}
-                  className="rounded px-1.5 py-1 font-mono text-[12px] text-faint-2 hover:bg-surface-3 hover:text-ink"
-                  title="Duplicar la semana (se inserta a continuación)"
-                  aria-label="Duplicar semana"
-                >
-                  ⧉
-                </button>
-                {weeks > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmWeek(w)}
-                    className="rounded px-1.5 py-1 text-[12px] text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
-                    title="Eliminar la semana"
-                    aria-label="Eliminar semana"
-                  >
-                    ✕
-                  </button>
+                {confirmWeek === w ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">
+                      ¿Eliminar la semana {w + 1}{weekHasContent(w) ? ' y sus días' : ''}?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmWeek(null);
+                        setOpen(false);
+                        onRemoveWeek(w);
+                      }}
+                      className="rounded-md bg-accent-dark px-2 py-1 text-[12px] font-semibold text-white hover:opacity-90"
+                    >
+                      Eliminar
+                    </button>
+                    <button type="button" onClick={() => setConfirmWeek(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" aria-label="Cancelar">
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelect(w * 7);
+                        setOpen(false);
+                      }}
+                      className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+                    >
+                      <span className="truncate font-semibold">
+                        {es.programs.week} {w + 1}
+                      </span>
+                      <span className="font-mono text-[10px] text-muted">
+                        {es.programs.day.toLowerCase()}s {w * 7 + 1}–{w * 7 + 7}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onDuplicateWeek(w);
+                        setOpen(false);
+                      }}
+                      className="rounded px-1.5 py-1 text-[11px] font-semibold text-faint-2 opacity-0 hover:bg-surface-3 hover:text-ink group-hover:opacity-100"
+                      title="Inserta una copia de esta semana a continuación"
+                    >
+                      Duplicar
+                    </button>
+                    {weeks > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmWeek(w)}
+                        className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
+                        title="Eliminar la semana"
+                        aria-label="Eliminar semana"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </span>
-        </div>
-      ))}
-      <div className="flex items-center gap-3 pt-0.5">
-        <button type="button" onClick={() => onAddWeek(false)} className="rounded-md px-1.5 py-1 text-[12px] font-semibold text-accent-dark hover:bg-accent-tint">
-          + {es.programs.newWeek}
-        </button>
-        <button type="button" onClick={() => onAddWeek(true)} className="rounded-md px-1.5 py-1 text-[12px] text-muted hover:bg-surface-3 hover:text-ink">
-          Copiar la última semana
-        </button>
+              </div>
+            ))}
+            <div className="my-1 h-px bg-line-3" />
+            <button
+              type="button"
+              onClick={() => {
+                onAddWeek();
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-semibold text-accent-dark hover:bg-accent-tint"
+            >
+              <span className="w-3 text-center">+</span>
+              {es.programs.newWeek}
+            </button>
+            <p className="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-muted">
+              Siete días por semana. «Duplicar» inserta una copia de la semana justo después; la nueva empieza vacía.
+            </p>
+          </div>
+        )}
       </div>
+      {Array.from({ length: 7 }).map((_, j) => {
+        const i = week * 7 + j;
+        const d = days[i];
+        if (!d) return null;
+        const has = dayHasContent(d);
+        const isActive = active === i;
+        return (
+          <button
+            key={i}
+            type="button"
+            draggable
+            onClick={() => onSelect(i)}
+            onDragStart={(e) => {
+              dragFrom.current = i;
+              e.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragOver={(e) => {
+              if (dragFrom.current === null) return;
+              e.preventDefault();
+              setOver((o) => (o === i ? o : i));
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragFrom.current !== null) onMove(dragFrom.current, i);
+              dragFrom.current = null;
+              setOver(null);
+            }}
+            onDragEnd={() => {
+              dragFrom.current = null;
+              setOver(null);
+            }}
+            title={d.isRestDay ? `${dayLabel(d, i)} · ${es.programs.restDay}` : dayLabel(d, i)}
+            className={cn(
+              'flex h-8 w-11 shrink-0 items-center justify-center gap-1 rounded-md border font-mono text-[11px]',
+              isActive
+                ? 'border-accent bg-accent-tint font-semibold text-accent-dark'
+                : d.isRestDay
+                  ? 'border-line-2 text-muted hover:border-line-3'
+                  : has
+                    ? 'border-line-2 bg-surface text-ink hover:border-line-3'
+                    : 'border-dashed border-line-2 bg-surface text-faint-2 hover:text-ink-2',
+              over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
+            )}
+            style={d.isRestDay && !isActive ? { background: HATCH } : undefined}
+          >
+            {i + 1}
+            {has && !d.isRestDay && <span className={cn('h-1.5 w-1.5 rounded-full', d.type === 'video' ? 'bg-[#0451a5]' : 'bg-accent')} />}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -331,14 +405,19 @@ export function RutinaForm({
   const [days, setDays] = useState<DayState[]>(() =>
     programMode
       ? program?.days.length
-        ? program.days.map((d) => ({
-            id: d.id,
-            title: d.title ?? '',
-            isRestDay: d.isRestDay,
-            type: d.type,
-            sections: splitSections(d.sourceText),
-            videoAssetId: d.videoAssetId,
-          }))
+        ? (() => {
+            const loaded = program.days.map((d) => ({
+              id: d.id,
+              title: d.title ?? '',
+              isRestDay: d.isRestDay,
+              type: d.type,
+              sections: splitSections(d.sourceText),
+              videoAssetId: d.videoAssetId,
+            }));
+            // Always whole weeks: pad the last one with empty days.
+            const pad = (7 - (loaded.length % 7)) % 7;
+            return [...loaded, ...Array.from({ length: pad }, emptyDay)];
+          })()
         : Array.from({ length: 7 }, emptyDay)
       : [],
   );
@@ -355,8 +434,10 @@ export function RutinaForm({
     });
     setActiveDay(to);
   };
-  const addWeek = (copyLast: boolean) =>
-    setDays((ds) => [...ds, ...(copyLast ? ds.slice(-7).map(copyDay) : Array.from({ length: 7 }, emptyDay))]);
+  const addWeek = () => {
+    setDays((ds) => [...ds, ...Array.from({ length: 7 }, emptyDay)]);
+    setActiveDay(days.length);
+  };
   const duplicateWeek = (w: number) =>
     setDays((ds) => [...ds.slice(0, (w + 1) * 7), ...ds.slice(w * 7, (w + 1) * 7).map(copyDay), ...ds.slice((w + 1) * 7)]);
   const removeWeek = (w: number) => {
@@ -1018,53 +1099,49 @@ export function RutinaForm({
         {/* Left: the editor, VS Code style (tab bar · editor · problems) */}
         {programMode && activeDayState ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
-            <WeekStrip
-              days={days}
-              active={activeDay}
-              onSelect={setActiveDay}
-              onMove={moveDay}
-              onAddWeek={addWeek}
-              onDuplicateWeek={duplicateWeek}
-              onRemoveWeek={removeWeek}
-            />
-            {/* The day's own settings: name, kind and rest */}
-            <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
-              <span className="font-mono text-[11px] text-muted">
-                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {es.programs.day} {activeDay + 1}
-              </span>
-              <input
-                value={activeDayState.title}
-                onChange={(e) => setDay(activeDay, { title: e.target.value })}
-                placeholder={`${es.programs.day} ${activeDay + 1}`}
-                title="Nombre del día (así lo verá el usuario)"
-                className="h-7 w-56 rounded-md border border-line-2 bg-surface px-2 text-[12px] font-semibold text-ink placeholder:font-normal placeholder:text-faint-2 focus:border-accent focus:outline-none"
+            <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2/60 px-3 py-1.5">
+              <WeekStrip
+                days={days}
+                active={activeDay}
+                onSelect={setActiveDay}
+                onMove={moveDay}
+                onAddWeek={addWeek}
+                onDuplicateWeek={duplicateWeek}
+                onRemoveWeek={removeWeek}
               />
-              <span className="flex-1" />
-              {!activeDayState.isRestDay && (
-                <div className="flex items-center rounded-md border border-line-2 p-0.5 font-mono text-[11px]">
-                  {(['structured', 'video'] as const).map((t) => (
+              <span className="hidden h-5 w-px bg-line-2 sm:block" />
+              {/* The day's own settings: name and what it is */}
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="shrink-0 font-mono text-[11px] text-muted">
+                  {es.programs.day} {activeDay + 1}
+                </span>
+                <input
+                  value={activeDayState.title}
+                  onChange={(e) => setDay(activeDay, { title: e.target.value })}
+                  placeholder="Nombre (opcional)"
+                  title="Nombre del día (así lo verá el usuario; vacío = «Día N»)"
+                  className="h-8 w-44 min-w-0 rounded-md border border-line-2 bg-surface px-2 text-[12px] font-semibold text-ink placeholder:font-normal placeholder:text-faint-2 focus:border-accent focus:outline-none"
+                />
+                <span className="flex-1" />
+                <div className="flex shrink-0 items-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]">
+                  {(
+                    [
+                      { id: 'structured', label: es.workouts.types.structured, on: !activeDayState.isRestDay && activeDayState.type === 'structured' },
+                      { id: 'video', label: es.workouts.types.video, on: !activeDayState.isRestDay && activeDayState.type === 'video' },
+                      { id: 'rest', label: es.programs.restDay, on: activeDayState.isRestDay },
+                    ] as const
+                  ).map((o) => (
                     <button
-                      key={t}
+                      key={o.id}
                       type="button"
-                      onClick={() => setDay(activeDay, { type: t })}
-                      className={cn('rounded px-2 py-0.5', activeDayState.type === t ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
+                      onClick={() => setDay(activeDay, o.id === 'rest' ? { isRestDay: true } : { isRestDay: false, type: o.id })}
+                      className={cn('rounded px-2 py-1', o.on ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
                     >
-                      {es.workouts.types[t]}
+                      {o.label}
                     </button>
                   ))}
                 </div>
-              )}
-              <button
-                type="button"
-                onClick={() => setDay(activeDay, { isRestDay: !activeDayState.isRestDay })}
-                className={cn(
-                  'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 font-mono text-[11px]',
-                  activeDayState.isRestDay ? 'border-ink bg-ink text-white' : 'border-line-2 text-ink-3 hover:text-ink',
-                )}
-              >
-                {activeDayState.isRestDay ? '✓ ' : ''}
-                {es.programs.restDay}
-              </button>
+              </div>
             </div>
             {activeDayState.isRestDay ? (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 text-center" style={{ background: HATCH }}>

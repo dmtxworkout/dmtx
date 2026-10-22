@@ -836,18 +836,18 @@ For time cap 20 min
       body: (
         <>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            Un programa es un calendario en semanas de siete días. La tira de arriba muestra cada día como una casilla: haz
-            clic para escribir su rutina en el editor, arrastra para moverlo a otro día. Un punto marca que tiene contenido;
-            las casillas rayadas son días de descanso.
+            Un programa es un calendario en semanas de siete días. La barra sobre el editor muestra la semana activa:
+            cada día es una casilla; haz clic para escribir su rutina en el editor y arrastra para moverlo dentro de la
+            semana. Un punto marca que tiene contenido; las casillas rayadas son días de descanso.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            Cada día es una rutina propia: escrita en el editor o una sola clase en video (elige el tipo en la barra del
-            día), con su nombre si quieres que el usuario vea algo distinto de «Día N». «Descanso» lo deja sin rutina. Para
-            reutilizar una rutina del catálogo, insértala desde el menú + (Rutinas): se copia su texto.
+            El desplegable «Semana N» cambia de semana, añade una nueva (vacía), duplica una (inserta la copia justo
+            después) o la elimina.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            «Nueva semana» añade siete días vacíos; «Copiar la última semana» la repite. Pasa el ratón por una semana para
-            duplicarla o eliminarla. Para publicar, todos los días deben tener rutina, video o descanso.
+            Cada día es una de tres cosas: una rutina escrita en el editor, una sola clase en video, o descanso. Puedes
+            ponerle nombre si el usuario debe ver algo distinto de «Día N». Para reutilizar una rutina del catálogo,
+            insértala desde el menú + (Rutinas): se copia su texto. Para publicar, ningún día puede quedar vacío.
           </p>
         </>
       ),
