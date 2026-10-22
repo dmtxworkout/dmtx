@@ -1,5 +1,7 @@
-import { ProgramaForm } from '@/components/programa-form';
+'use client';
+
+import { RutinaForm } from '@/components/rutina-form';
 
 export default function NuevoProgramaPage() {
-  return <ProgramaForm />;
+  return <RutinaForm program={null} />;
 }

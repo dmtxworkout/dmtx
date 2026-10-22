@@ -197,6 +197,20 @@
       "when": 1792614374791,
       "tag": "0027_skill_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1792677382329,
+      "tag": "0028_program_days_own_workouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792677437876,
+      "tag": "0029_drop_program_type_and_playlist",
+      "breakpoints": true
     }
   ]
 }

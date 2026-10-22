@@ -160,12 +160,12 @@ export interface WorkoutDetail {
 export interface ProgramDay {
   id: string;
   position: number;
-  weekNumber: number | null;
-  dayOfWeek: number | null;
+  /** 1-based week the day falls in (seven days per week). */
+  week: number;
   isRestDay: boolean;
   title: string | null;
-  notes: string | null;
-  workouts: WorkoutSummary[];
+  /** The day's own rutina (structured or a video); null on a rest day. */
+  workout: WorkoutSummary | null;
 }
 
 export interface ProgramDetail {
@@ -173,19 +173,11 @@ export interface ProgramDetail {
   slug: string;
   name: string;
   description: string | null;
-  type: 'structured' | 'video_playlist';
   difficulty: Difficulty | null;
-  durationDays: number | null;
-  weeks: number | null;
+  durationDays: number;
+  weeks: number;
   thumbnailUrl: string | null;
   days: ProgramDay[];
-  videoItems: {
-    id: string;
-    title: string | null;
-    description: string | null;
-    durationSeconds: number | null;
-    videoUrl: string | null;
-  }[];
 }
 
 export interface SkillLevel {

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
-import type { BlockSection, CreateWorkoutInput, ReusableBlock, Skill, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
+import type { BlockSection, CreateWorkoutInput, Program, ProgramDayInput, ReusableBlock, Skill, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
 import {
   Catalog,
   goalsFrom,
@@ -114,6 +114,162 @@ AMRAP \${minutos 2} min
   },
 ];
 
+// ---- Programs: a calendar in weeks, every day a rutina of its own -----------
+
+type DayState = {
+  id: string | null;
+  title: string;
+  isRestDay: boolean;
+  type: 'structured' | 'video';
+  sections: SectionTexts;
+  videoAssetId: string | null;
+};
+const emptyDay = (): DayState => ({ id: null, title: '', isRestDay: false, type: 'structured', sections: { ...EMPTY_SECTIONS }, videoAssetId: null });
+const copyDay = (d: DayState): DayState => ({ ...d, id: null, sections: { ...d.sections } });
+const dayHasContent = (d: DayState) => (d.type === 'video' ? !!d.videoAssetId : !!joinSections(d.sections).trim());
+const dayLabel = (d: DayState | undefined, i: number) => d?.title.trim() || `Día ${i + 1}`;
+const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
+
+/**
+ * The weeks of a program as a strip of day cells: click selects the day the
+ * editor shows, drag moves a day, each week can be duplicated or removed and
+ * new weeks are appended empty or as a copy of the last one.
+ */
+function WeekStrip({
+  days,
+  active,
+  onSelect,
+  onMove,
+  onAddWeek,
+  onDuplicateWeek,
+  onRemoveWeek,
+}: {
+  days: DayState[];
+  active: number;
+  onSelect: (i: number) => void;
+  onMove: (from: number, to: number) => void;
+  onAddWeek: (copyLast: boolean) => void;
+  onDuplicateWeek: (week: number) => void;
+  onRemoveWeek: (week: number) => void;
+}) {
+  const weeks = Math.ceil(days.length / 7);
+  const dragFrom = useRef<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+  const [confirmWeek, setConfirmWeek] = useState<number | null>(null);
+  return (
+    <div className="flex shrink-0 flex-col gap-1.5 border-b border-line bg-surface-2/60 px-4 py-2.5">
+      {Array.from({ length: weeks }).map((_, w) => (
+        <div key={w} className="group/week flex h-8 items-center gap-1.5">
+          <span className="w-[74px] shrink-0 font-mono text-[11px] text-muted">
+            {es.programs.week} {w + 1}
+          </span>
+          {Array.from({ length: 7 }).map((_, j) => {
+            const i = w * 7 + j;
+            const d = days[i];
+            if (!d) return null;
+            const has = dayHasContent(d);
+            const isActive = active === i;
+            return (
+              <button
+                key={i}
+                type="button"
+                draggable
+                onClick={() => onSelect(i)}
+                onDragStart={(e) => {
+                  dragFrom.current = i;
+                  e.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragOver={(e) => {
+                  if (dragFrom.current === null) return;
+                  e.preventDefault();
+                  setOver((o) => (o === i ? o : i));
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragFrom.current !== null) onMove(dragFrom.current, i);
+                  dragFrom.current = null;
+                  setOver(null);
+                }}
+                onDragEnd={() => {
+                  dragFrom.current = null;
+                  setOver(null);
+                }}
+                title={d.isRestDay ? `${dayLabel(d, i)} · ${es.programs.restDay}` : dayLabel(d, i)}
+                className={cn(
+                  'flex h-8 w-12 shrink-0 items-center justify-center gap-1 rounded-md border font-mono text-[11px]',
+                  isActive
+                    ? 'border-accent bg-accent-tint font-semibold text-accent-dark'
+                    : d.isRestDay
+                      ? 'border-line-2 text-muted hover:border-line-3'
+                      : has
+                        ? 'border-line-2 bg-surface text-ink hover:border-line-3'
+                        : 'border-dashed border-line-2 bg-surface text-faint-2 hover:text-ink-2',
+                  over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
+                )}
+                style={d.isRestDay && !isActive ? { background: HATCH } : undefined}
+              >
+                {i + 1}
+                {has && !d.isRestDay && <span className={cn('h-1.5 w-1.5 rounded-full', d.type === 'video' ? 'bg-[#0451a5]' : 'bg-accent')} />}
+              </button>
+            );
+          })}
+          <span className="ml-1 flex items-center gap-1 opacity-0 group-hover/week:opacity-100 focus-within:opacity-100">
+            {confirmWeek === w ? (
+              <>
+                <span className="text-[12px] text-ink-2">¿Eliminar la semana {w + 1}?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmWeek(null);
+                    onRemoveWeek(w);
+                  }}
+                  className="rounded-md bg-accent-dark px-2 py-1 text-[12px] font-semibold text-white hover:opacity-90"
+                >
+                  Eliminar
+                </button>
+                <button type="button" onClick={() => setConfirmWeek(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" aria-label="Cancelar">
+                  ✕
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onDuplicateWeek(w)}
+                  className="rounded px-1.5 py-1 font-mono text-[12px] text-faint-2 hover:bg-surface-3 hover:text-ink"
+                  title="Duplicar la semana (se inserta a continuación)"
+                  aria-label="Duplicar semana"
+                >
+                  ⧉
+                </button>
+                {weeks > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmWeek(w)}
+                    className="rounded px-1.5 py-1 text-[12px] text-faint-2 hover:bg-surface-3 hover:text-accent-dark"
+                    title="Eliminar la semana"
+                    aria-label="Eliminar semana"
+                  >
+                    ✕
+                  </button>
+                )}
+              </>
+            )}
+          </span>
+        </div>
+      ))}
+      <div className="flex items-center gap-3 pt-0.5">
+        <button type="button" onClick={() => onAddWeek(false)} className="rounded-md px-1.5 py-1 text-[12px] font-semibold text-accent-dark hover:bg-accent-tint">
+          + {es.programs.newWeek}
+        </button>
+        <button type="button" onClick={() => onAddWeek(true)} className="rounded-md px-1.5 py-1 text-[12px] text-muted hover:bg-surface-3 hover:text-ink">
+          Copiar la última semana
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Initial text: an existing rutina serialized; a new one starts empty (templates are offered in the editor). */
 function initialText(workout: Workout | undefined, catalog: Catalog): string {
   if (!workout) return '';
@@ -128,12 +284,15 @@ export function RutinaForm({
   workout,
   block,
   skill,
+  program,
 }: {
   workout?: Workout;
   /** A saved block: the same editor on one piece of text (null → a new block). */
   block?: ReusableBlock | null;
   /** A skill: its levels are the tabs, each with an "Objetivo" section (null → a new skill). */
   skill?: Skill | null;
+  /** A program: weeks of days, each day a rutina picked from the strip above the editor (null → a new program). */
+  program?: Program | null;
 }) {
   const router = useRouter();
   const qc = useQueryClient();
@@ -145,22 +304,69 @@ export function RutinaForm({
   // levels, each one with an extra "Objetivo" section whose lines are the
   // marks that unlock the next level.
   const skillMode = skill !== undefined;
-  const basePath = blockMode ? '/bloques' : skillMode ? '/habilidades' : '/rutinas';
-  const listTitle = blockMode ? es.reusableBlocks.title : skillMode ? es.skills.title : es.workouts.title;
-  const newLabel = blockMode ? 'Nuevo bloque' : skillMode ? es.skills.new : es.workouts.new;
-  const isNew = blockMode ? !block : skillMode ? !skill : !workout;
+  // A program ("programa") is a calendar in whole weeks: every day is a rutina
+  // of its own (structured or a video) or a rest day, chosen from the week
+  // strip above the editor. Each day's rutina is saved as a workout owned by
+  // the program.
+  const programMode = program !== undefined;
+  const basePath = blockMode ? '/bloques' : skillMode ? '/habilidades' : programMode ? '/programas' : '/rutinas';
+  const listTitle = blockMode ? es.reusableBlocks.title : skillMode ? es.skills.title : programMode ? es.programs.title : es.workouts.title;
+  const newLabel = blockMode ? 'Nuevo bloque' : skillMode ? es.skills.new : programMode ? es.programs.new : es.workouts.new;
+  const isNew = blockMode ? !block : skillMode ? !skill : programMode ? !program : !workout;
   const levelWord = skillMode ? 'nivel' : 'variante';
   const [nameError, setNameError] = useState(false);
 
-  const [name, setName] = useState(workout?.name ?? block?.name ?? skill?.name ?? '');
-  const [description, setDescription] = useState(workout?.description ?? skill?.description ?? '');
-  const [difficulty, setDifficulty] = useState(workout?.difficulty ?? skill?.difficulty ?? 'beginner');
-  const [status, setStatus] = useState(workout?.status ?? skill?.status ?? 'draft');
-  const [type, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
+  const [name, setName] = useState(workout?.name ?? block?.name ?? skill?.name ?? program?.name ?? '');
+  const [description, setDescription] = useState(workout?.description ?? skill?.description ?? program?.description ?? '');
+  const [difficulty, setDifficulty] = useState(workout?.difficulty ?? skill?.difficulty ?? program?.difficulty ?? 'beginner');
+  const [status, setStatus] = useState(workout?.status ?? skill?.status ?? program?.status ?? 'draft');
+  const [typeState, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
   // A new rutina asks for name + type in one dialog, then opens the editor.
-  const [createOpen, setCreateOpen] = useState(!workout && !blockMode && !skill);
-  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(workout?.thumbnailAssetId ?? skill?.thumbnailAssetId ?? null);
-  const [videoAssetId, setVideoAssetId] = useState<string | null>(workout?.videoAssetId ?? null);
+  const [createOpen, setCreateOpen] = useState(!workout && !blockMode && !skill && !program);
+  const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(
+    workout?.thumbnailAssetId ?? skill?.thumbnailAssetId ?? program?.thumbnailAssetId ?? null,
+  );
+  const [videoAssetIdState, setVideoAssetIdState] = useState<string | null>(workout?.videoAssetId ?? null);
+  // Program days: a new program starts with one empty week.
+  const [days, setDays] = useState<DayState[]>(() =>
+    programMode
+      ? program?.days.length
+        ? program.days.map((d) => ({
+            id: d.id,
+            title: d.title ?? '',
+            isRestDay: d.isRestDay,
+            type: d.type,
+            sections: splitSections(d.sourceText),
+            videoAssetId: d.videoAssetId,
+          }))
+        : Array.from({ length: 7 }, emptyDay)
+      : [],
+  );
+  const [activeDay, setActiveDay] = useState(0);
+  const activeDayState: DayState | undefined = programMode ? days[activeDay] : undefined;
+  const setDay = (i: number, patch: Partial<DayState>) => setDays((ds) => ds.map((d, k) => (k === i ? { ...d, ...patch } : d)));
+  const moveDay = (from: number, to: number) => {
+    if (from === to) return;
+    setDays((ds) => {
+      const next = [...ds];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved!);
+      return next;
+    });
+    setActiveDay(to);
+  };
+  const addWeek = (copyLast: boolean) =>
+    setDays((ds) => [...ds, ...(copyLast ? ds.slice(-7).map(copyDay) : Array.from({ length: 7 }, emptyDay))]);
+  const duplicateWeek = (w: number) =>
+    setDays((ds) => [...ds.slice(0, (w + 1) * 7), ...ds.slice(w * 7, (w + 1) * 7).map(copyDay), ...ds.slice((w + 1) * 7)]);
+  const removeWeek = (w: number) => {
+    setDays((ds) => ds.filter((_, i) => Math.floor(i / 7) !== w));
+    setActiveDay((a) => (Math.floor(a / 7) === w ? Math.max(0, w * 7 - 7) : a > w * 7 ? a - 7 : a));
+  };
+  // In program mode the type and the video belong to the active day.
+  const type = activeDayState ? activeDayState.type : typeState;
+  const videoAssetId = activeDayState ? activeDayState.videoAssetId : videoAssetIdState;
+  const setVideoAssetId = (id: string | null) => (programMode ? setDay(activeDay, { videoAssetId: id }) : setVideoAssetIdState(id));
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
@@ -197,10 +403,12 @@ export function RutinaForm({
           ? { ...EMPTY_SECTIONS, main: block?.text ?? '' }
           : skillMode
             ? splitSections(skill?.levels[0]?.sourceText ?? '')
-            : splitSections(initialText(workout, catalog)),
+            : programMode
+              ? { ...EMPTY_SECTIONS }
+              : splitSections(initialText(workout, catalog)),
       );
     }
-  }, [sections, catalogReady, createOpen, workout, catalog, blockMode, block, skillMode, skill]);
+  }, [sections, catalogReady, createOpen, workout, catalog, blockMode, block, skillMode, skill, programMode]);
 
   // Variants (RX / Escalada / …): versions of the whole rutina, switched from
   // the tab bar. Each is a full rutina row linked to this one; loaded once the
@@ -274,10 +482,11 @@ export function RutinaForm({
     ...tabs.map((v, i) => ({ id: v.id ?? `new-${i}`, label: v.label })),
   ];
   const activeVariant = activeTab > 0 ? tabs[activeTab - 1] : undefined;
-  const activeSections = activeVariant ? activeVariant.sections : (sections ?? EMPTY_SECTIONS);
+  const activeSections = activeDayState ? activeDayState.sections : activeVariant ? activeVariant.sections : (sections ?? EMPTY_SECTIONS);
   const value = activeSections[activeSection];
   const setValue = (v: string) => {
-    if (activeTab === 0) setSections((sc) => ({ ...(sc ?? EMPTY_SECTIONS), [activeSection]: v }));
+    if (programMode) setDays((ds) => ds.map((d, i) => (i === activeDay ? { ...d, sections: { ...d.sections, [activeSection]: v } } : d)));
+    else if (activeTab === 0) setSections((sc) => ({ ...(sc ?? EMPTY_SECTIONS), [activeSection]: v }));
     else
       setVariants((vs) =>
         (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, sections: { ...t.sections, [activeSection]: v } } : t)),
@@ -321,6 +530,7 @@ export function RutinaForm({
     // React runs later) so the count is known right away for the toast.
     if (sections) setSections(renameSections(sections));
     if (variants) setVariants(variants.map((v) => ({ ...v, sections: renameSections(v.sections) })));
+    if (programMode) setDays(days.map((d) => ({ ...d, sections: renameSections(d.sections) })));
     return changed;
   };
   // The whole rutina (all sections) of the active version, as one document.
@@ -396,9 +606,18 @@ export function RutinaForm({
   const estimatedSeconds =
     type === 'video' ? (workout?.videoDurationSeconds ?? null) : estimateDurationSeconds(toWorkoutInput(parsed).blocks);
   const durationLabel = estimatedSeconds ? `${Math.ceil(estimatedSeconds / 60)} min` : null;
+  const weekCount = Math.ceil(days.length / 7);
   const metaLine = [
-    skillMode ? `${tabs.length + 1} nivel${tabs.length ? 'es' : ''}` : type === 'video' ? 'Video' : mainFormats.length ? mainFormats.join(' + ') : FORMAT_LABEL[format],
-    skillMode ? null : durationLabel,
+    skillMode
+      ? `${tabs.length + 1} nivel${tabs.length ? 'es' : ''}`
+      : programMode
+        ? `${weekCount} semana${weekCount === 1 ? '' : 's'}`
+        : type === 'video'
+          ? 'Video'
+          : mainFormats.length
+            ? mainFormats.join(' + ')
+            : FORMAT_LABEL[format],
+    skillMode || programMode ? null : durationLabel,
     es.difficulty[difficulty],
   ]
     .filter(Boolean)
@@ -539,6 +758,40 @@ export function RutinaForm({
     },
     onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
+  // A program: every day is a rutina (text + structure, or a video) owned by it.
+  const dayPayload = (d: DayState): ProgramDayInput => {
+    const structured = d.type === 'structured';
+    const text = joinSections(d.sections);
+    const structure = structured && !d.isRestDay ? toWorkoutInput(parseRutina(text, { catalog })) : null;
+    return {
+      id: d.id ?? undefined,
+      title: d.title.trim() || null,
+      isRestDay: d.isRestDay,
+      type: d.type,
+      sourceText: structured ? text : null,
+      format: structure?.format ?? null,
+      blocks: structure?.blocks ?? [],
+      videoAssetId: structured ? null : d.videoAssetId,
+    };
+  };
+  const saveProgram = useMutation({
+    mutationFn: async () => {
+      const input = { name: name.trim(), description: description || null, difficulty, status, thumbnailAssetId, days: days.map(dayPayload) };
+      return program ? api.programs.update(program.id, input) : api.programs.create(input);
+    },
+    onSuccess: (saved) => {
+      // The server assigns ids to new days; keep the texts as edited.
+      const next = days.map((d, i) => ({ ...d, id: saved.days[i]?.id ?? d.id }));
+      setDays(next);
+      setBaseline({ ...currentRef.current, days: next });
+      qc.setQueryData(['program', saved.id], saved);
+      qc.invalidateQueries({ queryKey: ['programs'] });
+      qc.invalidateQueries({ queryKey: ['workouts'] });
+      toast('Programa guardado');
+      if (!program) router.replace(`${basePath}/${saved.id}`);
+    },
+    onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
+  });
   const save = useMutation({
     mutationFn: async () => {
       const basePayload = payloadFor(sections ?? EMPTY_SECTIONS, null);
@@ -579,6 +832,7 @@ export function RutinaForm({
     baseLabel: string;
     sections: SectionTexts;
     variants: VariantTab[];
+    days: DayState[];
   };
   const current: Snapshot = {
     name,
@@ -586,10 +840,11 @@ export function RutinaForm({
     difficulty,
     status,
     thumbnailAssetId,
-    videoAssetId,
+    videoAssetId: videoAssetIdState,
     baseLabel,
     sections: sections ?? EMPTY_SECTIONS,
     variants: tabs,
+    days,
   };
   const [baseline, setBaseline] = useState<Snapshot | null>(null);
   const currentRef = useRef(current);
@@ -609,18 +864,20 @@ export function RutinaForm({
     setDifficulty(baseline.difficulty);
     setStatus(baseline.status);
     setThumbnailAssetId(baseline.thumbnailAssetId);
-    setVideoAssetId(baseline.videoAssetId);
+    setVideoAssetIdState(baseline.videoAssetId);
     setBaseLabel(baseline.baseLabel);
     setSections(baseline.sections);
     setVariants(baseline.variants);
+    setDays(baseline.days);
     setRemovedVariantIds([]);
     setActiveTab((t) => Math.min(t, baseline.variants.length));
+    setActiveDay((d) => Math.min(d, Math.max(0, baseline.days.length - 1)));
   };
   // Save / discard bar, ⌘S, navigation guard (shared with the exercise form).
   const doSaveRef = useRef<() => void>(() => {});
   const { bar: unsavedBar, guardNav, shake: shakeBar } = useUnsavedChanges({
     dirty,
-    saving: save.isPending || saveBlock.isPending || saveSkill.isPending,
+    saving: save.isPending || saveBlock.isPending || saveSkill.isPending || saveProgram.isPending,
     onSave: () => doSaveRef.current(),
     onDiscard: discard,
     canSave: type !== 'structured' || editorReady,
@@ -632,6 +889,32 @@ export function RutinaForm({
       return;
     }
     setNameError(false);
+    if (programMode) {
+      for (let i = 0; i < days.length; i += 1) {
+        const d = days[i]!;
+        if (d.isRestDay) continue;
+        if (d.type === 'structured') {
+          const p = parseRutina(joinSections(d.sections), { catalog });
+          const errors = p.diagnostics.filter((x) => x.severity === 'error');
+          if (errors.length) {
+            setActiveDay(i);
+            setActiveSection(p.lines[errors[0]!.line]?.section ?? 'main');
+            toast(`${errors.length === 1 ? 'Hay 1 línea con error' : `Hay ${errors.length} líneas con error`} en «${dayLabel(d, i)}». Corrígelo antes de guardar.`, 'error');
+            shakeBar();
+            return;
+          }
+        }
+        // A published program can't have a day with nothing in it: write it or make it a rest day.
+        if (status === 'published' && !dayHasContent(d)) {
+          setActiveDay(i);
+          toast(`«${dayLabel(d, i)}» está vacío. Escribe su rutina, elige un video o márcalo como descanso antes de publicar.`, 'error');
+          shakeBar();
+          return;
+        }
+      }
+      saveProgram.mutate();
+      return;
+    }
     if (type === 'structured') {
       const all = [{ label: baseLabel.trim() || (skillMode ? 'Nivel 1' : 'Principal'), sections: sections ?? EMPTY_SECTIONS }, ...tabs];
       for (let i = 0; i < all.length; i += 1) {
@@ -733,7 +1016,62 @@ export function RutinaForm({
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Left: the editor, VS Code style (tab bar · editor · problems) */}
-        {type === 'structured' ? (
+        {programMode && activeDayState ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+            <WeekStrip
+              days={days}
+              active={activeDay}
+              onSelect={setActiveDay}
+              onMove={moveDay}
+              onAddWeek={addWeek}
+              onDuplicateWeek={duplicateWeek}
+              onRemoveWeek={removeWeek}
+            />
+            {/* The day's own settings: name, kind and rest */}
+            <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line bg-surface px-4">
+              <span className="font-mono text-[11px] text-muted">
+                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {es.programs.day} {activeDay + 1}
+              </span>
+              <input
+                value={activeDayState.title}
+                onChange={(e) => setDay(activeDay, { title: e.target.value })}
+                placeholder={`${es.programs.day} ${activeDay + 1}`}
+                title="Nombre del día (así lo verá el usuario)"
+                className="h-7 w-56 rounded-md border border-line-2 bg-surface px-2 text-[12px] font-semibold text-ink placeholder:font-normal placeholder:text-faint-2 focus:border-accent focus:outline-none"
+              />
+              <span className="flex-1" />
+              {!activeDayState.isRestDay && (
+                <div className="flex items-center rounded-md border border-line-2 p-0.5 font-mono text-[11px]">
+                  {(['structured', 'video'] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setDay(activeDay, { type: t })}
+                      className={cn('rounded px-2 py-0.5', activeDayState.type === t ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
+                    >
+                      {es.workouts.types[t]}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setDay(activeDay, { isRestDay: !activeDayState.isRestDay })}
+                className={cn(
+                  'inline-flex h-7 items-center gap-1.5 rounded-md border px-2 font-mono text-[11px]',
+                  activeDayState.isRestDay ? 'border-ink bg-ink text-white' : 'border-line-2 text-ink-3 hover:text-ink',
+                )}
+              >
+                {activeDayState.isRestDay ? '✓ ' : ''}
+                {es.programs.restDay}
+              </button>
+            </div>
+            {activeDayState.isRestDay ? (
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 text-center" style={{ background: HATCH }}>
+                <span className="text-[15px] font-bold text-ink-2">Día de descanso</span>
+                <p className="text-[12px] text-muted">El usuario verá «Descanso» en este día.</p>
+              </div>
+            ) : type === 'structured' ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
@@ -785,7 +1123,7 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
-              {!blockMode && (
+              {!blockMode && !programMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
                     type="button"
@@ -955,7 +1293,265 @@ export function RutinaForm({
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
               ) : (
                 <RutinaTextEditor
-                  key={`${activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
+                  key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
+                  value={value}
+                  onChange={setValue}
+                  onlyExercises={activeSection === 'goal'}
+                  catalog={catalog}
+                  parsed={parsedTab}
+                  placeholder={activeSection === 'goal' ? GOAL_PLACEHOLDER : PLACEHOLDER}
+                  autoFocus={isNew}
+                  extras={extras}
+                  inserts={inserts}
+                  onInsertBlock={insertBlock}
+                  onSaveBlock={
+                    blockMode
+                      ? undefined
+                      : (t) => {
+                          setBlockModal({ name: '', text: t.trim() });
+                        }
+                  }
+                  apiRef={editorApi}
+                  onCreateExercise={(n) => setNewExercise({ name: titleCase(n) })}
+                  onEditExercise={setEditExerciseId}
+                  className="h-full"
+                />
+              )}
+            </div>
+          </div>
+            ) : (
+          <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
+            <h2 className="mb-3 text-[15px] font-bold">{es.workouts.video}</h2>
+            <div className="max-w-xl">
+              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
+            </div>
+          </div>
+
+            )}
+          </div>
+        ) : type === 'structured' ? (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
+            {/* Tab bar: base + variants (+), undo/redo on the right */}
+            <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
+              {(blockMode ? (['main'] as const) : skillMode ? (['main', 'warmup', 'cooldown', 'goal'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
+                const empty = !activeSections[sec].trim();
+                return (
+                  <div
+                    key={sec}
+                    onClick={() => setActiveSection(sec)}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 border-r border-line px-4 font-mono text-[12px]',
+                      activeSection === sec
+                        ? 'bg-surface text-ink shadow-[inset_0_-2px_0_var(--color-accent)]'
+                        : empty
+                          ? 'text-faint-2 hover:bg-surface-3 hover:text-ink-2'
+                          : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
+                    )}
+                  >
+                    {blockMode ? 'Bloque' : SECTION_TAB[sec]}
+                  </div>
+                );
+              })}
+              <span className="flex-1" />
+              <div className="flex items-center gap-0.5 px-2">
+                <button
+                  type="button"
+                  onClick={() => editorApi.current?.undo()}
+                  disabled={!canUndo}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Deshacer (⌘Z / Ctrl+Z)"
+                  aria-label="Deshacer"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7v6h6" />
+                    <path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => editorApi.current?.redo()}
+                  disabled={!canRedo}
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-ink-3 hover:bg-surface-3 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                  title="Rehacer (⇧⌘Z / Ctrl+Y)"
+                  aria-label="Rehacer"
+                >
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 7v6h-6" />
+                    <path d="M3 17a9 9 0 0 1 15-6.7L21 13" />
+                  </svg>
+                </button>
+              </div>
+              {!blockMode && !programMode && (
+                <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
+                  <button
+                    type="button"
+                    onClick={() => setVersionOpen((o) => !o)}
+                    disabled={!editorReady}
+                    className={cn(
+                      'inline-flex h-7 items-center gap-1.5 rounded-md px-2 font-mono text-[11px] hover:bg-surface-3 disabled:opacity-40',
+                      versionOpen ? 'bg-surface-3 text-ink' : 'text-ink-2',
+                    )}
+                    title={skillMode ? 'Nivel de la habilidad' : 'Versión de la rutina (sus tres pestañas)'}
+                  >
+                    {!skillMode && <span className="text-muted">Versión</span>}
+                    <span className="font-semibold text-ink">{versionList[activeTab]?.label || 'Sin nombre'}</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-3">
+                      <path d="M6 9l6 6 6-6" />
+                    </svg>
+                  </button>
+                  {versionOpen && (
+                    <div className="absolute right-0 top-full z-20 mt-1 w-80 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+                      {versionList.map((t, i) => (
+                        <div
+                          key={t.id}
+                          draggable={skillMode && versionList.length > 1 && renaming?.index !== i}
+                          onDragStart={(e) => {
+                            setDragFrom(i);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragOver={(e) => {
+                            if (dragFromRef.current === null) return;
+                            e.preventDefault();
+                            setDragOver((o) => (o === i ? o : i));
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            if (dragFromRef.current !== null) moveTab(dragFromRef.current, i);
+                            setDragFrom(null);
+                            setDragOver(null);
+                          }}
+                          onDragEnd={() => {
+                            setDragFrom(null);
+                            setDragOver(null);
+                          }}
+                          className={cn(
+                            'group flex items-center gap-1 rounded-lg pl-1.5 pr-1 text-[13px]',
+                            activeTab === i ? 'bg-accent-tint text-accent-dark' : 'text-ink-2 hover:bg-surface-2',
+                            dragFrom === i && 'opacity-40',
+                            dragOver === i && dragFrom !== null && dragFrom !== i && (dragFrom < i ? 'shadow-[inset_0_-2px_0_var(--color-accent)]' : 'shadow-[inset_0_2px_0_var(--color-accent)]'),
+                          )}
+                        >
+                          {skillMode && (
+                            <span className="cursor-grab select-none px-0.5 font-mono text-[12px] leading-none text-faint-2 active:cursor-grabbing" title="Arrastra para reordenar" aria-hidden>
+                              ⋮⋮
+                            </span>
+                          )}
+                          {renaming?.index === i ? (
+                            <>
+                              <input
+                                autoFocus
+                                value={renaming.label}
+                                onChange={(e) => setRenaming({ index: i, label: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    commitRename();
+                                  } else if (e.key === 'Escape') {
+                                    e.stopPropagation();
+                                    setRenaming(null);
+                                  }
+                                }}
+                                placeholder={skillMode ? 'Nombre del nivel' : i === 0 ? 'Principal' : 'Nombre'}
+                                className="my-1 h-7 min-w-0 flex-1 rounded-md border border-accent bg-surface px-2 text-[13px] font-semibold text-ink focus:outline-none"
+                              />
+                              <button type="button" onClick={commitRename} className="rounded px-1.5 py-1 text-[13px] font-bold text-accent-dark hover:bg-accent-tint" title="Guardar (Enter)" aria-label="Guardar nombre">
+                                ✓
+                              </button>
+                              <button type="button" onClick={() => setRenaming(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" title="Cancelar (Esc)" aria-label="Cancelar">
+                                ✕
+                              </button>
+                            </>
+                          ) : confirmingRemove === i ? (
+                            <>
+                              <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">¿Eliminar «{t.label || 'Sin nombre'}»?</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmingRemove(null);
+                                  removeTab(i);
+                                }}
+                                className="rounded-md bg-accent-dark px-2 py-1 text-[12px] font-semibold text-white hover:opacity-90"
+                              >
+                                Eliminar
+                              </button>
+                              <button type="button" onClick={() => setConfirmingRemove(null)} className="rounded px-1.5 py-1 text-[13px] text-faint-2 hover:text-ink" title="Cancelar" aria-label="Cancelar">
+                                ✕
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab(i);
+                                  setVersionOpen(false);
+                                }}
+                                onDoubleClick={() => setRenaming({ index: i, label: i === 0 ? baseLabel : t.label })}
+                                className="flex min-w-0 flex-1 items-center gap-2 py-1.5 text-left"
+                              >
+                                {!skillMode && <span className="w-3 font-mono text-[11px]">{activeTab === i ? '✓' : ''}</span>}
+                                <span className="truncate font-semibold">{t.label || 'Sin nombre'}</span>
+                                {i === 0 && !skillMode && <span className="font-mono text-[10px] text-muted">base</span>}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRenaming({ index: i, label: i === 0 ? baseLabel : t.label })}
+                                className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-ink group-hover:opacity-100"
+                                title={i === 0 && !skillMode ? 'Nombrar el nivel de la versión principal' : 'Renombrar'}
+                                aria-label="Renombrar"
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
+                              </button>
+                              {(i > 0 || (skillMode && versionList.length > 1)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmingRemove(i)}
+                                  className="rounded px-1 py-1 text-faint-2 opacity-0 hover:text-accent-dark group-hover:opacity-100"
+                                  title={`Eliminar ${levelWord}`}
+                                  aria-label={`Eliminar ${levelWord}`}
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      ))}
+                      <div className="my-1 h-px bg-line-3" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVersionOpen(false);
+                          setTabDialog({
+                            mode: 'add',
+                            index: tabs.length + 1,
+                            label: skillMode ? `Nivel ${tabs.length + 2}` : tabs.length === 0 ? 'Escalada' : '',
+                          });
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[13px] font-semibold text-accent-dark hover:bg-accent-tint"
+                      >
+                        <span className="w-3 text-center">+</span>
+                        {skillMode ? 'Nuevo nivel' : 'Nueva variante'}
+                      </button>
+                      <p className="px-2.5 pb-1 pt-1.5 text-[11px] leading-snug text-muted">
+                        {skillMode
+                          ? 'Cada nivel es una rutina con su objetivo. El nuevo copia el nivel activo; arrastra para reordenar.'
+                          : 'Una versión es la rutina entera: sus tres pestañas. La nueva copia la versión activa.'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div ref={editorHost} className="min-h-0 flex-1">
+              {!editorReady ? (
+                <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
+              ) : (
+                <RutinaTextEditor
+                  key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
                   value={value}
                   onChange={setValue}
                   onlyExercises={activeSection === 'goal'}
@@ -988,11 +1584,16 @@ export function RutinaForm({
               <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
             </div>
           </div>
-        )}
 
+        )}
           {/* Right: live athlete-facing preview */}
           <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
-            <RutinaPreview model={previewModel} name={name} />
+            <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDayState, activeDay) : name} />
+            {programMode && (
+              <p className="font-mono text-[11px] text-muted">
+                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {es.programs.day} {activeDay + 1} de «{name || newLabel}».
+              </p>
+            )}
             {activeTab > 0 && activeVariant && (
               <p className="font-mono text-[11px] text-muted">Mostrando {skillMode ? 'el nivel' : 'la variante'} «{activeVariant.label}».</p>
             )}
@@ -1070,10 +1671,10 @@ export function RutinaForm({
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && name.trim()) setCreateOpen(false);
               }}
-              placeholder={blockMode ? 'p. ej. Core express' : skillMode ? 'p. ej. Dominadas' : 'p. ej. Murph'}
+              placeholder={blockMode ? 'p. ej. Core express' : skillMode ? 'p. ej. Dominadas' : programMode ? 'p. ej. Fuerza en 4 semanas' : 'p. ej. Murph'}
             />
           </div>
-          {!blockMode && !skillMode && (
+          {!blockMode && !skillMode && !programMode && (
             <div>
               <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{es.workouts.type}</div>
               <div className="grid grid-cols-2 gap-2">
@@ -1112,7 +1713,7 @@ export function RutinaForm({
       </Dialog>
 
       {/* Guide drawer */}
-      <RutinaGuide open={guideOpen} onClose={() => setGuideOpen(false)} skillMode={skillMode} />
+      <RutinaGuide open={guideOpen} onClose={() => setGuideOpen(false)} skillMode={skillMode} programMode={programMode} />
 
       {/* Settings drawer */}
       {settingsOpen && (
@@ -1152,7 +1753,7 @@ export function RutinaForm({
                 </div>
               </div>
 
-              {!blockMode && !skillMode && (
+              {!blockMode && !skillMode && !programMode && (
                 <div className="flex flex-col gap-2.5">
                   <MonoLabel>{es.workouts.type}</MonoLabel>
                   <div className="rounded-lg border border-line-2 bg-surface-2 px-3 py-2.5 text-xs font-semibold text-ink-2">

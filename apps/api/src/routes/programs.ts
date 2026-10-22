@@ -1,7 +1,8 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
-import { programDays, programItems, programVideoItems, programs } from '@dmtx/db';
+import { programDays, programs, workoutBlocks, workouts } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
+import { estimateDurationSeconds } from '@dmtx/core';
 import {
   createProgramSchema,
   paginated,
@@ -11,14 +12,17 @@ import {
   slugify,
   updateProgramSchema,
 } from '@dmtx/schemas';
-import type { ProgramDayInput, ProgramVideoItemInput } from '@dmtx/schemas';
+import type { ProgramDayInput } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
+import { insertBlocks, uniqueSlug } from './workouts';
 
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
 type ProgramRow = typeof programs.$inferSelect;
+type DayRow = typeof programDays.$inferSelect;
+type WorkoutRow = typeof workouts.$inferSelect;
 
 function base(p: ProgramRow) {
   return {
@@ -26,9 +30,7 @@ function base(p: ProgramRow) {
     slug: p.slug,
     name: p.name,
     description: p.description,
-    type: p.type,
     difficulty: p.difficulty,
-    durationDays: p.durationDays,
     status: p.status,
     thumbnailAssetId: p.thumbnailAssetId,
     createdAt: p.createdAt.toISOString(),
@@ -36,79 +38,94 @@ function base(p: ProgramRow) {
   };
 }
 
-async function loadFull(db: Database, p: ProgramRow) {
-  const [days, videoItems] = await Promise.all([
-    db.select().from(programDays).where(eq(programDays.programId, p.id)).orderBy(programDays.position),
-    db
-      .select()
-      .from(programVideoItems)
-      .where(eq(programVideoItems.programId, p.id))
-      .orderBy(programVideoItems.position),
-  ]);
-  const dayIds = days.map((d) => d.id);
-  const items = dayIds.length
-    ? await db
-        .select()
-        .from(programItems)
-        .where(inArray(programItems.programDayId, dayIds))
-        .orderBy(programItems.position)
-    : [];
-  const byDay = new Map<string, string[]>();
-  for (const it of items) {
-    const arr = byDay.get(it.programDayId) ?? [];
-    arr.push(it.workoutId);
-    byDay.set(it.programDayId, arr);
-  }
+/** The days of one or more programs with their owned workouts, in order. */
+async function daysOf(db: Database, programIds: string[]) {
+  if (!programIds.length) return [] as (DayRow & { workout: WorkoutRow | null })[];
+  const rows = await db
+    .select({ day: programDays, workout: workouts })
+    .from(programDays)
+    .leftJoin(workouts, eq(workouts.id, programDays.workoutId))
+    .where(inArray(programDays.programId, programIds))
+    .orderBy(programDays.position);
+  return rows.map((r) => ({ ...r.day, workout: r.workout }));
+}
+
+function serializeDay(d: DayRow & { workout: WorkoutRow | null }) {
   return {
-    ...base(p),
-    days: days.map((d) => ({
-      id: d.id,
-      title: d.title,
-      isRestDay: d.isRestDay,
-      notes: d.notes,
-      workoutIds: byDay.get(d.id) ?? [],
-    })),
-    videoItems: videoItems.map((v) => ({
-      id: v.id,
-      mediaAssetId: v.mediaAssetId,
-      title: v.title,
-      description: v.description,
-    })),
+    id: d.id,
+    title: d.title,
+    isRestDay: d.isRestDay,
+    workoutId: d.workout?.id ?? null,
+    type: d.workout?.type ?? ('structured' as const),
+    sourceText: d.workout?.sourceText ?? '',
+    videoAssetId: d.workout?.videoAssetId ?? null,
+    videoDurationSeconds: d.workout?.videoDurationSeconds ?? null,
   };
 }
 
-async function insertDays(db: Database, programId: string, days: ProgramDayInput[]) {
-  for (let i = 0; i < days.length; i += 1) {
-    const d = days[i]!;
-    const [day] = await db
-      .insert(programDays)
-      .values({
-        programId,
-        position: i,
-        title: d.title ?? null,
-        isRestDay: d.isRestDay,
-        notes: d.notes ?? null,
-      })
-      .returning({ id: programDays.id });
-    if (day && d.workoutIds.length) {
-      await db
-        .insert(programItems)
-        .values(d.workoutIds.map((workoutId, j) => ({ programDayId: day.id, position: j, workoutId })));
-    }
-  }
+async function loadFull(db: Database, p: ProgramRow) {
+  const days = await daysOf(db, [p.id]);
+  return { ...base(p), days: days.map(serializeDay) };
 }
 
-async function insertVideoItems(db: Database, programId: string, videoItems: ProgramVideoItemInput[]) {
-  if (!videoItems.length) return;
-  await db.insert(programVideoItems).values(
-    videoItems.map((v, i) => ({
-      programId,
-      position: i,
-      mediaAssetId: v.mediaAssetId,
-      title: v.title ?? null,
-      description: v.description ?? null,
-    })),
-  );
+/**
+ * Write the program's days. A day with content owns a rutina (a workout row
+ * hidden from the catalog) built from what the admin wrote; a rest day has
+ * none. Days with an id are updated in place, new ones created, the rest
+ * deleted with their rutina.
+ */
+async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput[]) {
+  const existing = await db.select().from(programDays).where(eq(programDays.programId, program.id));
+  const keep = new Set(days.map((d) => d.id).filter((id): id is string => !!id));
+  const gone = existing.filter((d) => !keep.has(d.id));
+  const retire = (workoutIds: string[]) =>
+    workoutIds.length ? db.update(workouts).set({ deletedAt: new Date() }).where(inArray(workouts.id, workoutIds)) : Promise.resolve();
+  if (gone.length) {
+    await db.delete(programDays).where(inArray(programDays.id, gone.map((d) => d.id)));
+    await retire(gone.map((d) => d.workoutId).filter((id): id is string => !!id));
+  }
+  const byId = new Map(existing.map((d) => [d.id, d]));
+  for (let i = 0; i < days.length; i += 1) {
+    const d = days[i]!;
+    const current = d.id ? byId.get(d.id) : undefined;
+    const label = d.title?.trim() || `Día ${i + 1}`;
+    const structured = d.type === 'structured';
+    const hasContent = !d.isRestDay && (structured ? !!d.sourceText?.trim() : !!d.videoAssetId);
+    let workoutId: string | null = null;
+    if (hasContent) {
+      const values = {
+        name: `${program.name} · ${label}`,
+        type: d.type,
+        format: structured ? (d.format ?? null) : null,
+        difficulty: program.difficulty,
+        estimatedDurationSeconds: structured ? estimateDurationSeconds(d.blocks) : (d.videoDurationSeconds ?? null),
+        status: program.status,
+        sourceText: structured ? (d.sourceText ?? null) : null,
+        videoAssetId: structured ? null : (d.videoAssetId ?? null),
+        videoDurationSeconds: structured ? null : (d.videoDurationSeconds ?? null),
+        ownerProgramId: program.id,
+      };
+      if (current?.workoutId) {
+        workoutId = current.workoutId;
+        await db.update(workouts).set(values).where(eq(workouts.id, workoutId));
+        await db.delete(workoutBlocks).where(eq(workoutBlocks.workoutId, workoutId));
+      } else {
+        const [w] = await db
+          .insert(workouts)
+          .values({ ...values, slug: await uniqueSlug(db, slugify(`${program.name} ${label}`)) })
+          .returning({ id: workouts.id });
+        if (!w) throw new Error('No se pudo crear la rutina del día');
+        workoutId = w.id;
+      }
+      if (structured && d.blocks.length) await insertBlocks(db, workoutId, d.blocks);
+    } else if (current?.workoutId) {
+      // Became a rest day (or was emptied): its rutina goes.
+      await retire([current.workoutId]);
+    }
+    const dayValues = { position: i, title: d.title?.trim() || null, isRestDay: d.isRestDay, workoutId };
+    if (current) await db.update(programDays).set(dayValues).where(eq(programDays.id, current.id));
+    else await db.insert(programDays).values({ programId: program.id, ...dayValues });
+  }
 }
 
 export const programsRoute = createApp();
@@ -130,10 +147,7 @@ programsRoute.openapi(
   async (c) => {
     const db = c.get('db');
     const { page, pageSize, search } = c.req.valid('query');
-    const where = and(
-      isNull(programs.deletedAt),
-      search ? ilike(programs.name, `%${search}%`) : undefined,
-    );
+    const where = and(isNull(programs.deletedAt), search ? ilike(programs.name, `%${search}%`) : undefined);
     const [rows, [totals]] = await Promise.all([
       db
         .select()
@@ -144,7 +158,16 @@ programsRoute.openapi(
         .offset((page - 1) * pageSize),
       db.select({ value: count() }).from(programs).where(where),
     ]);
-    return c.json({ data: rows.map(base), total: totals?.value ?? 0, page, pageSize }, 200);
+    const counts = rows.length
+      ? await db
+          .select({ programId: programDays.programId, value: count() })
+          .from(programDays)
+          .where(inArray(programDays.programId, rows.map((r) => r.id)))
+          .groupBy(programDays.programId)
+      : [];
+    const byP = new Map(counts.map((r) => [r.programId, r.value]));
+    const data = rows.map((p) => ({ ...base(p), dayCount: byP.get(p.id) ?? 0 }));
+    return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
 
@@ -191,16 +214,13 @@ programsRoute.openapi(
         slug: input.slug ?? slugify(input.name),
         name: input.name,
         description: input.description ?? null,
-        type: input.type,
         difficulty: input.difficulty,
-        durationDays: input.durationDays ?? null,
         status: input.status,
         thumbnailAssetId: input.thumbnailAssetId ?? null,
       })
       .returning();
     if (!row) throw new Error('No se pudo crear el programa');
-    if (input.type === 'structured') await insertDays(db, row.id, input.days);
-    else await insertVideoItems(db, row.id, input.videoItems);
+    await syncDays(db, row, input.days);
     return c.json(await loadFull(db, row), 201);
   },
 );
@@ -223,13 +243,11 @@ programsRoute.openapi(
     const db = c.get('db');
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
-    const set: Partial<typeof programs.$inferInsert> = {};
+    const set: Partial<typeof programs.$inferInsert> = { updatedAt: new Date() };
     if (input.name !== undefined) set.name = input.name;
     if (input.slug !== undefined) set.slug = input.slug;
     if (input.description !== undefined) set.description = input.description ?? null;
-    if (input.type !== undefined) set.type = input.type;
     if (input.difficulty !== undefined) set.difficulty = input.difficulty;
-    if (input.durationDays !== undefined) set.durationDays = input.durationDays ?? null;
     if (input.status !== undefined) set.status = input.status;
     if (input.thumbnailAssetId !== undefined) set.thumbnailAssetId = input.thumbnailAssetId ?? null;
 
@@ -240,13 +258,13 @@ programsRoute.openapi(
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
 
-    if (input.days !== undefined) {
-      await db.delete(programDays).where(eq(programDays.programId, id));
-      await insertDays(db, id, input.days);
-    }
-    if (input.videoItems !== undefined) {
-      await db.delete(programVideoItems).where(eq(programVideoItems.programId, id));
-      await insertVideoItems(db, id, input.videoItems);
+    if (input.days !== undefined) await syncDays(db, row, input.days);
+    else {
+      // Name, status or difficulty changed: the days' rutinas follow the program.
+      await db
+        .update(workouts)
+        .set({ status: row.status, difficulty: row.difficulty })
+        .where(eq(workouts.ownerProgramId, row.id));
     }
     return c.json(await loadFull(db, row), 200);
   },
@@ -272,6 +290,7 @@ programsRoute.openapi(
       .where(and(eq(programs.id, id), isNull(programs.deletedAt)))
       .returning({ id: programs.id });
     if (!row) return c.json({ error: 'No encontrado' }, 404);
+    await db.update(workouts).set({ deletedAt: new Date() }).where(eq(workouts.ownerProgramId, id));
     return c.body(null, 204);
   },
 );

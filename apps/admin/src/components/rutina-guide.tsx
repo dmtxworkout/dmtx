@@ -628,7 +628,7 @@ function Reference({ rows }: { rows: Ref[] }) {
 
 type Section = { id: string; title: string; keywords: string; body: ReactNode };
 
-function sections(skillMode: boolean): Section[] {
+function sections(skillMode: boolean, programMode: boolean): Section[] {
   const out: Section[] = [
     {
       id: 'basics',
@@ -827,6 +827,32 @@ For time cap 20 min
       body: <SceneVersions skillMode={skillMode} />,
     },
   ];
+  if (programMode) {
+    // A program has no versions: its days are picked from the week strip.
+    out.splice(out.length - 1, 1, {
+      id: 'weeks',
+      title: 'Semanas y días',
+      keywords: 'programa semana dia descanso video calendario duplicar copiar arrastrar',
+      body: (
+        <>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Un programa es un calendario en semanas de siete días. La tira de arriba muestra cada día como una casilla: haz
+            clic para escribir su rutina en el editor, arrastra para moverlo a otro día. Un punto marca que tiene contenido;
+            las casillas rayadas son días de descanso.
+          </p>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Cada día es una rutina propia: escrita en el editor o una sola clase en video (elige el tipo en la barra del
+            día), con su nombre si quieres que el usuario vea algo distinto de «Día N». «Descanso» lo deja sin rutina. Para
+            reutilizar una rutina del catálogo, insértala desde el menú + (Rutinas): se copia su texto.
+          </p>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            «Nueva semana» añade siete días vacíos; «Copiar la última semana» la repite. Pasa el ratón por una semana para
+            duplicarla o eliminarla. Para publicar, todos los días deben tener rutina, video o descanso.
+          </p>
+        </>
+      ),
+    });
+  }
   if (skillMode) {
     out.splice(7, 0, {
       id: 'goal',
@@ -885,9 +911,19 @@ function highlight(node: ReactNode, q: string): ReactNode {
 const sectionText = (s: Section) =>
   fold(`${s.title} ${s.keywords} ${renderToStaticMarkup(<>{s.body}</>).replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<[^>]+>/g, ' ')}`);
 
-export function RutinaGuide({ open, onClose, skillMode = false }: { open: boolean; onClose: () => void; skillMode?: boolean }) {
+export function RutinaGuide({
+  open,
+  onClose,
+  skillMode = false,
+  programMode = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  skillMode?: boolean;
+  programMode?: boolean;
+}) {
   const [query, setQuery] = useState('');
-  const all = useMemo(() => sections(skillMode), [skillMode]);
+  const all = useMemo(() => sections(skillMode, programMode), [skillMode, programMode]);
   const q = fold(query.trim());
   const index = useMemo(() => all.map(sectionText), [all]);
   const visible = q ? all.filter((_, i) => index[i]!.includes(q)) : all;

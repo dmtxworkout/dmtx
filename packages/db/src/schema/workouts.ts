@@ -18,6 +18,7 @@ import {
 import { mediaAssets } from './media';
 import { exercises } from './exercises';
 import { skills } from './skills';
+import { programs } from './programs';
 
 /**
  * A workout (rutina). Polymorphic via `type`:
@@ -40,6 +41,8 @@ export const workouts = pgTable('workouts', {
   // A skill level's rutina belongs to the skill: edited there, hidden from the
   // catalog, deleted with it.
   ownerSkillId: uuid().references(() => skills.id, { onDelete: 'cascade' }),
+  // A program day's rutina belongs to the program the same way.
+  ownerProgramId: uuid().references(() => programs.id, { onDelete: 'cascade' }),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   videoDurationSeconds: integer(),
   // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.

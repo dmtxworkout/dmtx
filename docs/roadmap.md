@@ -17,7 +17,7 @@
 2. ~~**Taxonomy**~~ — built (2026-10-21): `/api/taxonomy` CRUD, the **Músculos y equipo** screen, muscle/equipment pickers in the exercise form, and the app derives each rutina's tags ("Trabaja" / "Equipo") from its exercises and filters Explorar by them (`/app/filters`, `/app/browse?muscle=&equipment=`). Muscle groups were dropped the same day: one flat list of muscles is enough.
 3. **Add DB indexes** — FKs, `subscriptions.next_charge_date`, `status`, `deleted_at` on hot paths (none defined yet).
 4. **Workouts (rutinas)** — format picker + per-format config forms + block/item builder. Add `@dmtx/core` for the format/goal engines (`meetsGoal`, timer configs) shared with mobile.
-5. **Programs, Collections** — same golden-path pattern. ~~Skills~~ built (2026-10-21): levels written in the rutina editor with an **Objetivo** section; the app unlocks levels from logged sessions (see data-model.md).
+5. **Collections** — same golden-path pattern. ~~Skills~~ built (2026-10-21): levels written in the rutina editor with an **Objetivo** section; the app unlocks levels from logged sessions (see data-model.md). ~~Programs~~ rebuilt (2026-10-22): weeks of days, each day its own rutina written in the editor (video playlists dropped); `program_progress` still pending.
 6. **Media library** — R2 upload UI + a transcoding pipeline (source → HLS variants in R2 → `media_assets.variants`).
 7. **Billing** — the self-managed engine (SetupIntent, Cron + Queue charge run, dunning, webhooks) + subscription-management & reporting screens. See [billing.md](billing.md).
 8. **Production hardening** — CI (GitHub Actions + Turbo remote cache + Neon PR-branch migration check), subdomain cookie config, R2 CORS, deploys (Vercel + `wrangler deploy`).
@@ -34,7 +34,6 @@ The block/item builder was replaced (2026-10-20) by the **text editor**: `/core`
 ## Rutina editor — next
 
 - ~~Partes con formato propio dentro de una sección~~ — built (2026-10-20): part blocks (`kind='part'`, own format, children via `parent_block_id`), the parser/serializer nest them, and the mobile player chains parts (one combined log for multi-part sessions).
-- Several rutinas open at once (tabs per file) when building programs by week.
 
 ## Known shortcuts to revisit
 

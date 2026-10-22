@@ -1,13 +1,5 @@
 import { boolean, integer, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
-import {
-  contentStatusEnum,
-  difficultyEnum,
-  primaryId,
-  programTypeEnum,
-  publishable,
-  softDelete,
-  timestamps,
-} from './_shared';
+import { contentStatusEnum, difficultyEnum, primaryId, publishable, softDelete, timestamps } from './_shared';
 import { mediaAssets } from './media';
 import { muscles } from './taxonomy';
 import { workouts } from './workouts';
@@ -21,18 +13,16 @@ export const goalTags = pgTable('goal_tags', {
 });
 
 /**
- * A program. Polymorphic via `type`:
- *  - structured: a schedule of days -> workouts (`programDays` / `programItems`).
- *  - video_playlist: an ordered list of videos (`programVideoItems`).
+ * A program: a calendar in whole weeks (`programDays`, seven per week). Each
+ * day is a rest day or has its own rutina, written in the editor and owned by
+ * the program (`workouts.owner_program_id`), structured or a video.
  */
 export const programs = pgTable('programs', {
   id: primaryId(),
   slug: text().notNull().unique(),
   name: text().notNull(),
   description: text(),
-  type: programTypeEnum().notNull(),
   difficulty: difficultyEnum().notNull(),
-  durationDays: integer(),
   thumbnailAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   status: contentStatusEnum().notNull().default('draft'),
   ...publishable,
@@ -66,46 +56,17 @@ export const programMuscles = pgTable(
   (t) => [primaryKey({ columns: [t.programId, t.muscleId] })],
 );
 
-/** A single day in a structured program (`position` is the absolute day index). */
+/** A single day of a program: `position` is the absolute day index (week = position / 7). */
 export const programDays = pgTable('program_days', {
   id: primaryId(),
   programId: uuid()
     .notNull()
     .references(() => programs.id, { onDelete: 'cascade' }),
   position: integer().notNull().default(0),
-  weekNumber: integer(),
-  dayOfWeek: integer(),
   isRestDay: boolean().notNull().default(false),
   title: text(),
   notes: text(),
-  ...timestamps,
-});
-
-export const programItems = pgTable('program_items', {
-  id: primaryId(),
-  programDayId: uuid()
-    .notNull()
-    .references(() => programDays.id, { onDelete: 'cascade' }),
-  position: integer().notNull().default(0),
-  workoutId: uuid()
-    .notNull()
-    .references(() => workouts.id, { onDelete: 'restrict' }),
-  notes: text(),
-  ...timestamps,
-});
-
-/** Ordered videos for a video_playlist program. */
-export const programVideoItems = pgTable('program_video_items', {
-  id: primaryId(),
-  programId: uuid()
-    .notNull()
-    .references(() => programs.id, { onDelete: 'cascade' }),
-  position: integer().notNull().default(0),
-  mediaAssetId: uuid()
-    .notNull()
-    .references(() => mediaAssets.id, { onDelete: 'restrict' }),
-  title: text(),
-  description: text(),
-  durationSeconds: integer(),
+  // The day's rutina (written in the editor, owned by the program); null on a rest day.
+  workoutId: uuid().references(() => workouts.id, { onDelete: 'set null' }),
   ...timestamps,
 });

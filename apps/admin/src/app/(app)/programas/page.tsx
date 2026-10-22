@@ -3,39 +3,28 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ProgramListItem } from '@dmtx/schemas';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { formatDateEs } from '@/lib/utils';
-import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
 import { Thumb } from '@/components/ui/thumb';
 import { MediaThumb } from '@/components/media-thumb';
 
-function meta(p: ProgramListItem): string {
-  const parts: string[] = [es.programs.types[p.type], es.difficulty[p.difficulty]];
-  if (p.durationDays) parts.push(`${p.durationDays} días`);
-  return parts.join(' · ');
-}
+const COLS = 'grid-cols-[74px_minmax(0,2fr)_110px_120px_104px_150px] gap-3.5 px-[18px]';
 
 export default function ProgramasPage() {
   const [search, setSearch] = useState('');
   const router = useRouter();
-  const qc = useQueryClient();
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['programs', search],
     queryFn: () => api.programs.list({ search: search || undefined, pageSize: 60 }),
     placeholderData: keepPreviousData,
   });
-  const remove = useMutation({
-    mutationFn: (id: string) => api.programs.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['programs'] }),
-  });
-
-  const items = data?.data ?? [];
+  const rows = data?.data ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -43,12 +32,9 @@ export default function ProgramasPage() {
         title={es.programs.title}
         subtitle={data ? `${data.total} programa${data.total === 1 ? '' : 's'}` : es.programs.title}
         actions={
-          <>
-            <Button variant="outline">Duplicar plantilla</Button>
-            <Link href="/programas/nuevo">
-              <Button>{es.programs.new}</Button>
-            </Link>
-          </>
+          <Link href="/programas/nuevo">
+            <Button>{es.programs.new}</Button>
+          </Link>
         }
       >
         <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
@@ -62,54 +48,56 @@ export default function ProgramasPage() {
         </div>
       </PageHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-[22px]">
-        {isLoading ? (
-          <div className="p-10 text-center text-sm text-muted">{es.app.loading}</div>
-        ) : isError ? (
-          <div className="p-10 text-center text-sm text-accent-dark">{es.app.error}</div>
-        ) : items.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted">{es.programs.empty}</div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {items.map((p) => (
-              <div
-                key={p.id}
-                onClick={() => router.push(`/programas/${p.id}`)}
-                className="group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-line bg-surface transition-colors hover:border-line-2"
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
+        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+          <div className={`grid min-w-[860px] ${COLS} h-[42px] items-center border-b border-line-3 bg-surface-2`}>
+            {['', 'Nombre', 'Semanas', 'Dificultad', 'Estado', 'Actualizado'].map((h, i) => (
+              <span
+                key={i}
+                className={`font-mono text-[10px] font-medium uppercase tracking-[0.12em] text-muted-2 ${i === 5 ? 'text-right' : ''}`}
               >
-                <Thumb>
-                  {p.thumbnailAssetId && (
-                    <MediaThumb assetId={p.thumbnailAssetId} className="absolute inset-0 h-full w-full" />
-                  )}
-                  <span className="absolute left-2.5 top-2.5 rounded-md bg-ink px-1.5 py-1 font-mono text-[10px] font-semibold tracking-[0.06em] text-white">
-                    {p.type === 'structured' ? 'CALENDARIO' : 'PLAYLIST'}
-                  </span>
-                </Thumb>
-                <div className="flex flex-1 flex-col gap-1.5 px-3.5 pb-3.5 pt-3">
-                  <div className="text-[15px] font-semibold leading-tight tracking-[-0.01em]">
-                    {p.name}
-                  </div>
-                  <div className="font-mono text-[11px] text-muted">{meta(p)}</div>
-                  <div className="mt-auto flex items-center gap-2 pt-1.5">
-                    <Badge tone={p.status}>{es.status[p.status]}</Badge>
-                    <span className="font-mono text-[11px] text-faint">
-                      {formatDateEs(p.updatedAt)}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm(es.app.confirmDelete)) remove.mutate(p.id);
-                      }}
-                      className="ml-auto text-faint-2 opacity-0 transition-opacity hover:text-accent-dark group-hover:opacity-100"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              </div>
+                {h}
+              </span>
             ))}
           </div>
-        )}
+
+          {isLoading ? (
+            <div className="p-8 text-center text-sm text-muted">{es.app.loading}</div>
+          ) : isError ? (
+            <div className="p-8 text-center text-sm text-accent-dark">{es.app.error}</div>
+          ) : rows.length === 0 ? (
+            <div className="p-10 text-center text-sm text-muted">{es.programs.empty}</div>
+          ) : (
+            rows.map((p) => {
+              const weeks = Math.ceil(p.dayCount / 7);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => router.push(`/programas/${p.id}`)}
+                  className={`grid min-w-[860px] cursor-pointer ${COLS} items-center border-b border-line-4 py-2.5 last:border-0 hover:bg-surface-2/60`}
+                >
+                  {p.thumbnailAssetId ? (
+                    <MediaThumb assetId={p.thumbnailAssetId} className="h-[46px] w-[74px] rounded-[7px]" />
+                  ) : (
+                    <Thumb className="h-[46px] w-[74px] rounded-[7px]" ratio="auto" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold">{p.name}</div>
+                    {p.description && <div className="truncate font-mono text-[11px] text-muted">{p.description}</div>}
+                  </div>
+                  <span className="text-[13px] text-ink-2">
+                    {weeks === 0 ? <span className="text-faint-2">—</span> : `${weeks} semana${weeks === 1 ? '' : 's'}`}
+                  </span>
+                  <span className="text-[13px] text-ink-2">{es.difficulty[p.difficulty]}</span>
+                  <span>
+                    <Badge tone={p.status}>{es.status[p.status]}</Badge>
+                  </span>
+                  <span className="text-right font-mono text-[12px] text-muted">{formatDateEs(p.updatedAt)}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
       </div>
     </div>
   );

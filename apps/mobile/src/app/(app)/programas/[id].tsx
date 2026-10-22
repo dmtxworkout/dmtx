@@ -22,10 +22,7 @@ export default function ProgramaDetalle() {
   }
 
   const p = q.data;
-  const meta = [
-    p.weeks ? `${p.weeks} semanas` : p.durationDays ? `${p.durationDays} días` : '',
-    difficultyLabel(p.difficulty, true),
-  ]
+  const meta = [p.weeks ? `${p.weeks} semana${p.weeks === 1 ? '' : 's'}` : '', difficultyLabel(p.difficulty, true)]
     .filter(Boolean)
     .join(' · ');
 
@@ -57,38 +54,40 @@ export default function ProgramaDetalle() {
             <Text className="font-sans text-[14px] leading-6 text-ink-2">{p.description}</Text>
           ) : null}
 
-          <Text className="pt-2 font-mono-medium text-[11px] uppercase tracking-wider text-ink-3">
-            Calendario
-          </Text>
-          {p.days.map((d) => {
-            const first = d.workouts[0];
+          {p.days.map((d, i) => {
+            const w = d.workout;
+            const dayName = d.isRestDay ? 'Descanso' : (d.title ?? `Día ${d.position + 1}`);
             return (
-              <Pressable
-                key={d.id}
-                disabled={!first}
-                onPress={() => first && router.push(`/(app)/rutinas/${first.id}`)}
-                className="flex-row items-center gap-3 border-b border-line-2 py-2.5"
-              >
-                <Text className="w-9 font-mono-semibold text-[11px] text-ink-3">
-                  D{d.position + 1}
-                </Text>
-                {d.isRestDay ? (
-                  <View className="h-[38px] w-[62px] items-center justify-center rounded-[7px] bg-surface">
-                    <Text className="text-[14px] text-ink-4">·</Text>
+              <View key={d.id}>
+                {d.position % 7 === 0 ? (
+                  <Text className={`${i === 0 ? 'pt-2' : 'pt-5'} pb-1 font-mono-medium text-[11px] uppercase tracking-wider text-ink-3`}>
+                    Semana {d.week}
+                  </Text>
+                ) : null}
+                <Pressable
+                  disabled={!w}
+                  onPress={() => w && router.push(`/(app)/rutinas/${w.id}`)}
+                  className="flex-row items-center gap-3 border-b border-line-2 py-2.5"
+                >
+                  <Text className="w-9 font-mono-semibold text-[11px] text-ink-3">D{d.position + 1}</Text>
+                  {d.isRestDay || !w ? (
+                    <View className="h-[38px] w-[62px] items-center justify-center rounded-[7px] bg-surface">
+                      <Text className="text-[14px] text-ink-4">·</Text>
+                    </View>
+                  ) : (
+                    <Thumb uri={w.thumbnailUrl} className="h-[38px] w-[62px]" radius={7} />
+                  )}
+                  <View className="min-w-0 flex-1">
+                    <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
+                      {dayName}
+                    </Text>
+                    <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
+                      {d.isRestDay ? 'Recuperación' : (w?.meta ?? '')}
+                    </Text>
                   </View>
-                ) : (
-                  <Thumb uri={first?.thumbnailUrl} className="h-[38px] w-[62px]" radius={7} />
-                )}
-                <View className="min-w-0 flex-1">
-                  <Text numberOfLines={1} className="font-semibold text-[14px] text-ink">
-                    {d.isRestDay ? 'Descanso' : (d.title ?? first?.name ?? 'Entrenamiento')}
-                  </Text>
-                  <Text numberOfLines={1} className="font-mono text-[10px] text-ink-3">
-                    {d.isRestDay ? 'Recuperación' : (first?.meta ?? '')}
-                  </Text>
-                </View>
-                {first ? <Text className="text-[15px] text-ink-4">›</Text> : null}
-              </Pressable>
+                  {w ? <Text className="text-[15px] text-ink-4">›</Text> : null}
+                </Pressable>
+              </View>
             );
           })}
         </View>

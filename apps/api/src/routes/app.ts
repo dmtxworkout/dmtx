@@ -6,8 +6,6 @@ import {
   exercises,
   muscles,
   programDays,
-  programItems,
-  programVideoItems,
   programs,
   setResults,
   skillLevels,
@@ -67,21 +65,20 @@ function workoutCard(w: WorkoutRow, thumb: string | null) {
   };
 }
 
-function programCard(p: ProgramRow, thumb: string | null) {
-  const weeks = p.durationDays ? Math.round(p.durationDays / 7) : null;
-  const meta = weeks ? `${weeks} sem` : p.durationDays ? `${p.durationDays} días` : '';
+function programCard(p: ProgramRow, thumb: string | null, dayCount: number) {
+  const weeks = Math.ceil(dayCount / 7);
   return {
     id: p.id,
     kind: 'program' as const,
     slug: p.slug,
     name: p.name,
     difficulty: p.difficulty,
-    durationDays: p.durationDays,
+    durationDays: dayCount,
     weeks,
     thumbnailUrl: thumb,
     tag: 'PROGRAMA',
     ratio: '2/3',
-    meta,
+    meta: weeks ? `${weeks} sem` : '',
     progressPct: 0,
   };
 }
@@ -309,7 +306,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               eq(workouts.status, 'published'),
               isNull(workouts.deletedAt),
               isNull(workouts.variantOfId),
-              isNull(workouts.ownerSkillId),
+              isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId),
               byTags ? inArray(workouts.id, byTags) : undefined,
               like
                 ? byText?.length
@@ -370,6 +367,15 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
       : [];
   const unlockedBy = new Map(progressRows.map((r) => [r.skillId, r.n]));
 
+  const dayCounts = pRows.length
+    ? await db
+        .select({ programId: programDays.programId, value: count() })
+        .from(programDays)
+        .where(inArray(programDays.programId, pRows.map((p) => p.id)))
+        .groupBy(programDays.programId)
+    : [];
+  const dayCountBy = new Map(dayCounts.map((r) => [r.programId, r.value]));
+
   const media = await resolveMediaUrls(db, env, [
     ...wRows.map((w) => w.thumbnailAssetId),
     ...pRows.map((p) => p.thumbnailAssetId),
@@ -381,7 +387,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
       ...workoutCard(w, url(media, w.thumbnailAssetId)),
       ...(wTags.get(w.id) ?? { muscles: [], equipment: [] }),
     })),
-    programs: pRows.map((p) => programCard(p, url(media, p.thumbnailAssetId))),
+    programs: pRows.map((p) => programCard(p, url(media, p.thumbnailAssetId), dayCountBy.get(p.id) ?? 0)),
     skills: sRows.map((s) => skillCard(s, url(media, s.thumbnailAssetId), levelCountBy.get(s.id) ?? 0, unlockedBy.get(s.id) ?? 1)),
   };
 }
@@ -430,7 +436,7 @@ appRoute.get('/home', async (c) => {
 // and equipment that at least one published rutina actually carries.
 appRoute.get('/filters', async (c) => {
   const db = c.get('db');
-  const live = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId), isNull(workouts.ownerSkillId));
+  const live = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId), isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId));
   const [g, e] = await Promise.all([
     db
       .selectDistinct({ slug: muscles.slug, name: muscles.name, position: muscles.position })
@@ -656,7 +662,8 @@ appRoute.get('/workouts/:id', async (c) => {
   }
 });
 
-// GET /api/app/programs/:id — full program.
+// GET /api/app/programs/:id — full program: its days in order, each with its
+// rutina (opened with the rutina screen) or marked as rest.
 appRoute.get('/programs/:id', async (c) => {
   const db = c.get('db');
   const id = c.req.param('id');
@@ -667,72 +674,31 @@ appRoute.get('/programs/:id', async (c) => {
     .limit(1);
   if (!p) return c.json({ error: 'No encontrado' }, 404);
 
-  const [days, videoItems] = await Promise.all([
-    db.select().from(programDays).where(eq(programDays.programId, p.id)).orderBy(programDays.position),
-    db
-      .select()
-      .from(programVideoItems)
-      .where(eq(programVideoItems.programId, p.id))
-      .orderBy(programVideoItems.position),
-  ]);
-  const dayIds = days.map((d) => d.id);
-  const dayItems = dayIds.length
-    ? await db
-        .select()
-        .from(programItems)
-        .where(inArray(programItems.programDayId, dayIds))
-        .orderBy(programItems.position)
-    : [];
+  const days = await db
+    .select({ day: programDays, workout: workouts })
+    .from(programDays)
+    .leftJoin(workouts, eq(workouts.id, programDays.workoutId))
+    .where(eq(programDays.programId, p.id))
+    .orderBy(programDays.position);
 
-  const workoutIds = [...new Set(dayItems.map((it) => it.workoutId))];
-  const wRows = workoutIds.length
-    ? await db.select().from(workouts).where(inArray(workouts.id, workoutIds))
-    : [];
-  const wBy = new Map<string, WorkoutRow>(wRows.map((w) => [w.id, w]));
-
-  const media = await resolveMediaUrls(db, c.env, [
-    p.thumbnailAssetId,
-    ...wRows.map((w) => w.thumbnailAssetId),
-    ...videoItems.map((v) => v.mediaAssetId),
-  ]);
-
-  const itemsByDay = new Map<string, string[]>();
-  for (const it of dayItems) {
-    const arr = itemsByDay.get(it.programDayId) ?? [];
-    arr.push(it.workoutId);
-    itemsByDay.set(it.programDayId, arr);
-  }
-
-  const weeks = p.durationDays ? Math.round(p.durationDays / 7) : null;
+  const media = await resolveMediaUrls(db, c.env, [p.thumbnailAssetId, ...days.map((d) => d.workout?.thumbnailAssetId ?? null)]);
+  const weeks = Math.ceil(days.length / 7);
   return c.json({
     id: p.id,
     slug: p.slug,
     name: p.name,
     description: p.description,
-    type: p.type,
     difficulty: p.difficulty,
-    durationDays: p.durationDays,
+    durationDays: days.length,
     weeks,
     thumbnailUrl: url(media, p.thumbnailAssetId),
-    days: days.map((d) => ({
+    days: days.map(({ day: d, workout: w }) => ({
       id: d.id,
       position: d.position,
-      weekNumber: d.weekNumber,
-      dayOfWeek: d.dayOfWeek,
+      week: Math.floor(d.position / 7) + 1,
       isRestDay: d.isRestDay,
       title: d.title,
-      notes: d.notes,
-      workouts: (itemsByDay.get(d.id) ?? [])
-        .map((wid) => wBy.get(wid))
-        .filter((w): w is WorkoutRow => Boolean(w))
-        .map((w) => workoutSummary(w, url(media, w.thumbnailAssetId))),
-    })),
-    videoItems: videoItems.map((v) => ({
-      id: v.id,
-      title: v.title,
-      description: v.description,
-      durationSeconds: v.durationSeconds,
-      videoUrl: url(media, v.mediaAssetId),
+      workout: w ? workoutSummary(w, url(media, w.thumbnailAssetId)) : null,
     })),
   });
 });

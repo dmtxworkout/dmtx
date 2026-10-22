@@ -65,11 +65,6 @@ export const BLOCK_SECTION = ['warmup', 'main', 'cooldown', 'goal'] as const;
 export const blockSectionSchema = enumOf(BLOCK_SECTION);
 export type BlockSection = z.infer<typeof blockSectionSchema>;
 
-// --- Programs ----------------------------------------------------------------
-export const PROGRAM_TYPE = ['structured', 'video_playlist'] as const;
-export const programTypeSchema = enumOf(PROGRAM_TYPE);
-export type ProgramType = z.infer<typeof programTypeSchema>;
-
 // --- Collections (Netflix-style rows) ---------------------------------------
 export const COLLECTION_LAYOUT = ['row', 'grid', 'hero', 'featured'] as const;
 export const collectionLayoutSchema = enumOf(COLLECTION_LAYOUT);

@@ -223,8 +223,8 @@ workoutsRoute.openapi(
     const where = and(
       isNull(workouts.deletedAt),
       isNull(workouts.variantOfId),
-      // A skill level's rutina is edited from its skill, not here.
-      isNull(workouts.ownerSkillId),
+      // A skill level's or a program day's rutina is edited from its owner, not here.
+      isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId),
       search ? ilike(workouts.name, `%${search}%`) : undefined,
     );
     const [rows, [totals]] = await Promise.all([
