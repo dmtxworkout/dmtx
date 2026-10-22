@@ -17,16 +17,23 @@ export function useUnsavedChanges({
   onSave,
   onDiscard,
   canSave = true,
+  busy = null,
 }: {
   dirty: boolean;
   saving: boolean;
   onSave: () => void;
   onDiscard: () => void;
   canSave?: boolean;
+  /** Something in flight that leaving or saving would lose (an upload): the bar shows it and blocks both. */
+  busy?: string | null;
 }): { bar: ReactNode; guardNav: (go: () => void) => void; shake: () => void } {
   const [shake, setShake] = useState(0);
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
+  // Leaving is guarded while there are unsaved changes or something in flight.
+  const hold = dirty || busy !== null;
+  const dirtyRef = useRef(hold);
+  dirtyRef.current = hold;
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
 
@@ -36,7 +43,7 @@ export function useUnsavedChanges({
   };
   // Clicks on the app's own links are intercepted while dirty.
   useEffect(() => {
-    if (!dirty) return;
+    if (!hold) return;
     const onClick = (e: MouseEvent) => {
       const a = (e.target as HTMLElement | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
       if (!a || a.target === '_blank' || e.metaKey || e.ctrlKey) return;
@@ -49,7 +56,7 @@ export function useUnsavedChanges({
     };
     document.addEventListener('click', onClick, true);
     return () => document.removeEventListener('click', onClick, true);
-  }, [dirty]);
+  }, [hold]);
   useEffect(() => {
     if (!shake) return;
     const t = window.setTimeout(() => setShake(0), 600);
@@ -60,7 +67,7 @@ export function useUnsavedChanges({
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        if (dirtyRef.current) onSaveRef.current();
+        if (dirtyRef.current && busyRef.current === null) onSaveRef.current();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -68,15 +75,15 @@ export function useUnsavedChanges({
   }, []);
   // Reload/close with unsaved changes asks first (the browser's own prompt).
   useEffect(() => {
-    if (!dirty) return;
+    if (!hold) return;
     const onUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
     };
     window.addEventListener('beforeunload', onUnload);
     return () => window.removeEventListener('beforeunload', onUnload);
-  }, [dirty]);
+  }, [hold]);
 
-  const bar = dirty ? (
+  const bar = hold ? (
     <div className="pointer-events-none absolute inset-x-0 top-3 z-30 flex justify-center">
       <div
         key={shake}
@@ -85,11 +92,14 @@ export function useUnsavedChanges({
           shake > 0 && 'animate-shake',
         )}
       >
-        <span className="mr-2 text-[13px] font-semibold">Cambios sin guardar</span>
+        {busy !== null && (
+          <span className="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" aria-hidden />
+        )}
+        <span className="mr-2 text-[13px] font-semibold">{busy ?? 'Cambios sin guardar'}</span>
         <button
           type="button"
           onClick={onDiscard}
-          disabled={saving}
+          disabled={saving || busy !== null}
           className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-white/85 hover:bg-white/15 hover:text-white disabled:opacity-50"
         >
           Descartar
@@ -97,7 +107,8 @@ export function useUnsavedChanges({
         <button
           type="button"
           onClick={onSave}
-          disabled={saving || !canSave}
+          disabled={saving || !canSave || busy !== null}
+          title={busy !== null ? 'Espera a que termine la subida' : undefined}
           className="rounded-full bg-white px-3.5 py-1.5 text-[13px] font-bold text-ink hover:bg-white/90 disabled:opacity-60"
         >
           {saving ? es.app.saving : es.app.save}

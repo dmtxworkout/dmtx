@@ -973,15 +973,24 @@ export function RutinaForm({
   };
   // Save / discard bar, ⌘S, navigation guard (shared with the exercise form).
   const doSaveRef = useRef<() => void>(() => {});
+  // A video being uploaded: saving now would save the day/rutina without it,
+  // and leaving would lose it, so both wait (the bar says so).
+  const [uploading, setUploading] = useState<string | null>(null);
   const { bar: unsavedBar, guardNav, shake: shakeBar } = useUnsavedChanges({
     dirty,
     saving: save.isPending || saveBlock.isPending || saveSkill.isPending || saveProgram.isPending,
     onSave: () => doSaveRef.current(),
     onDiscard: discard,
     canSave: type !== 'structured' || editorReady,
+    busy: uploading,
   });
 
   const doSave = () => {
+    if (uploading !== null) {
+      toast('Espera a que termine la subida del video para guardar.', 'error');
+      shakeBar();
+      return;
+    }
     if (!name.trim()) {
       setNameError(true);
       return;
@@ -1116,7 +1125,14 @@ export function RutinaForm({
         {/* Left: the editor, VS Code style (tab bar · editor · problems) */}
         {programMode && activeDayState ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
-            <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2/60 px-3 py-1.5">
+            <div
+              className={cn(
+                'flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2/60 px-3 py-1.5',
+                // While a video uploads the day stays put: switching would show the progress on the wrong day.
+                uploading !== null && 'pointer-events-none opacity-60',
+              )}
+              title={uploading !== null ? 'Espera a que termine la subida' : undefined}
+            >
               <WeekStrip
                 days={days}
                 active={activeDay}
@@ -1409,7 +1425,14 @@ export function RutinaForm({
             ) : (
           <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
             <div className="max-w-xl">
-              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} onDuration={setVideoDuration} />
+              <MediaField
+                kind="video"
+                label={es.workouts.video}
+                value={videoAssetId}
+                onChange={setVideoAssetId}
+                onDuration={setVideoDuration}
+                onUploadingChange={(u) => setUploading(u.active ? u.label : null)}
+              />
             </div>
           </div>
 
@@ -1666,7 +1689,14 @@ export function RutinaForm({
         ) : (
           <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
             <div className="max-w-xl">
-              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} onDuration={setVideoDuration} />
+              <MediaField
+                kind="video"
+                label={es.workouts.video}
+                value={videoAssetId}
+                onChange={setVideoAssetId}
+                onDuration={setVideoDuration}
+                onUploadingChange={(u) => setUploading(u.active ? u.label : null)}
+              />
             </div>
           </div>
 

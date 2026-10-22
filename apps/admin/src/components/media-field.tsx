@@ -16,6 +16,7 @@ export function MediaField({
   value,
   onChange,
   onDuration,
+  onUploadingChange,
 }: {
   kind: 'image' | 'video';
   label: string;
@@ -23,6 +24,8 @@ export function MediaField({
   onChange: (assetId: string | null) => void;
   /** Video only: the duration in seconds once the file's metadata loads (null when the video is removed). */
   onDuration?: (seconds: number | null) => void;
+  /** An upload started / ended (with its progress as "43%" while it runs), so the host can hold saving and leaving. */
+  onUploadingChange?: (state: { active: boolean; label: string }) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [viewUrl, setViewUrl] = useState<string | null>(null);
@@ -64,14 +67,20 @@ export function MediaField({
     setError(null);
     setUploading(true);
     setProgress({ loaded: 0, total: file.size });
+    const word = kind === 'image' ? 'imagen' : 'video';
+    onUploadingChange?.({ active: true, label: `Subiendo ${word}… 0%` });
     try {
-      const asset = await api.media.upload(file, kind, (loaded, total) => setProgress(loaded >= total ? null : { loaded, total }));
+      const asset = await api.media.upload(file, kind, (loaded, total) => {
+        setProgress(loaded >= total ? null : { loaded, total });
+        onUploadingChange?.({ active: true, label: loaded >= total ? `Procesando ${word}…` : `Subiendo ${word}… ${Math.round((loaded / total) * 100)}%` });
+      });
       onChange(asset.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : es.app.error);
     } finally {
       setUploading(false);
       setProgress(null);
+      onUploadingChange?.({ active: false, label: '' });
     }
   }
   const mb = (n: number) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : `${(n / 1048576).toFixed(n >= 104857600 ? 0 : 1)} MB`);

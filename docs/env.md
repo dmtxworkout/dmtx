@@ -40,5 +40,5 @@ Create the first admin: sign up via the app, then set that user's `role` to `adm
 ## Production notes
 
 - Host admin + API under a **shared parent domain** (`admin.dmtx.app` / `api.dmtx.app`) for cross-subdomain auth cookies; set `ADMIN_ORIGIN` + `BETTER_AUTH_URL` accordingly and enable Better Auth `crossSubDomainCookies`.
-- Set R2 bucket **CORS** to allow the admin origin + `PUT` for direct uploads.
+- Set R2 bucket **CORS** to allow the admin origin with `GET` and `PUT` (direct uploads: one PUT for small files, one PUT per part for files ≥32 MB, assembled server-side with ListParts so no response header has to be exposed). Add a lifecycle rule that aborts incomplete multipart uploads after a day or two, so parts of an upload the browser abandoned don't linger.
 - CI: Turbo remote cache (`TURBO_TOKEN`/`TURBO_TEAM`), and a migration check against an ephemeral Neon branch.
