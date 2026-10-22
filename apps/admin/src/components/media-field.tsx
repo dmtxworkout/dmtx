@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { MediaPicker } from '@/components/media-picker';
-import { formatBytes, startUpload, uploadPct, useUpload } from '@/lib/uploads';
+import { cancelUpload, formatBytes, startUpload, uploadPct, useUpload } from '@/lib/uploads';
 
 interface Info {
   name: string;
@@ -85,14 +85,14 @@ export function MediaField({
   useEffect(() => {
     if (duration !== undefined) onDuration?.(duration);
   }, [duration, onDuration]);
-  // A failed upload took its record with it: the field lets go of the id.
-  const entryError = entry?.status === 'error' ? (entry.error ?? es.app.error) : null;
+  // A failed or cancelled upload took its record with it: the field lets go of the id.
+  const gone = entry?.status === 'error' ? (entry.error ?? es.app.error) : entry?.status === 'cancelled' ? '' : null;
   useEffect(() => {
-    if (!entryError) return;
+    if (gone === null) return;
     onChange(null);
     onDuration?.(null);
-    setError(entryError);
-  }, [entryError, onChange, onDuration]);
+    setError(gone || null);
+  }, [gone, onChange, onDuration]);
 
   async function upload(file: File) {
     const expected = kind === 'image' ? 'image/' : 'video/';
@@ -203,11 +203,13 @@ export function MediaField({
         {inFlight && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
             <span>
-              {entry && entry.status === 'uploading'
-                ? `${es.app.uploading} ${uploadPct(entry)}%`
-                : entry?.status === 'processing' && kind === 'video'
-                  ? 'Subido · Cloudflare está procesando el video…'
-                  : 'Procesando…'}
+              {entry?.cancelling
+                ? 'Cancelando…'
+                : entry && entry.status === 'uploading'
+                  ? `${es.app.uploading} ${uploadPct(entry)}%`
+                  : entry?.status === 'processing' && kind === 'video'
+                    ? 'Subido · Cloudflare está procesando el video…'
+                    : 'Procesando…'}
             </span>
             <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line-2">
               <div
@@ -221,6 +223,18 @@ export function MediaField({
               </span>
             )}
             <span className="text-[11px] font-normal text-muted">Puedes guardar y seguir trabajando mientras tanto.</span>
+            {entry && !entry.cancelling && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  cancelUpload(entry.assetId);
+                }}
+                className="text-xs font-medium text-ink-3 hover:text-accent-dark"
+              >
+                {es.app.cancel}
+              </button>
+            )}
           </div>
         )}
         {stalled && (

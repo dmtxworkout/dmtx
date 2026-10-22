@@ -51,7 +51,27 @@ export interface UploadHooks {
   onProgress?: (loaded: number, total: number) => void;
   /** The bytes are in; Stream is encoding (videos only). */
   onProcessing?: (asset: MediaAsset) => void;
+  /** Abort it: the transfer stops (or the encoding is dropped) and the file is deleted at Cloudflare. Rejects with an `AbortError`. */
+  signal?: AbortSignal;
 }
+
+/** Whether `upload` failed because its signal was aborted (not a real error). */
+export const isUploadCancelled = (err: unknown) => err instanceof DOMException && err.name === 'AbortError';
+const cancelled = () => new DOMException('Subida cancelada', 'AbortError');
+/** Wait, unless the signal fires first. */
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(cancelled());
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(t);
+      reject(cancelled());
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 
 // Stream wants tus chunks that are a multiple of 256 KiB and at least 5 MiB;
 // bigger chunks mean fewer round trips, smaller ones finer progress.
@@ -67,15 +87,30 @@ function xhr(
   headers: Record<string, string>,
   body: XMLHttpRequestBodyInit | null,
   onProgress?: (loaded: number) => void,
+  signal?: AbortSignal,
 ): Promise<XMLHttpRequest> {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(cancelled());
     const req = new XMLHttpRequest();
+    const onAbort = () => req.abort();
+    const settle = () => signal?.removeEventListener('abort', onAbort);
     req.open(method, url);
     for (const [k, v] of Object.entries(headers)) req.setRequestHeader(k, v);
     req.upload.onprogress = (e) => onProgress?.(e.loaded);
-    req.onload = () => (req.status >= 200 && req.status < 300 ? resolve(req) : reject(new Error(`Cloudflare rechazó la subida (${req.status})`)));
-    req.onerror = () => reject(new Error('Error de red subiendo el archivo'));
-    req.onabort = () => reject(new Error('Subida cancelada'));
+    req.onload = () => {
+      settle();
+      if (req.status >= 200 && req.status < 300) resolve(req);
+      else reject(new Error(`Cloudflare rechazó la subida (${req.status})`));
+    };
+    req.onerror = () => {
+      settle();
+      reject(new Error('Error de red subiendo el archivo'));
+    };
+    req.onabort = () => {
+      settle();
+      reject(cancelled());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
     req.send(body);
   });
 }
@@ -89,10 +124,11 @@ async function tusOffset(url: string): Promise<number> {
 }
 
 /** PATCH the file in chunks; a failed chunk is retried from the offset the server reports. */
-async function tusUpload(url: string, file: File, onProgress?: (loaded: number, total: number) => void) {
+async function tusUpload(url: string, file: File, onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal) {
   let offset = 0;
   let attempts = 0;
   while (offset < file.size) {
+    if (signal?.aborted) throw cancelled();
     const chunk = file.slice(offset, Math.min(file.size, offset + TUS_CHUNK));
     const start = offset;
     try {
@@ -102,15 +138,17 @@ async function tusUpload(url: string, file: File, onProgress?: (loaded: number, 
         { 'tus-resumable': '1.0.0', 'upload-offset': String(offset), 'content-type': 'application/offset+octet-stream' },
         chunk,
         (loaded) => onProgress?.(start + loaded, file.size),
+        signal,
       );
       const next = Number(res.getResponseHeader('upload-offset'));
       offset = Number.isFinite(next) && next > offset ? next : offset + chunk.size;
       attempts = 0;
       onProgress?.(offset, file.size);
     } catch (err) {
+      if (isUploadCancelled(err)) throw err;
       attempts += 1;
       if (attempts >= TUS_ATTEMPTS) throw err;
-      await new Promise((r) => setTimeout(r, 1000 * attempts));
+      await sleep(1000 * attempts, signal);
       offset = await tusOffset(url).catch(() => offset);
     }
   }
@@ -147,33 +185,42 @@ export function mediaApi(http: Http) {
      * media record exists (as `uploading`) as soon as `onStarted` fires, so
      * the caller can reference it and move on; the promise resolves with the
      * `ready` asset: for a video that includes Stream's encoding, polled every
-     * few seconds. On failure the record is removed again.
+     * few seconds. On failure the record is removed again; so is it when
+     * `hooks.signal` aborts (the file is deleted at Cloudflare, whatever stage
+     * it had reached), and the promise then rejects with an `AbortError`.
      */
     async upload(file: File, kind: MediaKind, hooks: UploadHooks = {}): Promise<MediaAsset> {
       const contentType = file.type || 'application/octet-stream';
       const { asset, uploadUrl, protocol } = await this.createUpload({ filename: file.name, contentType, kind, sizeBytes: file.size });
       hooks.onStarted?.(asset);
+      const { signal } = hooks;
       try {
         if (protocol === 'tus') {
-          await tusUpload(uploadUrl, file, hooks.onProgress);
+          await tusUpload(uploadUrl, file, hooks.onProgress, signal);
         } else {
           const form = new FormData();
           form.set('file', file, file.name);
-          await xhr('POST', uploadUrl, {}, form, (loaded) => hooks.onProgress?.(Math.min(loaded, file.size), file.size));
+          await xhr('POST', uploadUrl, {}, form, (loaded) => hooks.onProgress?.(Math.min(loaded, file.size), file.size), signal);
         }
         hooks.onProgress?.(file.size, file.size);
+        if (signal?.aborted) throw cancelled();
         let current = await this.complete(asset.id);
         if (current.status === 'processing') hooks.onProcessing?.(current);
         const until = Date.now() + POLL_LIMIT_MS;
         while (current.status === 'processing' && Date.now() < until) {
-          await new Promise((r) => setTimeout(r, POLL_MS));
+          await sleep(POLL_MS, signal);
           current = await this.view(asset.id);
         }
+        if (signal?.aborted) throw cancelled();
         if (current.status === 'failed') throw new Error('Cloudflare Stream no pudo procesar el video');
         if (current.status !== 'ready') throw new Error('El video sigue en proceso; vuelve a abrirlo más tarde');
         return current;
       } catch (err) {
-        this.abort(asset.id).catch(() => undefined);
+        // The record goes, with the file at Cloudflare. A cancel is awaited so
+        // the caller can refresh its lists once the asset is really gone; if the
+        // upload had already finished (abort says 404), the asset is deleted instead.
+        const discard = this.abort(asset.id).catch(() => this.remove(asset.id).catch(() => undefined));
+        if (isUploadCancelled(err)) await discard;
         throw err;
       }
     },

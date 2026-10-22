@@ -1,5 +1,5 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { mediaAssets } from '@dmtx/db';
 import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx/schemas';
 import type { Database } from '@dmtx/db';
@@ -180,6 +180,7 @@ mediaRoute.openapi(
 );
 
 // --- Abort: the upload broke or was cancelled; the record goes (references are set null) ---
+// Also for a video Stream is still encoding: cancelling then drops the encode and the file.
 mediaRoute.openapi(
   createRoute({
     method: 'post',
@@ -197,7 +198,7 @@ mediaRoute.openapi(
     const [row] = await db
       .select()
       .from(mediaAssets)
-      .where(and(eq(mediaAssets.id, id), eq(mediaAssets.processingStatus, 'uploading')))
+      .where(and(eq(mediaAssets.id, id), inArray(mediaAssets.processingStatus, ['uploading', 'processing'])))
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
     await deleteRemote(c.env, row.kind, row.externalId);

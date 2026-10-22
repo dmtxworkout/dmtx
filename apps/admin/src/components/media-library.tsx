@@ -200,13 +200,17 @@ export function MediaBrowser({
                     {pending ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
                         <span className="font-mono text-[11px] text-ink-2">
-                          {up?.status === 'uploading'
-                            ? `Subiendo ${uploadPct(up)}%`
-                            : up?.status === 'error' || m.status === 'failed'
-                              ? 'Error'
-                              : up || m.status === 'processing'
-                                ? 'Procesando…'
-                                : 'Interrumpida'}
+                          {up?.cancelling
+                            ? 'Cancelando…'
+                            : up?.status === 'cancelled'
+                              ? 'Cancelada'
+                              : up?.status === 'uploading'
+                                ? `Subiendo ${uploadPct(up)}%`
+                                : up?.status === 'error' || m.status === 'failed'
+                                  ? 'Error'
+                                  : up || m.status === 'processing'
+                                    ? 'Procesando…'
+                                    : 'Interrumpida'}
                         </span>
                         {up?.status === 'uploading' && (
                           <div className="h-1 w-full overflow-hidden rounded-full bg-line-2">

@@ -5,13 +5,14 @@
 // and the admin can save, switch day or leave the page while the file keeps
 // going. The bytes travel in a module-level queue that survives in-app
 // navigation (the app is a single page); only a reload or closing the tab
-// loses it, and the tray warns before that.
+// loses it, and the tray warns before that. An upload can be cancelled (one
+// or all): the transfer stops and the record and the file at Cloudflare go.
 import { useEffect, useState } from 'react';
-import type { MediaAsset } from '@dmtx/api-client';
+import { isUploadCancelled, type MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { prepareImage } from '@/lib/prepare-image';
 
-export type UploadStatus = 'uploading' | 'processing' | 'done' | 'error';
+export type UploadStatus = 'uploading' | 'processing' | 'done' | 'error' | 'cancelled';
 export interface UploadEntry {
   assetId: string;
   name: string;
@@ -19,18 +20,28 @@ export interface UploadEntry {
   loaded: number;
   total: number;
   status: UploadStatus;
+  /** Cancel asked; the record is being removed (status is still uploading/processing until it is). */
+  cancelling?: boolean;
   error?: string;
   /** The ready asset, once done. */
   asset?: MediaAsset;
 }
 
 let entries: UploadEntry[] = [];
+const controllers = new Map<string, AbortController>();
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const patch = (assetId: string, p: Partial<UploadEntry>) => {
   entries = entries.map((e) => (e.assetId === assetId ? { ...e, ...p } : e));
   emit();
 };
+const dropLater = (assetId: string) =>
+  window.setTimeout(() => {
+    entries = entries.filter((e) => e.assetId !== assetId);
+    emit();
+  }, 4000);
+
+export const isActiveUpload = (e: UploadEntry) => e.status === 'uploading' || e.status === 'processing';
 
 /**
  * Upload `file` in the background. Resolves with the asset id once the record
@@ -40,12 +51,15 @@ const patch = (assetId: string, p: Partial<UploadEntry>) => {
 export function startUpload(original: File, kind: 'image' | 'video'): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let assetId: string | null = null;
+    const controller = new AbortController();
     // An image over Cloudflare Images' 10 MB is re-encoded first (see prepare-image).
     (kind === 'image' ? prepareImage(original) : Promise.resolve(original))
       .then((file) =>
         api.media.upload(file, kind, {
+          signal: controller.signal,
           onStarted: (asset) => {
             assetId = asset.id;
+            controllers.set(asset.id, controller);
             entries = [...entries, { assetId: asset.id, name: file.name, kind, loaded: 0, total: file.size, status: 'uploading' }];
             emit();
             resolve(asset.id);
@@ -56,12 +70,10 @@ export function startUpload(original: File, kind: 'image' | 'video'): Promise<st
         }),
       )
       .then((asset) => {
+        controllers.delete(asset.id);
         patch(asset.id, { status: 'done', loaded: asset.sizeBytes ?? original.size, total: asset.sizeBytes ?? original.size, asset });
         // Finished uploads leave the tray after a moment.
-        window.setTimeout(() => {
-          entries = entries.filter((e) => e.assetId !== asset.id);
-          emit();
-        }, 4000);
+        dropLater(asset.id);
       })
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : 'No se pudo subir el archivo';
@@ -69,12 +81,32 @@ export function startUpload(original: File, kind: 'image' | 'video'): Promise<st
           reject(err instanceof Error ? err : new Error(message));
           return;
         }
+        controllers.delete(assetId);
+        if (isUploadCancelled(err)) {
+          // The record and the file are gone by now (the client waited for it).
+          patch(assetId, { status: 'cancelled', cancelling: false });
+          dropLater(assetId);
+          return;
+        }
         patch(assetId, { status: 'error', error: message });
       });
   });
 }
 
-/** Drop a finished or failed entry from the tray. */
+/** Stop one upload (or a video Stream is encoding): its record and file are deleted. */
+export function cancelUpload(assetId: string) {
+  const controller = controllers.get(assetId);
+  if (!controller) return;
+  patch(assetId, { cancelling: true });
+  controller.abort();
+}
+
+/** Stop every upload in flight. */
+export function cancelAllUploads() {
+  for (const e of entries) if (isActiveUpload(e)) cancelUpload(e.assetId);
+}
+
+/** Drop a finished, failed or cancelled entry from the tray. */
 export function dismissUpload(assetId: string) {
   entries = entries.filter((e) => e.assetId !== assetId);
   emit();
@@ -93,7 +125,7 @@ export function useUploads(): UploadEntry[] {
   return entries;
 }
 
-/** The upload of one asset, if it is in flight (or just finished / failed). */
+/** The upload of one asset, if it is in flight (or just finished / failed / cancelled). */
 export function useUpload(assetId: string | null): UploadEntry | undefined {
   const all = useUploads();
   return assetId ? all.find((e) => e.assetId === assetId) : undefined;
