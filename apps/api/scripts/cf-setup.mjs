@@ -21,7 +21,10 @@ const vars = Object.fromEntries(
     .filter((l) => /^[A-Z0-9_]+=/.test(l))
     .map((l) => {
       const i = l.indexOf('=');
-      return [l.slice(0, i), l.slice(i + 1).replace(/^"(.*)"$/, '$1')];
+      const raw = l.slice(i + 1).trim();
+      // A quoted value ends at its closing quote; a bare one at the first space or `#`.
+      const value = raw.startsWith('"') ? (raw.match(/^"([^"]*)"/)?.[1] ?? '') : raw.split(/\s|#/)[0];
+      return [l.slice(0, i), value];
     }),
 );
 const account = vars.CF_ACCOUNT_ID;
