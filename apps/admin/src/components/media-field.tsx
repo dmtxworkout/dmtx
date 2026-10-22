@@ -15,15 +15,22 @@ export function MediaField({
   label,
   value,
   onChange,
+  onDuration,
 }: {
   kind: 'image' | 'video';
   label: string;
   value: string | null;
   onChange: (assetId: string | null) => void;
+  /** Video only: the duration in seconds once the file's metadata loads (null when the video is removed). */
+  onDuration?: (seconds: number | null) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [viewUrl, setViewUrl] = useState<string | null>(null);
+  // Name and size of the current file, shown under a video so a heavy one is obvious.
+  const [info, setInfo] = useState<{ name: string; sizeBytes: number | null } | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Bytes sent so far during an upload; null once R2 has it and the record is being created.
+  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -33,10 +40,15 @@ export function MediaField({
     if (value) {
       api.media
         .view(value)
-        .then((a) => alive && setViewUrl(a.viewUrl))
+        .then((a) => {
+          if (!alive) return;
+          setViewUrl(a.viewUrl);
+          setInfo({ name: a.name, sizeBytes: a.sizeBytes });
+        })
         .catch(() => alive && setViewUrl(null));
     } else {
       setViewUrl(null);
+      setInfo(null);
     }
     return () => {
       alive = false;
@@ -51,15 +63,20 @@ export function MediaField({
     }
     setError(null);
     setUploading(true);
+    setProgress({ loaded: 0, total: file.size });
     try {
-      const asset = await api.media.upload(file, kind);
+      const asset = await api.media.upload(file, kind, (loaded, total) => setProgress(loaded >= total ? null : { loaded, total }));
       onChange(asset.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : es.app.error);
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   }
+  const mb = (n: number) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : `${(n / 1048576).toFixed(n >= 104857600 ? 0 : 1)} MB`);
+  const pct = progress ? Math.round((progress.loaded / Math.max(1, progress.total)) * 100) : 100;
+  const hasVideo = kind === 'video' && !!viewUrl;
 
   function onInput(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -85,10 +102,10 @@ export function MediaField({
         onChange={onInput}
       />
       <div
-        role="button"
-        tabIndex={0}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+        role={hasVideo ? undefined : 'button'}
+        tabIndex={hasVideo ? undefined : 0}
+        onClick={hasVideo ? undefined : () => inputRef.current?.click()}
+        onKeyDown={hasVideo ? undefined : (e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -96,11 +113,14 @@ export function MediaField({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          'relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          'relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          !hasVideo && 'cursor-pointer',
           dragging
             ? 'border-accent bg-accent-tint/40'
             : viewUrl
-              ? 'border-line'
+              ? hasVideo
+                ? 'border-line bg-black'
+                : 'border-line'
               : 'border-dashed border-line-2 bg-surface-3 hover:bg-surface-2',
         )}
       >
@@ -109,7 +129,16 @@ export function MediaField({
           <img src={viewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
         {viewUrl && kind === 'video' && (
-          <video src={viewUrl} muted className="absolute inset-0 h-full w-full object-cover" />
+          // Playable right here, so what was uploaded can be checked without leaving the form.
+          <video
+            key={viewUrl}
+            src={viewUrl}
+            controls
+            preload="metadata"
+            playsInline
+            onLoadedMetadata={(e) => onDuration?.(Number.isFinite(e.currentTarget.duration) ? Math.round(e.currentTarget.duration) : null)}
+            className="absolute inset-0 h-full w-full object-contain"
+          />
         )}
         {!viewUrl && !uploading && (
           <div className="px-4 text-xs text-muted">
@@ -132,13 +161,36 @@ export function MediaField({
           </div>
         )}
         {uploading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-surface/80 text-sm font-medium text-ink-2">
-            {es.app.uploading}
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
+            <span>{progress ? `${es.app.uploading} ${pct}%` : 'Procesando…'}</span>
+            <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line-2">
+              <div
+                className={cn('h-full rounded-full bg-accent transition-[width] duration-200', !progress && 'animate-pulse')}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            {progress && (
+              <span className="font-mono text-[11px] text-muted">
+                {mb(progress.loaded)} de {mb(progress.total)}
+              </span>
+            )}
           </div>
         )}
       </div>
 
+      {hasVideo && info && (
+        <div className="mt-1.5 truncate font-mono text-[11px] text-muted" title={info.name}>
+          {info.name}
+          {info.sizeBytes ? ` · ${mb(info.sizeBytes)}` : ''}
+          {info.sizeBytes && info.sizeBytes > 524288000 ? ' · pesado: tardará en subir y en cargar en la app' : ''}
+        </div>
+      )}
       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+        {hasVideo && (
+          <button type="button" onClick={() => inputRef.current?.click()} className="font-medium text-accent hover:text-accent-dark">
+            Subir otro video
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
@@ -149,7 +201,10 @@ export function MediaField({
         {value && (
           <button
             type="button"
-            onClick={() => onChange(null)}
+            onClick={() => {
+              onChange(null);
+              onDuration?.(null);
+            }}
             className="text-ink-3 hover:text-accent-dark"
           >
             {es.app.remove}

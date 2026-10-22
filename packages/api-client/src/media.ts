@@ -55,19 +55,29 @@ export function mediaApi(http: Http) {
     create(input: CreateMediaInput): Promise<MediaAsset> {
       return http.request('/api/media', { method: 'POST', body: JSON.stringify(input) });
     },
-    /** Presign → PUT to R2 → create the record. Returns the new asset. */
-    async upload(file: File, kind: 'video' | 'image'): Promise<MediaAsset> {
+    /**
+     * Presign → PUT to R2 → create the record. Returns the new asset.
+     * `onProgress` gets the bytes sent so far and the total (XHR is used
+     * because fetch has no upload progress).
+     */
+    async upload(file: File, kind: 'video' | 'image', onProgress?: (loaded: number, total: number) => void): Promise<MediaAsset> {
       const presigned = await this.presign({
         filename: file.name,
         contentType: file.type || 'application/octet-stream',
         kind,
       });
-      const res = await fetch(presigned.uploadUrl, {
-        method: 'PUT',
-        headers: presigned.headers,
-        body: file,
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(presigned.method, presigned.uploadUrl);
+        for (const [k, v] of Object.entries(presigned.headers)) xhr.setRequestHeader(k, v);
+        xhr.upload.onprogress = (e) => {
+          if (onProgress) onProgress(e.loaded, e.lengthComputable ? e.total : file.size);
+        };
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Error subiendo a R2 (${xhr.status})`)));
+        xhr.onerror = () => reject(new Error('Error de red subiendo el archivo'));
+        xhr.onabort = () => reject(new Error('Subida cancelada'));
+        xhr.send(file);
       });
-      if (!res.ok) throw new Error(`Error subiendo a R2 (${res.status})`);
       return this.create({
         key: presigned.key,
         kind,

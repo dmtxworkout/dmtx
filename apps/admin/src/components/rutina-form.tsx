@@ -122,8 +122,16 @@ type DayState = {
   type: 'structured' | 'video';
   sections: SectionTexts;
   videoAssetId: string | null;
+  videoDurationSeconds: number | null;
 };
-const emptyDay = (): DayState => ({ id: null, isRestDay: false, type: 'structured', sections: { ...EMPTY_SECTIONS }, videoAssetId: null });
+const emptyDay = (): DayState => ({
+  id: null,
+  isRestDay: false,
+  type: 'structured',
+  sections: { ...EMPTY_SECTIONS },
+  videoAssetId: null,
+  videoDurationSeconds: null,
+});
 const copyDay = (d: DayState): DayState => ({ ...d, id: null, sections: { ...d.sections } });
 const dayHasContent = (d: DayState) => (d.type === 'video' ? !!d.videoAssetId : !!joinSections(d.sections).trim());
 const dayLabel = (i: number) => `${es.programs.day} ${i + 1}`;
@@ -323,25 +331,20 @@ function WeekStrip({
               dragFrom.current = null;
               setOver(null);
             }}
-            title={`${WEEKDAYS[j]} · ${dayLabel(i)}${d.isRestDay ? ` · ${es.programs.restDay}` : ''}`}
+            title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : d.type === 'video' ? 'video' : 'rutina'}`}
             className={cn(
-              'flex h-9 w-11 shrink-0 flex-col items-center justify-center rounded-md border font-mono text-[11px] leading-none',
-              isActive
-                ? 'border-accent bg-accent-tint font-semibold text-accent-dark'
-                : d.isRestDay
-                  ? 'border-line-2 text-muted hover:border-line-3'
-                  : has
-                    ? 'border-line-2 bg-surface text-ink hover:border-line-3'
-                    : 'border-dashed border-line-2 bg-surface text-faint-2 hover:text-ink-2',
+              'flex h-9 w-11 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
+              // The cell itself says what the day is: filled with a stripe at the
+              // bottom (orange = rutina, blue = video), dashed = empty, hatched = rest.
+              isActive ? 'border-accent font-semibold text-accent-dark' : d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
+              isActive ? (d.isRestDay ? '' : 'bg-accent-tint') : 'hover:border-line-3 hover:text-ink',
+              has && !d.isRestDay && (d.type === 'video' ? 'shadow-[inset_0_-3px_0_#0451a5]' : 'shadow-[inset_0_-3px_0_var(--color-accent)]'),
               over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
             )}
-            style={d.isRestDay && !isActive ? { background: HATCH } : undefined}
+            style={d.isRestDay ? { background: HATCH } : undefined}
           >
             <span className={cn('mb-0.5 text-[9px]', isActive ? 'text-accent-dark/70' : 'text-faint-2')}>{WEEKDAY_INITIALS[j]}</span>
-            <span className="flex items-center gap-1">
-              {i + 1}
-              {has && !d.isRestDay && <span className={cn('h-1.5 w-1.5 rounded-full', d.type === 'video' ? 'bg-[#0451a5]' : 'bg-accent')} />}
-            </span>
+            <span>{i + 1}</span>
           </button>
         );
       })}
@@ -406,6 +409,7 @@ export function RutinaForm({
     workout?.thumbnailAssetId ?? skill?.thumbnailAssetId ?? program?.thumbnailAssetId ?? null,
   );
   const [videoAssetIdState, setVideoAssetIdState] = useState<string | null>(workout?.videoAssetId ?? null);
+  const [videoDurationState, setVideoDurationState] = useState<number | null>(workout?.videoDurationSeconds ?? null);
   // Program days: a new program starts with one empty week.
   const [days, setDays] = useState<DayState[]>(() =>
     programMode
@@ -417,6 +421,7 @@ export function RutinaForm({
               type: d.type,
               sections: splitSections(d.sourceText),
               videoAssetId: d.videoAssetId,
+              videoDurationSeconds: d.videoDurationSeconds,
             }));
             // Always whole weeks: pad the last one with empty days.
             const pad = (7 - (loaded.length % 7)) % 7;
@@ -452,6 +457,10 @@ export function RutinaForm({
   const type = activeDayState ? activeDayState.type : typeState;
   const videoAssetId = activeDayState ? activeDayState.videoAssetId : videoAssetIdState;
   const setVideoAssetId = (id: string | null) => (programMode ? setDay(activeDay, { videoAssetId: id }) : setVideoAssetIdState(id));
+  const videoDurationSeconds = activeDayState ? activeDayState.videoDurationSeconds : videoDurationState;
+  // Read from the file's metadata by the media field; stored so the app can show the length.
+  const setVideoDuration = (secs: number | null) =>
+    programMode ? setDay(activeDay, { videoDurationSeconds: secs }) : setVideoDurationState(secs);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
@@ -689,7 +698,7 @@ export function RutinaForm({
     .map((b) => FORMAT_LABEL[b.format!.format]);
   // Estimated on the fly from the text; the API stores the same number on save.
   const estimatedSeconds =
-    type === 'video' ? (workout?.videoDurationSeconds ?? null) : estimateDurationSeconds(toWorkoutInput(parsed).blocks);
+    type === 'video' ? videoDurationSeconds : estimateDurationSeconds(toWorkoutInput(parsed).blocks);
   const durationLabel = estimatedSeconds ? `${Math.ceil(estimatedSeconds / 60)} min` : null;
   const weekCount = Math.ceil(days.length / 7);
   const metaLine = [
@@ -784,6 +793,7 @@ export function RutinaForm({
       status,
       thumbnailAssetId,
       videoAssetId: structured ? null : videoAssetId,
+      videoDurationSeconds: structured ? null : videoDurationSeconds,
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
       blocks: structure?.blocks ?? [],
@@ -856,6 +866,7 @@ export function RutinaForm({
       format: structure?.format ?? null,
       blocks: structure?.blocks ?? [],
       videoAssetId: structured ? null : d.videoAssetId,
+      videoDurationSeconds: structured ? null : d.videoDurationSeconds,
     };
   };
   const saveProgram = useMutation({
@@ -913,6 +924,7 @@ export function RutinaForm({
     status: typeof status;
     thumbnailAssetId: string | null;
     videoAssetId: string | null;
+    videoDurationSeconds: number | null;
     baseLabel: string;
     sections: SectionTexts;
     variants: VariantTab[];
@@ -925,6 +937,7 @@ export function RutinaForm({
     status,
     thumbnailAssetId,
     videoAssetId: videoAssetIdState,
+    videoDurationSeconds: videoDurationState,
     baseLabel,
     sections: sections ?? EMPTY_SECTIONS,
     variants: tabs,
@@ -949,6 +962,7 @@ export function RutinaForm({
     setStatus(baseline.status);
     setThumbnailAssetId(baseline.thumbnailAssetId);
     setVideoAssetIdState(baseline.videoAssetId);
+    setVideoDurationState(baseline.videoDurationSeconds);
     setBaseLabel(baseline.baseLabel);
     setSections(baseline.sections);
     setVariants(baseline.variants);
@@ -1394,9 +1408,8 @@ export function RutinaForm({
           </div>
             ) : (
           <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
-            <h2 className="mb-3 text-[15px] font-bold">{es.workouts.video}</h2>
             <div className="max-w-xl">
-              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
+              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} onDuration={setVideoDuration} />
             </div>
           </div>
 
@@ -1652,9 +1665,8 @@ export function RutinaForm({
           </div>
         ) : (
           <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
-            <h2 className="mb-3 text-[15px] font-bold">{es.workouts.video}</h2>
             <div className="max-w-xl">
-              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} />
+              <MediaField kind="video" label={es.workouts.video} value={videoAssetId} onChange={setVideoAssetId} onDuration={setVideoDuration} />
             </div>
           </div>
 

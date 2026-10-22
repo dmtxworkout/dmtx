@@ -838,7 +838,7 @@ For time cap 20 min
           <p className="text-[13px] leading-relaxed text-ink-2">
             Un programa es un calendario en semanas de siete días. La barra sobre el editor muestra la semana activa:
             cada día es una casilla; haz clic para escribir su rutina en el editor y arrastra para moverlo dentro de la
-            semana. Un punto marca que tiene contenido; las casillas rayadas son días de descanso.
+            semana. Una casilla rellena tiene contenido (franja naranja: rutina; azul: video), una discontinua está vacía y las rayadas son días de descanso.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
             El desplegable «Semana N» cambia de semana, añade una nueva (vacía), duplica una (inserta la copia justo
