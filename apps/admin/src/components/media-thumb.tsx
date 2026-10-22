@@ -13,6 +13,13 @@ export function MediaThumb({ assetId, className }: { assetId: string; className?
   });
   const cls = cn('bg-surface-2 object-cover', className);
   if (!data) return <div className={cls} />;
+  if (data.status !== 'ready' && data.status !== 'uploaded') {
+    return (
+      <div className={cn(cls, 'flex items-center justify-center font-mono text-[9px] uppercase tracking-wider text-muted-2')} title="Subiendo…">
+        …
+      </div>
+    );
+  }
   return data.kind === 'image' ? (
     // eslint-disable-next-line @next/next/no-img-element
     <img src={data.viewUrl} alt="" className={cls} />

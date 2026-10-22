@@ -31,6 +31,7 @@ import { MonoLabel } from '@/components/ui/mono-label';
 import { MediaField } from '@/components/media-field';
 import { ExerciseForm } from '@/components/exercise-form';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
+import { useUploads } from '@/lib/uploads';
 import { toast } from '@/components/ui/toast';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import { RutinaPreview, previewFrom } from '@/components/rutina-preview';
@@ -189,6 +190,9 @@ function WeekStrip({
     };
   }, [open]);
   const weekHasContent = (w: number) => days.slice(w * 7, w * 7 + 7).some((d) => d.isRestDay || dayHasContent(d));
+  const uploads = useUploads();
+  const uploadingVideo = (d: DayState) =>
+    d.type === 'video' && !!d.videoAssetId && uploads.some((u) => u.assetId === d.videoAssetId && (u.status === 'uploading' || u.status === 'processing'));
   return (
     <div className="flex items-center gap-1.5">
       <div ref={menuRef} className="relative mr-1">
@@ -331,7 +335,7 @@ function WeekStrip({
               dragFrom.current = null;
               setOver(null);
             }}
-            title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : d.type === 'video' ? 'video' : 'rutina'}`}
+            title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : d.type === 'video' ? 'video' : 'rutina'}`}
             className={cn(
               'flex h-9 w-11 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
               // The cell itself says what the day is: filled with a stripe at the
@@ -339,6 +343,7 @@ function WeekStrip({
               isActive ? 'border-accent font-semibold text-accent-dark' : d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
               isActive ? (d.isRestDay ? '' : 'bg-accent-tint') : 'hover:border-line-3 hover:text-ink',
               has && !d.isRestDay && (d.type === 'video' ? 'shadow-[inset_0_-3px_0_#0451a5]' : 'shadow-[inset_0_-3px_0_var(--color-accent)]'),
+              uploadingVideo(d) && 'animate-pulse',
               over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
             )}
             style={d.isRestDay ? { background: HATCH } : undefined}
@@ -973,24 +978,15 @@ export function RutinaForm({
   };
   // Save / discard bar, ⌘S, navigation guard (shared with the exercise form).
   const doSaveRef = useRef<() => void>(() => {});
-  // A video being uploaded: saving now would save the day/rutina without it,
-  // and leaving would lose it, so both wait (the bar says so).
-  const [uploading, setUploading] = useState<string | null>(null);
   const { bar: unsavedBar, guardNav, shake: shakeBar } = useUnsavedChanges({
     dirty,
     saving: save.isPending || saveBlock.isPending || saveSkill.isPending || saveProgram.isPending,
     onSave: () => doSaveRef.current(),
     onDiscard: discard,
     canSave: type !== 'structured' || editorReady,
-    busy: uploading,
   });
 
   const doSave = () => {
-    if (uploading !== null) {
-      toast('Espera a que termine la subida del video para guardar.', 'error');
-      shakeBar();
-      return;
-    }
     if (!name.trim()) {
       setNameError(true);
       return;
@@ -1125,14 +1121,7 @@ export function RutinaForm({
         {/* Left: the editor, VS Code style (tab bar · editor · problems) */}
         {programMode && activeDayState ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
-            <div
-              className={cn(
-                'flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2/60 px-3 py-1.5',
-                // While a video uploads the day stays put: switching would show the progress on the wrong day.
-                uploading !== null && 'pointer-events-none opacity-60',
-              )}
-              title={uploading !== null ? 'Espera a que termine la subida' : undefined}
-            >
+            <div className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-line bg-surface-2/60 px-3 py-1.5">
               <WeekStrip
                 days={days}
                 active={activeDay}
@@ -1431,7 +1420,6 @@ export function RutinaForm({
                 value={videoAssetId}
                 onChange={setVideoAssetId}
                 onDuration={setVideoDuration}
-                onUploadingChange={(u) => setUploading(u.active ? u.label : null)}
               />
             </div>
           </div>
@@ -1695,7 +1683,6 @@ export function RutinaForm({
                 value={videoAssetId}
                 onChange={setVideoAssetId}
                 onDuration={setVideoDuration}
-                onUploadingChange={(u) => setUploading(u.active ? u.label : null)}
               />
             </div>
           </div>

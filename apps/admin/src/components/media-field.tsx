@@ -1,14 +1,18 @@
 'use client';
 
 import { type ChangeEvent, type DragEvent, useEffect, useRef, useState } from 'react';
+import type { MediaStatus } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { MediaPicker } from '@/components/media-picker';
+import { formatBytes, startUpload, uploadPct, useUpload } from '@/lib/uploads';
 
 /**
  * Upload + preview a single media asset (image or video), or pick an existing
- * one from the library. Supports click and drag-and-drop. Holds only the id.
+ * one from the library. Supports click and drag-and-drop. Holds only the id:
+ * a dropped file is handed to the background upload queue and the field gets
+ * its id right away, so the form can be saved (or left) while it uploads.
  */
 export function MediaField({
   kind,
@@ -16,7 +20,6 @@ export function MediaField({
   value,
   onChange,
   onDuration,
-  onUploadingChange,
 }: {
   kind: 'image' | 'video';
   label: string;
@@ -24,39 +27,47 @@ export function MediaField({
   onChange: (assetId: string | null) => void;
   /** Video only: the duration in seconds once the file's metadata loads (null when the video is removed). */
   onDuration?: (seconds: number | null) => void;
-  /** An upload started / ended (with its progress as "43%" while it runs), so the host can hold saving and leaving. */
-  onUploadingChange?: (state: { active: boolean; label: string }) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [viewUrl, setViewUrl] = useState<string | null>(null);
-  // Name and size of the current file, shown under a video so a heavy one is obvious.
-  const [info, setInfo] = useState<{ name: string; sizeBytes: number | null } | null>(null);
-  const [uploading, setUploading] = useState(false);
-  // Bytes sent so far during an upload; null once R2 has it and the record is being created.
-  const [progress, setProgress] = useState<{ loaded: number; total: number } | null>(null);
+  // Name, size and status of the current file, shown under a video so a heavy one is obvious.
+  const [info, setInfo] = useState<{ name: string; sizeBytes: number | null; status: MediaStatus } | null>(null);
+  // The field's asset while its bytes are still travelling (from the global queue).
+  const entry = useUpload(value);
+  const uploadState = entry?.status;
+  const [starting, setStarting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // Re-read when the asset changes and again when its upload finishes or fails.
   useEffect(() => {
     let alive = true;
-    if (value) {
+    if (value && uploadState !== 'uploading' && uploadState !== 'processing') {
       api.media
         .view(value)
         .then((a) => {
           if (!alive) return;
-          setViewUrl(a.viewUrl);
-          setInfo({ name: a.name, sizeBytes: a.sizeBytes });
+          setViewUrl(a.status === 'ready' || a.status === 'uploaded' ? a.viewUrl : null);
+          setInfo({ name: a.name, sizeBytes: a.sizeBytes, status: a.status });
         })
         .catch(() => alive && setViewUrl(null));
     } else {
       setViewUrl(null);
-      setInfo(null);
+      if (!value) setInfo(null);
     }
     return () => {
       alive = false;
     };
-  }, [value]);
+  }, [value, uploadState]);
+  // A failed upload took its record with it: the field lets go of the id.
+  const entryError = entry?.status === 'error' ? (entry.error ?? es.app.error) : null;
+  useEffect(() => {
+    if (!entryError) return;
+    onChange(null);
+    onDuration?.(null);
+    setError(entryError);
+  }, [entryError, onChange, onDuration]);
 
   async function upload(file: File) {
     const expected = kind === 'image' ? 'image/' : 'video/';
@@ -65,26 +76,20 @@ export function MediaField({
       return;
     }
     setError(null);
-    setUploading(true);
-    setProgress({ loaded: 0, total: file.size });
-    const word = kind === 'image' ? 'imagen' : 'video';
-    onUploadingChange?.({ active: true, label: `Subiendo ${word}… 0%` });
+    setStarting(true);
     try {
-      const asset = await api.media.upload(file, kind, (loaded, total) => {
-        setProgress(loaded >= total ? null : { loaded, total });
-        onUploadingChange?.({ active: true, label: loaded >= total ? `Procesando ${word}…` : `Subiendo ${word}… ${Math.round((loaded / total) * 100)}%` });
-      });
-      onChange(asset.id);
+      // The record exists as soon as this resolves; the bytes follow in the background.
+      onChange(await startUpload(file, kind));
+      onDuration?.(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : es.app.error);
     } finally {
-      setUploading(false);
-      setProgress(null);
-      onUploadingChange?.({ active: false, label: '' });
+      setStarting(false);
     }
   }
-  const mb = (n: number) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : `${(n / 1048576).toFixed(n >= 104857600 ? 0 : 1)} MB`);
-  const pct = progress ? Math.round((progress.loaded / Math.max(1, progress.total)) * 100) : 100;
+  const inFlight = starting || uploadState === 'uploading' || uploadState === 'processing';
+  // The record says "uploading" but nothing is in flight here: the tab that was sending it is gone.
+  const orphan = !!value && !inFlight && !!info && info.status === 'uploading';
   const hasVideo = kind === 'video' && !!viewUrl;
 
   function onInput(e: ChangeEvent<HTMLInputElement>) {
@@ -149,7 +154,7 @@ export function MediaField({
             className="absolute inset-0 h-full w-full object-contain"
           />
         )}
-        {!viewUrl && !uploading && (
+        {!viewUrl && !inFlight && !orphan && (
           <div className="px-4 text-xs text-muted">
             <svg
               viewBox="0 0 24 24"
@@ -169,20 +174,27 @@ export function MediaField({
             <br />o haz clic para subir
           </div>
         )}
-        {uploading && (
+        {inFlight && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
-            <span>{progress ? `${es.app.uploading} ${pct}%` : 'Procesando…'}</span>
+            <span>{entry && entry.status === 'uploading' ? `${es.app.uploading} ${uploadPct(entry)}%` : 'Procesando…'}</span>
             <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line-2">
               <div
-                className={cn('h-full rounded-full bg-accent transition-[width] duration-200', !progress && 'animate-pulse')}
-                style={{ width: `${pct}%` }}
+                className={cn('h-full rounded-full bg-accent transition-[width] duration-200', entry?.status !== 'uploading' && 'animate-pulse')}
+                style={{ width: `${entry && entry.status === 'uploading' ? uploadPct(entry) : 100}%` }}
               />
             </div>
-            {progress && (
+            {entry && entry.status === 'uploading' && (
               <span className="font-mono text-[11px] text-muted">
-                {mb(progress.loaded)} de {mb(progress.total)}
+                {formatBytes(entry.loaded)} de {formatBytes(entry.total)}
               </span>
             )}
+            <span className="text-[11px] font-normal text-muted">Puedes guardar y seguir trabajando mientras tanto.</span>
+          </div>
+        )}
+        {orphan && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-surface/90 px-8 text-center text-sm font-medium text-ink-2">
+            <span>La subida se interrumpió</span>
+            <span className="text-[11px] font-normal text-muted">Se cerró la pestaña antes de terminar. Quita el archivo y súbelo de nuevo.</span>
           </div>
         )}
       </div>
@@ -190,7 +202,7 @@ export function MediaField({
       {hasVideo && info && (
         <div className="mt-1.5 truncate font-mono text-[11px] text-muted" title={info.name}>
           {info.name}
-          {info.sizeBytes ? ` · ${mb(info.sizeBytes)}` : ''}
+          {info.sizeBytes ? ` · ${formatBytes(info.sizeBytes)}` : ''}
           {info.sizeBytes && info.sizeBytes > 524288000 ? ' · pesado: tardará en subir y en cargar en la app' : ''}
         </div>
       )}

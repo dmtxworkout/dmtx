@@ -7,19 +7,7 @@ export interface PresignInput {
   kind: 'video' | 'image';
 }
 
-export interface PresignResult {
-  key: string;
-  uploadUrl: string;
-  method: 'PUT';
-  headers: Record<string, string>;
-}
-
-export interface CreateMediaInput {
-  key: string;
-  kind: 'video' | 'image';
-  mimeType?: string;
-  sizeBytes?: number;
-}
+export type MediaStatus = 'uploading' | 'uploaded' | 'processing' | 'ready' | 'failed';
 
 export interface MediaAsset {
   id: string;
@@ -27,8 +15,18 @@ export interface MediaAsset {
   name: string;
   mimeType: string | null;
   sizeBytes: number | null;
+  /** `uploading` until the bytes are in; only `ready` assets reach the app. */
+  status: MediaStatus;
   viewUrl: string;
   createdAt: string;
+}
+
+export interface PresignResult {
+  asset: MediaAsset;
+  key: string;
+  uploadUrl: string;
+  method: 'PUT';
+  headers: Record<string, string>;
 }
 
 export interface MediaListQuery {
@@ -59,61 +57,44 @@ function putXhr(url: string, headers: Record<string, string>, body: Blob, onProg
   });
 }
 
-type MultipartApi = {
-  multipartStart(input: PresignInput): Promise<{ key: string; uploadId: string }>;
+type PartSigner = {
   multipartSign(input: { key: string; uploadId: string; partNumbers: number[] }): Promise<{ urls: { partNumber: number; url: string }[] }>;
-  multipartComplete(input: { key: string; uploadId: string }): Promise<{ ok: true }>;
-  multipartAbort(input: { key: string; uploadId: string }): Promise<{ ok: true }>;
 };
 
-async function uploadMultipart(
-  api: MultipartApi,
-  file: File,
-  kind: 'video' | 'image',
-  contentType: string,
-  onProgress?: (loaded: number, total: number) => void,
-): Promise<string> {
-  const { key, uploadId } = await api.multipartStart({ filename: file.name, contentType, kind });
+/** PUT every part of `file`, a few at a time, each one retried on its own. */
+async function uploadParts(api: PartSigner, key: string, uploadId: string, file: File, onProgress?: (loaded: number, total: number) => void) {
   const count = Math.ceil(file.size / PART_SIZE);
-  const partNumbers = Array.from({ length: count }, (_, i) => i + 1);
-  try {
-    const { urls } = await api.multipartSign({ key, uploadId, partNumbers });
-    const urlOf = new Map(urls.map((u) => [u.partNumber, u.url]));
-    const sent = new Array<number>(count).fill(0);
-    const report = () => onProgress?.(sent.reduce((a, b) => a + b, 0), file.size);
-    let next = 0;
-    const worker = async () => {
-      while (next < count) {
-        const idx = next;
-        next += 1;
-        const partNumber = idx + 1;
-        const blob = file.slice(idx * PART_SIZE, Math.min(file.size, (idx + 1) * PART_SIZE));
-        const url = urlOf.get(partNumber);
-        if (!url) throw new Error(`Falta la URL de la parte ${partNumber}`);
-        for (let attempt = 1; ; attempt += 1) {
-          try {
-            await putXhr(url, {}, blob, (loaded) => {
-              sent[idx] = loaded;
-              report();
-            });
-            sent[idx] = blob.size;
+  const { urls } = await api.multipartSign({ key, uploadId, partNumbers: Array.from({ length: count }, (_, i) => i + 1) });
+  const urlOf = new Map(urls.map((u) => [u.partNumber, u.url]));
+  const sent = new Array<number>(count).fill(0);
+  const report = () => onProgress?.(sent.reduce((a, b) => a + b, 0), file.size);
+  let next = 0;
+  const worker = async () => {
+    while (next < count) {
+      const idx = next;
+      next += 1;
+      const partNumber = idx + 1;
+      const blob = file.slice(idx * PART_SIZE, Math.min(file.size, (idx + 1) * PART_SIZE));
+      const url = urlOf.get(partNumber);
+      if (!url) throw new Error(`Falta la URL de la parte ${partNumber}`);
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          await putXhr(url, {}, blob, (loaded) => {
+            sent[idx] = loaded;
             report();
-            break;
-          } catch (err) {
-            if (attempt >= PART_ATTEMPTS) throw err;
-            sent[idx] = 0;
-            await new Promise((r) => setTimeout(r, 500 * attempt));
-          }
+          });
+          sent[idx] = blob.size;
+          report();
+          break;
+        } catch (err) {
+          if (attempt >= PART_ATTEMPTS) throw err;
+          sent[idx] = 0;
+          await new Promise((r) => setTimeout(r, 500 * attempt));
         }
       }
-    };
-    await Promise.all(Array.from({ length: Math.min(PARALLEL_PARTS, count) }, worker));
-    await api.multipartComplete({ key, uploadId });
-    return key;
-  } catch (err) {
-    api.multipartAbort({ key, uploadId }).catch(() => undefined);
-    throw err;
-  }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PARALLEL_PARTS, count) }, worker));
 }
 
 export function mediaApi(http: Http) {
@@ -130,38 +111,51 @@ export function mediaApi(http: Http) {
     presign(input: PresignInput): Promise<PresignResult> {
       return http.request('/api/media/presign', { method: 'POST', body: JSON.stringify(input) });
     },
-    create(input: CreateMediaInput): Promise<MediaAsset> {
-      return http.request('/api/media', { method: 'POST', body: JSON.stringify(input) });
-    },
-    multipartStart(input: PresignInput): Promise<{ key: string; uploadId: string }> {
+    multipartStart(input: PresignInput): Promise<{ asset: MediaAsset; key: string; uploadId: string }> {
       return http.request('/api/media/multipart/start', { method: 'POST', body: JSON.stringify(input) });
     },
     multipartSign(input: { key: string; uploadId: string; partNumbers: number[] }): Promise<{ urls: { partNumber: number; url: string }[] }> {
       return http.request('/api/media/multipart/sign', { method: 'POST', body: JSON.stringify(input) });
     },
-    multipartComplete(input: { key: string; uploadId: string }): Promise<{ ok: true }> {
-      return http.request('/api/media/multipart/complete', { method: 'POST', body: JSON.stringify(input) });
+    complete(id: string, input: { uploadId?: string; sizeBytes?: number }): Promise<MediaAsset> {
+      return http.request(`/api/media/${id}/complete`, { method: 'POST', body: JSON.stringify(input) });
     },
-    multipartAbort(input: { key: string; uploadId: string }): Promise<{ ok: true }> {
-      return http.request('/api/media/multipart/abort', { method: 'POST', body: JSON.stringify(input) });
+    abort(id: string, input: { uploadId?: string }): Promise<void> {
+      return http.request(`/api/media/${id}/abort`, { method: 'POST', body: JSON.stringify(input) });
     },
     /**
-     * Upload a file to R2 and create its record. Small files go in one PUT;
-     * big ones are split in parts sent in parallel (each part retried on its
-     * own), which is both faster and tolerant of a flaky connection.
-     * `onProgress` gets the bytes sent so far and the total.
+     * Upload a file to R2. The media record exists (as `uploading`) as soon as
+     * `onStarted` fires, so the caller can reference it and move on; the
+     * promise resolves with the `ready` asset once the bytes are in. Small
+     * files go in one PUT; big ones in parts sent in parallel, each part
+     * retried on its own. On failure the record is removed again.
      */
-    async upload(file: File, kind: 'video' | 'image', onProgress?: (loaded: number, total: number) => void): Promise<MediaAsset> {
+    async upload(
+      file: File,
+      kind: 'video' | 'image',
+      hooks: { onStarted?: (asset: MediaAsset) => void; onProgress?: (loaded: number, total: number) => void } = {},
+    ): Promise<MediaAsset> {
       const contentType = file.type || 'application/octet-stream';
-      let key: string;
       if (file.size >= MULTIPART_THRESHOLD) {
-        key = await uploadMultipart(this, file, kind, contentType, onProgress);
-      } else {
-        const presigned = await this.presign({ filename: file.name, contentType, kind });
-        key = presigned.key;
-        await putXhr(presigned.uploadUrl, presigned.headers, file, (loaded) => onProgress?.(loaded, file.size));
+        const { asset, key, uploadId } = await this.multipartStart({ filename: file.name, contentType, kind });
+        hooks.onStarted?.(asset);
+        try {
+          await uploadParts(this, key, uploadId, file, hooks.onProgress);
+          return await this.complete(asset.id, { uploadId, sizeBytes: file.size });
+        } catch (err) {
+          this.abort(asset.id, { uploadId }).catch(() => undefined);
+          throw err;
+        }
       }
-      return this.create({ key, kind, mimeType: file.type || undefined, sizeBytes: file.size });
+      const presigned = await this.presign({ filename: file.name, contentType, kind });
+      hooks.onStarted?.(presigned.asset);
+      try {
+        await putXhr(presigned.uploadUrl, presigned.headers, file, (loaded) => hooks.onProgress?.(loaded, file.size));
+        return await this.complete(presigned.asset.id, { sizeBytes: file.size });
+      } catch (err) {
+        this.abort(presigned.asset.id, {}).catch(() => undefined);
+        throw err;
+      }
     },
     view(id: string): Promise<MediaAsset> {
       return http.request(`/api/media/${id}`);

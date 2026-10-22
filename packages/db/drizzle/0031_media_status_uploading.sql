@@ -1,0 +1,1 @@
+ALTER TYPE "public"."media_processing_status" ADD VALUE 'uploading' BEFORE 'uploaded';

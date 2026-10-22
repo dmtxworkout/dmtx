@@ -2,7 +2,8 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, isNull } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { mediaAssets } from '@dmtx/db';
-import { paginated, paginationQuerySchema, slugify } from '@dmtx/schemas';
+import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema, slugify } from '@dmtx/schemas';
+import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
 import { displayName, r2Client, r2Endpoint, viewUrl } from '../lib/media';
@@ -15,27 +16,31 @@ const presignRequest = z.object({
   contentType: z.string().min(1),
   kind: kindEnum,
 });
-const presignResponse = z.object({
-  key: z.string(),
-  uploadUrl: z.string(),
-  method: z.literal('PUT'),
-  headers: z.record(z.string(), z.string()),
-});
-const createRequest = z.object({
-  key: z.string().min(1),
-  kind: kindEnum,
-  mimeType: z.string().optional(),
-  sizeBytes: z.number().int().nonnegative().optional(),
-});
+const statusEnum = z.enum(MEDIA_PROCESSING_STATUS);
 const assetSchema = z.object({
   id: z.uuid(),
   kind: kindEnum,
   name: z.string(),
   mimeType: z.string().nullable(),
   sizeBytes: z.number().nullable(),
+  /** `uploading` until the bytes are in; only `ready` assets are served to the app. */
+  status: statusEnum,
   viewUrl: z.string(),
   createdAt: z.iso.datetime(),
 });
+const presignResponse = z.object({
+  asset: assetSchema,
+  key: z.string(),
+  uploadUrl: z.string(),
+  method: z.literal('PUT'),
+  headers: z.record(z.string(), z.string()),
+});
+const completeRequest = z.object({
+  /** Set when the upload went in parts. */
+  uploadId: z.string().min(1).optional(),
+  sizeBytes: z.number().int().nonnegative().optional(),
+});
+const abortRequest = z.object({ uploadId: z.string().min(1).optional() });
 const listQuery = paginationQuerySchema.extend({ kind: kindEnum.optional() });
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
@@ -48,9 +53,27 @@ async function serialize(env: Env, r: MediaRow) {
     name: displayName(r.r2Key),
     mimeType: r.mimeType,
     sizeBytes: r.sizeBytes,
+    status: r.processingStatus,
     createdAt: r.createdAt.toISOString(),
     viewUrl: await viewUrl(env, r.r2Key),
   };
+}
+
+/** The R2 key for a new upload: `<kind>/<uuid>-<slug>.<ext>`. */
+function keyFor(kind: 'video' | 'image', filename: string): string {
+  const base = slugify(filename.replace(/\.[^.]+$/, '')) || 'file';
+  const ext = filename.includes('.') ? `.${filename.split('.').pop()}` : '';
+  return `${kind}/${uuidv7()}-${base}${ext}`;
+}
+
+/** The media record is created the moment an upload starts, as `uploading`, so the admin can keep working. */
+async function createUploading(db: Database, env: Env, key: string, kind: 'video' | 'image', contentType: string) {
+  const [row] = await db
+    .insert(mediaAssets)
+    .values({ r2Key: key, bucket: env.R2_BUCKET, kind, mimeType: contentType, processingStatus: 'uploading' })
+    .returning();
+  if (!row) throw new Error('No se pudo crear el asset de medios');
+  return row;
 }
 
 export const mediaRoute = createApp();
@@ -93,7 +116,7 @@ mediaRoute.openapi(
   },
 );
 
-// --- Presign (no DB write; the asset is created after a successful upload) ----
+// --- Presign a single PUT (small files); the record is created right away ----
 mediaRoute.openapi(
   createRoute({
     method: 'post',
@@ -109,16 +132,15 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const { filename, contentType, kind } = c.req.valid('json');
-    const base = slugify(filename.replace(/\.[^.]+$/, '')) || 'file';
-    const ext = filename.includes('.') ? `.${filename.split('.').pop()}` : '';
-    const key = `${kind}/${uuidv7()}-${base}${ext}`;
+    const key = keyFor(kind, filename);
     const signed = await r2Client(c.env).sign(r2Endpoint(c.env, key), {
       method: 'PUT',
       headers: { 'content-type': contentType },
       aws: { signQuery: true },
     });
+    const row = await createUploading(c.get('db'), c.env, key, kind, contentType);
     return c.json(
-      { key, uploadUrl: signed.url, method: 'PUT' as const, headers: { 'content-type': contentType } },
+      { asset: await serialize(c.env, row), key, uploadUrl: signed.url, method: 'PUT' as const, headers: { 'content-type': contentType } },
       200,
     );
   },
@@ -130,15 +152,13 @@ mediaRoute.openapi(
 // browser never needs to read ETag headers through CORS) and assembles the
 // object. The media record is created afterwards with POST /media as usual.
 const multipartStartRequest = presignRequest;
-const multipartStartResponse = z.object({ key: z.string(), uploadId: z.string() });
+const multipartStartResponse = z.object({ asset: assetSchema, key: z.string(), uploadId: z.string() });
 const multipartSignRequest = z.object({
   key: z.string().min(1),
   uploadId: z.string().min(1),
   partNumbers: z.array(z.number().int().min(1).max(10000)).min(1).max(10000),
 });
 const multipartSignResponse = z.object({ urls: z.array(z.object({ partNumber: z.number(), url: z.string() })) });
-const multipartRef = z.object({ key: z.string().min(1), uploadId: z.string().min(1) });
-const okResponse = z.object({ ok: z.literal(true) });
 
 function xmlTag(xml: string, tag: string): string | null {
   const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
@@ -160,9 +180,7 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const { filename, contentType, kind } = c.req.valid('json');
-    const base = slugify(filename.replace(/\.[^.]+$/, '')) || 'file';
-    const ext = filename.includes('.') ? `.${filename.split('.').pop()}` : '';
-    const key = `${kind}/${uuidv7()}-${base}${ext}`;
+    const key = keyFor(kind, filename);
     const res = await r2Client(c.env).fetch(`${r2Endpoint(c.env, key)}?uploads`, {
       method: 'POST',
       headers: { 'content-type': contentType },
@@ -170,7 +188,8 @@ mediaRoute.openapi(
     const xml = await res.text();
     const uploadId = res.ok ? xmlTag(xml, 'UploadId') : null;
     if (!uploadId) throw new Error(`R2 no inició la subida (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
-    return c.json({ key, uploadId }, 200);
+    const row = await createUploading(c.get('db'), c.env, key, kind, contentType);
+    return c.json({ asset: await serialize(c.env, row), key, uploadId }, 200);
   },
 );
 
@@ -201,100 +220,102 @@ mediaRoute.openapi(
   },
 );
 
-mediaRoute.openapi(
-  createRoute({
-    method: 'post',
-    path: '/multipart/complete',
-    tags: ['media'],
-    request: { body: { content: { 'application/json': { schema: multipartRef } } } },
-    responses: {
-      200: { description: 'Objeto ensamblado en R2', content: { 'application/json': { schema: okResponse } } },
-    },
-  }),
-  async (c) => {
-    const { key, uploadId } = c.req.valid('json');
-    const client = r2Client(c.env);
-    const endpoint = r2Endpoint(c.env, key);
-    // ListParts, paginated by part-number-marker.
-    const parts: { partNumber: number; etag: string }[] = [];
-    let marker: string | null = null;
-    for (let page = 0; page < 20; page += 1) {
-      const url = new URL(endpoint);
-      url.searchParams.set('uploadId', uploadId);
-      url.searchParams.set('max-parts', '1000');
-      if (marker) url.searchParams.set('part-number-marker', marker);
-      const res = await client.fetch(url.toString(), { method: 'GET' });
-      const xml = await res.text();
-      if (!res.ok) throw new Error(`R2 no listó las partes (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
-      for (const m of xml.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
-        const n = Number(xmlTag(m[1]!, 'PartNumber'));
-        const etag = xmlTag(m[1]!, 'ETag');
-        if (n && etag) parts.push({ partNumber: n, etag });
-      }
-      if (xmlTag(xml, 'IsTruncated') !== 'true') break;
-      marker = xmlTag(xml, 'NextPartNumberMarker');
-      if (!marker) break;
-    }
-    if (!parts.length) throw new Error('R2 no recibió ninguna parte');
-    parts.sort((a, b) => a.partNumber - b.partNumber);
-    const body = `<CompleteMultipartUpload>${parts
-      .map((p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlText(p.etag)}</ETag></Part>`)
-      .join('')}</CompleteMultipartUpload>`;
-    const res = await client.fetch(`${endpoint}?uploadId=${encodeURIComponent(uploadId)}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/xml' },
-      body,
-    });
+/** Ask R2 for the parts it received and assemble the object (ListParts, so the browser never needs ETag headers through CORS). */
+async function completeMultipart(env: Env, key: string, uploadId: string) {
+  const client = r2Client(env);
+  const endpoint = r2Endpoint(env, key);
+  const parts: { partNumber: number; etag: string }[] = [];
+  let marker: string | null = null;
+  for (let page = 0; page < 20; page += 1) {
+    const url = new URL(endpoint);
+    url.searchParams.set('uploadId', uploadId);
+    url.searchParams.set('max-parts', '1000');
+    if (marker) url.searchParams.set('part-number-marker', marker);
+    const res = await client.fetch(url.toString(), { method: 'GET' });
     const xml = await res.text();
-    if (!res.ok || xml.includes('<Error>')) throw new Error(`R2 no pudo ensamblar el archivo (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
-    return c.json({ ok: true as const }, 200);
-  },
-);
+    if (!res.ok) throw new Error(`R2 no listó las partes (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
+    for (const m of xml.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
+      const n = Number(xmlTag(m[1]!, 'PartNumber'));
+      const etag = xmlTag(m[1]!, 'ETag');
+      if (n && etag) parts.push({ partNumber: n, etag });
+    }
+    if (xmlTag(xml, 'IsTruncated') !== 'true') break;
+    marker = xmlTag(xml, 'NextPartNumberMarker');
+    if (!marker) break;
+  }
+  if (!parts.length) throw new Error('R2 no recibió ninguna parte');
+  parts.sort((a, b) => a.partNumber - b.partNumber);
+  const body = `<CompleteMultipartUpload>${parts
+    .map((p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlText(p.etag)}</ETag></Part>`)
+    .join('')}</CompleteMultipartUpload>`;
+  const res = await client.fetch(`${endpoint}?uploadId=${encodeURIComponent(uploadId)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/xml' },
+    body,
+  });
+  const xml = await res.text();
+  if (!res.ok || xml.includes('<Error>')) throw new Error(`R2 no pudo ensamblar el archivo (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
+}
 
+// --- Complete: the bytes are in R2; the asset becomes ready -----------------
 mediaRoute.openapi(
   createRoute({
     method: 'post',
-    path: '/multipart/abort',
+    path: '/{id}/complete',
     tags: ['media'],
-    request: { body: { content: { 'application/json': { schema: multipartRef } } } },
+    request: { params: idParam, body: { content: { 'application/json': { schema: completeRequest } } } },
     responses: {
-      200: { description: 'Subida descartada; R2 borra las partes', content: { 'application/json': { schema: okResponse } } },
+      200: { description: 'Asset listo', content: { 'application/json': { schema: assetSchema } } },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
-    const { key, uploadId } = c.req.valid('json');
-    await r2Client(c.env).fetch(`${r2Endpoint(c.env, key)}?uploadId=${encodeURIComponent(uploadId)}`, { method: 'DELETE' });
-    return c.json({ ok: true as const }, 200);
-  },
-);
-
-// --- Create the media record (call after the R2 PUT succeeds) ----------------
-mediaRoute.openapi(
-  createRoute({
-    method: 'post',
-    path: '/',
-    tags: ['media'],
-    request: { body: { content: { 'application/json': { schema: createRequest } } } },
-    responses: {
-      201: { description: 'Asset creado', content: { 'application/json': { schema: assetSchema } } },
-    },
-  }),
-  async (c) => {
-    const { key, kind, mimeType, sizeBytes } = c.req.valid('json');
-    const [row] = await c
-      .get('db')
-      .insert(mediaAssets)
-      .values({
-        r2Key: key,
-        bucket: c.env.R2_BUCKET,
-        kind,
-        mimeType: mimeType ?? null,
-        sizeBytes: sizeBytes ?? null,
-        processingStatus: 'ready',
-      })
+    const { id } = c.req.valid('param');
+    const { uploadId, sizeBytes } = c.req.valid('json');
+    const db = c.get('db');
+    const [row] = await db
+      .select()
+      .from(mediaAssets)
+      .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
+      .limit(1);
+    if (!row) return c.json({ error: 'No encontrado' }, 404);
+    if (uploadId) await completeMultipart(c.env, row.r2Key, uploadId);
+    const [done] = await db
+      .update(mediaAssets)
+      .set({ processingStatus: 'ready', sizeBytes: sizeBytes ?? row.sizeBytes, updatedAt: new Date() })
+      .where(eq(mediaAssets.id, id))
       .returning();
-    if (!row) throw new Error('No se pudo crear el asset de medios');
-    return c.json(await serialize(c.env, row), 201);
+    return c.json(await serialize(c.env, done!), 200);
+  },
+);
+
+// --- Abort: the upload broke or was cancelled; the record goes (references are set null) ---
+mediaRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{id}/abort',
+    tags: ['media'],
+    request: { params: idParam, body: { content: { 'application/json': { schema: abortRequest } } } },
+    responses: {
+      204: { description: 'Subida descartada' },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { uploadId } = c.req.valid('json');
+    const db = c.get('db');
+    const [row] = await db
+      .select()
+      .from(mediaAssets)
+      .where(and(eq(mediaAssets.id, id), eq(mediaAssets.processingStatus, 'uploading')))
+      .limit(1);
+    if (!row) return c.json({ error: 'No encontrado' }, 404);
+    if (uploadId) {
+      await r2Client(c.env).fetch(`${r2Endpoint(c.env, row.r2Key)}?uploadId=${encodeURIComponent(uploadId)}`, { method: 'DELETE' });
+    }
+    await db.delete(mediaAssets).where(eq(mediaAssets.id, id));
+    return c.body(null, 204);
   },
 );
 

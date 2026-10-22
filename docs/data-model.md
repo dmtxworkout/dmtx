@@ -33,7 +33,7 @@ PostgreSQL via Drizzle. Schema lives in `packages/db/src/schema/` (one file per 
 
 ## Supporting
 
-- **`media_assets`** — single source of truth for every R2 object (`r2_key`, `kind`, `processing_status`, `variants` jsonb, dims). Content references it by FK.
+- **`media_assets`** — single source of truth for every R2 object (`r2_key`, `kind`, `processing_status`, `variants` jsonb, dims). Content references it by FK. `processing_status` is `uploading` from the moment an upload starts (the record exists before the bytes, so content can reference it right away) and `ready` once R2 has the file; `processing`/`failed` are reserved for a transcoding step (Cloudflare Stream). Only `ready` assets resolve to URLs for the app (`resolveMediaUrls`); `/app/workouts/:id` flags an attached-but-unready video as `videoPending`.
 - **`muscles`**, **`equipment`** — two flat lists of tags (one level on purpose: the admin picks the granularity with the names, e.g. Pierna, Pecho, Core). Managed in **Músculos y equipo** or created inline from the exercise form; an exercise tags its muscles and equipment. A rutina's tags are **derived**, never stored: the union of its exercises' muscles and equipment (`/app/workouts/:id` → `muscles`/`equipment`; `/app/filters` lists the ones in use; `/app/browse?muscle=&equipment=` filters by slug). Deleting a tag is refused while an exercise uses it.
 - **`collections`** (Netflix rows) → **`collection_items`** — polymorphic via **exactly-one-nullable-FK + CHECK** (`workout_id`/`program_id`/`skill_id`), preserving real FK integrity.
 

@@ -592,6 +592,8 @@ appRoute.get('/workouts/:id', async (c) => {
     estimatedDurationSeconds: w.estimatedDurationSeconds,
     thumbnailUrl: url(media, w.thumbnailAssetId),
     videoUrl: url(media, w.videoAssetId),
+    // The admin attached a video that is still uploading or processing.
+    videoPending: !!w.videoAssetId && !url(media, w.videoAssetId),
     videoDurationSeconds: w.videoDurationSeconds,
     // The player builds each part's timing from its block; nothing at this level.
     formatConfig: null,

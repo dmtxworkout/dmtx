@@ -13,6 +13,7 @@ import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
+import { startUpload, uploadPct, useUploads } from '@/lib/uploads';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
 
@@ -58,6 +59,7 @@ export function MediaBrowser({
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const uploads = useUploads();
   /** dragenter minus dragleave: children fire their own pairs. */
   const [dragging, setDragging] = useState(0);
 
@@ -83,12 +85,9 @@ export function MediaBrowser({
     }
     setUploading(true);
     setError(null);
-    const ids: string[] = [];
     try {
-      for (const file of chosen) {
-        const asset = await api.media.upload(file, file.type.startsWith('video/') ? 'video' : 'image');
-        ids.push(asset.id);
-      }
+      // The records exist right away; the bytes go on in the background (see the tray).
+      const ids = await Promise.all(chosen.map((file) => startUpload(file, file.type.startsWith('video/') ? 'video' : 'image')));
       await qc.invalidateQueries({ queryKey: ['media'] });
       // What was just uploaded is what you came for: mark it.
       onSelectedChange(selectable === 'single' ? ids.slice(0, 1) : [...selected, ...ids]);
@@ -183,6 +182,8 @@ export function MediaBrowser({
           <div className="grid grid-cols-[repeat(auto-fill,9.25rem)] justify-start gap-3">
             {items.map((m) => {
               const on = selected.includes(m.id);
+              const up = uploads.find((u) => u.assetId === m.id);
+              const pending = m.status === 'uploading' || m.status === 'processing' || (up && up.status !== 'done');
               return (
                 <div
                   key={m.id}
@@ -194,7 +195,18 @@ export function MediaBrowser({
                     className="relative block aspect-square w-full overflow-hidden rounded-md border border-line-3 bg-surface-2"
                     title={on ? 'Desmarcar' : 'Marcar'}
                   >
-                    {m.kind === 'image' ? (
+                    {pending ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
+                        <span className="font-mono text-[11px] text-ink-2">
+                          {up?.status === 'uploading' ? `Subiendo ${uploadPct(up)}%` : up?.status === 'error' ? 'Error' : up ? 'Procesando…' : 'Interrumpida'}
+                        </span>
+                        {up?.status === 'uploading' && (
+                          <div className="h-1 w-full overflow-hidden rounded-full bg-line-2">
+                            <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${uploadPct(up)}%` }} />
+                          </div>
+                        )}
+                      </div>
+                    ) : m.kind === 'image' ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={m.viewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
                     ) : (

@@ -1,5 +1,5 @@
 import { AwsClient } from 'aws4fetch';
-import { and, inArray, isNull } from 'drizzle-orm';
+import { and, inArray, isNull, notInArray } from 'drizzle-orm';
 import { mediaAssets } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
@@ -37,6 +37,8 @@ export async function viewUrl(env: Env, key: string): Promise<string> {
 /**
  * Batch-resolve a set of media asset ids to short-lived view URLs. Nulls and
  * duplicates are ignored; the returned map only contains ids that resolved.
+ * An asset still uploading (or processing / failed) does not resolve: the app
+ * never gets a link to a file that isn't there yet.
  */
 export async function resolveMediaUrls(
   db: Database,
@@ -48,7 +50,13 @@ export async function resolveMediaUrls(
   const rows = await db
     .select({ id: mediaAssets.id, r2Key: mediaAssets.r2Key })
     .from(mediaAssets)
-    .where(and(inArray(mediaAssets.id, unique), isNull(mediaAssets.deletedAt)));
+    .where(
+      and(
+        inArray(mediaAssets.id, unique),
+        isNull(mediaAssets.deletedAt),
+        notInArray(mediaAssets.processingStatus, ['uploading', 'processing', 'failed']),
+      ),
+    );
   const entries = await Promise.all(
     rows.map(async (r) => [r.id, await viewUrl(env, r.r2Key)] as const),
   );

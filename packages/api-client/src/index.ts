@@ -40,7 +40,7 @@ export type {
 export type {
   PresignInput,
   PresignResult,
-  CreateMediaInput,
   MediaAsset,
+  MediaStatus,
   MediaListQuery,
 } from './media';

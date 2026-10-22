@@ -137,6 +137,8 @@ export interface WorkoutDetail {
   estimatedDurationSeconds: number | null;
   thumbnailUrl: string | null;
   videoUrl: string | null;
+  /** A video is attached but not playable yet (still uploading or processing). */
+  videoPending: boolean;
   videoDurationSeconds: number | null;
   /** Tags derived from the exercises: muscle groups worked (primary) and equipment needed. */
   muscles: string[];
