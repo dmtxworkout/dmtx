@@ -80,7 +80,9 @@ export function UploadsTray() {
                   {u.status === 'uploading'
                     ? `Subiendo ${pct}% · ${formatBytes(u.loaded)} de ${formatBytes(u.total)}`
                     : u.status === 'processing'
-                      ? 'Procesando…'
+                      ? u.kind === 'video'
+                        ? 'Subido · Cloudflare está procesando el video…'
+                        : 'Procesando…'
                       : `Listo · ${formatBytes(u.total)}`}
                 </p>
               </>

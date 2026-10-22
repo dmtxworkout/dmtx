@@ -225,6 +225,20 @@
       "when": 1792683550803,
       "tag": "0031_media_status_uploading",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1792694739547,
+      "tag": "0032_media_cloudflare_drop_r2",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1792694759564,
+      "tag": "0033_media_external_id_name",
+      "breakpoints": true
     }
   ]
 }

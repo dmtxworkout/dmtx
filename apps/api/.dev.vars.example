@@ -3,7 +3,10 @@ DATABASE_URL="postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=requi
 BETTER_AUTH_SECRET="generate-a-long-random-string-min-32-chars"
 RESEND_API_KEY="re_xxxxxxxx"
 
-# Cloudflare R2 (S3-compatible credentials — R2 > Manage API Tokens)
-R2_ACCOUNT_ID="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-R2_ACCESS_KEY_ID="xxxxxxxxxxxxxxxxxxxx"
-R2_SECRET_ACCESS_KEY="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# Cloudflare Images + Stream (media). Token: My Profile > API Tokens > Custom,
+# with Account · Cloudflare Images · Edit and Account · Stream · Edit.
+CF_ACCOUNT_ID="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+CF_API_TOKEN="xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# The rest is filled in by `pnpm --filter @dmtx/api cf:setup`:
+# CF_IMAGES_ACCOUNT_HASH, CF_STREAM_CUSTOMER_CODE, CF_STREAM_SIGNING_KEY_ID,
+# CF_STREAM_SIGNING_KEY_JWK (and CF_STREAM_WEBHOOK_SECRET with --webhook <url>).

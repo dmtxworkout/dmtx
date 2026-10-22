@@ -23,6 +23,7 @@ import { createApp } from '../lib/openapi';
 import { nestBlocks, type Nested } from './workouts';
 import { tagsForExercises } from './taxonomy';
 import { resolveMediaUrls } from '../lib/media';
+import type { ResolvedMedia } from '../lib/media';
 import { resolveEntitlement } from '../lib/entitlement';
 import { requireAccess, requireUser } from '../middleware/auth';
 import type { Env } from '../env';
@@ -32,8 +33,10 @@ type ProgramRow = typeof programs.$inferSelect;
 type SkillRow = typeof skills.$inferSelect;
 type ExerciseRow = typeof exercises.$inferSelect;
 
-const url = (m: Map<string, string>, id: string | null): string | null =>
-  id ? (m.get(id) ?? null) : null;
+const url = (m: Map<string, ResolvedMedia>, id: string | null): string | null =>
+  id ? (m.get(id)?.url ?? null) : null;
+const downloadUrl = (m: Map<string, ResolvedMedia>, id: string | null): string | null =>
+  id ? (m.get(id)?.downloadUrl ?? null) : null;
 
 const mins = (seconds: number | null): number | null =>
   seconds ? Math.max(1, Math.round(seconds / 60)) : null;
@@ -592,6 +595,8 @@ appRoute.get('/workouts/:id', async (c) => {
     estimatedDurationSeconds: w.estimatedDurationSeconds,
     thumbnailUrl: url(media, w.thumbnailAssetId),
     videoUrl: url(media, w.videoAssetId),
+    // The MP4 for offline use (Stream produces it once the video is ready).
+    videoDownloadUrl: downloadUrl(media, w.videoAssetId),
     // The admin attached a video that is still uploading or processing.
     videoPending: !!w.videoAssetId && !url(media, w.videoAssetId),
     videoDurationSeconds: w.videoDurationSeconds,

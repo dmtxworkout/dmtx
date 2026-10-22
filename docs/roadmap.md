@@ -6,7 +6,7 @@
 - **`@dmtx/schemas`** — shared Zod (enums, tempo, goal, load, format-config, exercise DTOs).
 - **`@dmtx/db`** — full Drizzle schema (31 tables) + Better Auth tables + init migration (`packages/db/drizzle/0000_init.sql`).
 - **`@dmtx/auth`** — Better Auth server (admin roles + Resend hooks) + browser client.
-- **`@dmtx/api`** — Hono/OpenAPI Worker: auth mount, admin gate, **exercises CRUD**, R2 presign, `/doc`.
+- **`@dmtx/api`** — Hono/OpenAPI Worker: auth mount, admin gate, **exercises CRUD**, media uploads, `/doc`.
 - **`@dmtx/api-client`** — typed client.
 - **`@dmtx/admin`** — Next.js portal: login, auth-guarded chrome, **exercises list + create/edit** (the reference slice), Spanish UI.
 - All packages typecheck + lint green; admin builds; API bundles for Workers.
@@ -18,9 +18,9 @@
 3. **Add DB indexes** — FKs, `subscriptions.next_charge_date`, `status`, `deleted_at` on hot paths (none defined yet).
 4. **Workouts (rutinas)** — format picker + per-format config forms + block/item builder. Add `@dmtx/core` for the format/goal engines (`meetsGoal`, timer configs) shared with mobile.
 5. **Collections** — same golden-path pattern. ~~Skills~~ built (2026-10-21): levels written in the rutina editor with an **Objetivo** section; the app unlocks levels from logged sessions (see data-model.md). ~~Programs~~ rebuilt (2026-10-22): weeks of days, each day its own rutina written in the editor (video playlists dropped); `program_progress` still pending.
-6. **Media library** — R2 upload UI + a transcoding pipeline (source → HLS variants in R2 → `media_assets.variants`).
+6. ~~**Media library**~~ — built; moved to Cloudflare Images + Stream (2026-10-22): uploads go straight from the browser (background queue), Images resizes on request, Stream encodes to HLS and produces the MP4 for offline use. Pending: register the Stream webhook once the API has a public URL (`cf:setup --webhook`).
 7. **Billing** — the self-managed engine (SetupIntent, Cron + Queue charge run, dunning, webhooks) + subscription-management & reporting screens. See [billing.md](billing.md).
-8. **Production hardening** — CI (GitHub Actions + Turbo remote cache + Neon PR-branch migration check), subdomain cookie config, R2 CORS, deploys (Vercel + `wrangler deploy`).
+8. **Production hardening** — CI (GitHub Actions + Turbo remote cache + Neon PR-branch migration check), subdomain cookie config, Stream webhook, deploys (Vercel + `wrangler deploy`).
 9. **Mobile app** — Expo consumer app (Netflix-style catalog, workout player, offline downloads), sharing `@dmtx/schemas` + `@dmtx/core` + `@dmtx/api-client`.
 
 ## Future ideas (not scheduled)

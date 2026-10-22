@@ -8,11 +8,21 @@ import { cn } from '@/lib/utils';
 import { MediaPicker } from '@/components/media-picker';
 import { formatBytes, startUpload, uploadPct, useUpload } from '@/lib/uploads';
 
+interface Info {
+  name: string;
+  sizeBytes: number | null;
+  status: MediaStatus;
+  /** Image: the delivery URL; video: Stream's player (iframe). Null until ready. */
+  url: string | null;
+  durationSeconds: number | null;
+}
+
 /**
  * Upload + preview a single media asset (image or video), or pick an existing
  * one from the library. Supports click and drag-and-drop. Holds only the id:
  * a dropped file is handed to the background upload queue and the field gets
- * its id right away, so the form can be saved (or left) while it uploads.
+ * its id right away, so the form can be saved (or left) while it uploads. A
+ * video is played through Cloudflare Stream's player once it is encoded.
  */
 export function MediaField({
   kind,
@@ -25,13 +35,11 @@ export function MediaField({
   label: string;
   value: string | null;
   onChange: (assetId: string | null) => void;
-  /** Video only: the duration in seconds once the file's metadata loads (null when the video is removed). */
+  /** Video only: the duration in seconds once Stream has read it (null when the video is removed). */
   onDuration?: (seconds: number | null) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [viewUrl, setViewUrl] = useState<string | null>(null);
-  // Name, size and status of the current file, shown under a video so a heavy one is obvious.
-  const [info, setInfo] = useState<{ name: string; sizeBytes: number | null; status: MediaStatus } | null>(null);
+  const [info, setInfo] = useState<Info | null>(null);
   // The field's asset while its bytes are still travelling (from the global queue).
   const entry = useUpload(value);
   const uploadState = entry?.status;
@@ -40,26 +48,43 @@ export function MediaField({
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Re-read when the asset changes and again when its upload finishes or fails.
+  // Re-read when the asset changes and again when its upload finishes or
+  // fails; a video Stream is still encoding is asked again every few seconds.
+  const inQueue = uploadState === 'uploading' || uploadState === 'processing';
   useEffect(() => {
+    if (!value || inQueue) {
+      if (!value) setInfo(null);
+      return;
+    }
     let alive = true;
-    if (value && uploadState !== 'uploading' && uploadState !== 'processing') {
+    let timer: number | undefined;
+    const read = () => {
       api.media
         .view(value)
         .then((a) => {
           if (!alive) return;
-          setViewUrl(a.status === 'ready' || a.status === 'uploaded' ? a.viewUrl : null);
-          setInfo({ name: a.name, sizeBytes: a.sizeBytes, status: a.status });
+          setInfo({
+            name: a.name,
+            sizeBytes: a.sizeBytes,
+            status: a.status,
+            url: a.status === 'ready' ? (a.kind === 'video' ? a.embedUrl : a.viewUrl) : null,
+            durationSeconds: a.durationSeconds,
+          });
+          if (a.status === 'processing') timer = window.setTimeout(read, 5000);
         })
-        .catch(() => alive && setViewUrl(null));
-    } else {
-      setViewUrl(null);
-      if (!value) setInfo(null);
-    }
+        .catch(() => alive && setInfo(null));
+    };
+    read();
     return () => {
       alive = false;
+      window.clearTimeout(timer);
     };
-  }, [value, uploadState]);
+  }, [value, inQueue]);
+  // The duration comes from Stream once the video is ready.
+  const duration = kind === 'video' && info?.status === 'ready' ? info.durationSeconds : undefined;
+  useEffect(() => {
+    if (duration !== undefined) onDuration?.(duration);
+  }, [duration, onDuration]);
   // A failed upload took its record with it: the field lets go of the id.
   const entryError = entry?.status === 'error' ? (entry.error ?? es.app.error) : null;
   useEffect(() => {
@@ -87,10 +112,12 @@ export function MediaField({
       setStarting(false);
     }
   }
-  const inFlight = starting || uploadState === 'uploading' || uploadState === 'processing';
-  // The record says "uploading" but nothing is in flight here: the tab that was sending it is gone.
-  const orphan = !!value && !inFlight && !!info && info.status === 'uploading';
-  const hasVideo = kind === 'video' && !!viewUrl;
+  const inFlight = starting || inQueue;
+  // Not in flight here, but the record is not ready either: encoding at
+  // Cloudflare (processing), broken (failed) or abandoned by a closed tab (uploading).
+  const stalled = !!value && !inFlight && !!info && info.status !== 'ready' ? info.status : null;
+  const url = !inFlight && info?.status === 'ready' ? info.url : null;
+  const hasVideo = kind === 'video' && !!url;
 
   function onInput(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -131,30 +158,29 @@ export function MediaField({
           !hasVideo && 'cursor-pointer',
           dragging
             ? 'border-accent bg-accent-tint/40'
-            : viewUrl
+            : url
               ? hasVideo
                 ? 'border-line bg-black'
                 : 'border-line'
               : 'border-dashed border-line-2 bg-surface-3 hover:bg-surface-2',
         )}
       >
-        {viewUrl && kind === 'image' && (
+        {url && kind === 'image' && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={viewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
-        {viewUrl && kind === 'video' && (
-          // Playable right here, so what was uploaded can be checked without leaving the form.
-          <video
-            key={viewUrl}
-            src={viewUrl}
-            controls
-            preload="metadata"
-            playsInline
-            onLoadedMetadata={(e) => onDuration?.(Number.isFinite(e.currentTarget.duration) ? Math.round(e.currentTarget.duration) : null)}
-            className="absolute inset-0 h-full w-full object-contain"
+        {url && kind === 'video' && (
+          // Stream's player: plays the encoded HLS right here, so what was uploaded can be checked without leaving the form.
+          <iframe
+            key={url}
+            src={url}
+            title={info?.name ?? 'Video'}
+            allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+            allowFullScreen
+            className="absolute inset-0 h-full w-full border-0"
           />
         )}
-        {!viewUrl && !inFlight && !orphan && (
+        {!url && !inFlight && !stalled && (
           <div className="px-4 text-xs text-muted">
             <svg
               viewBox="0 0 24 24"
@@ -176,7 +202,13 @@ export function MediaField({
         )}
         {inFlight && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
-            <span>{entry && entry.status === 'uploading' ? `${es.app.uploading} ${uploadPct(entry)}%` : 'Procesando…'}</span>
+            <span>
+              {entry && entry.status === 'uploading'
+                ? `${es.app.uploading} ${uploadPct(entry)}%`
+                : entry?.status === 'processing' && kind === 'video'
+                  ? 'Subido · Cloudflare está procesando el video…'
+                  : 'Procesando…'}
+            </span>
             <div className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-line-2">
               <div
                 className={cn('h-full rounded-full bg-accent transition-[width] duration-200', entry?.status !== 'uploading' && 'animate-pulse')}
@@ -191,10 +223,24 @@ export function MediaField({
             <span className="text-[11px] font-normal text-muted">Puedes guardar y seguir trabajando mientras tanto.</span>
           </div>
         )}
-        {orphan && (
+        {stalled && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-surface/90 px-8 text-center text-sm font-medium text-ink-2">
-            <span>La subida se interrumpió</span>
-            <span className="text-[11px] font-normal text-muted">Se cerró la pestaña antes de terminar. Quita el archivo y súbelo de nuevo.</span>
+            {stalled === 'processing' ? (
+              <>
+                <span>Cloudflare está procesando el video…</span>
+                <span className="text-[11px] font-normal text-muted">Estará listo en unos minutos; puedes guardar mientras tanto.</span>
+              </>
+            ) : stalled === 'failed' ? (
+              <>
+                <span>Cloudflare no pudo procesar el video</span>
+                <span className="text-[11px] font-normal text-muted">Quita el archivo y sube otro (MP4 H.264 suele funcionar).</span>
+              </>
+            ) : (
+              <>
+                <span>La subida se interrumpió</span>
+                <span className="text-[11px] font-normal text-muted">Se cerró la pestaña antes de terminar. Quita el archivo y súbelo de nuevo.</span>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -203,7 +249,7 @@ export function MediaField({
         <div className="mt-1.5 truncate font-mono text-[11px] text-muted" title={info.name}>
           {info.name}
           {info.sizeBytes ? ` · ${formatBytes(info.sizeBytes)}` : ''}
-          {info.sizeBytes && info.sizeBytes > 524288000 ? ' · pesado: tardará en subir y en cargar en la app' : ''}
+          {info.durationSeconds ? ` · ${Math.floor(info.durationSeconds / 60)}:${String(info.durationSeconds % 60).padStart(2, '0')}` : ''}
         </div>
       )}
       <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">

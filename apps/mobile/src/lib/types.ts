@@ -136,7 +136,10 @@ export interface WorkoutDetail {
   difficulty: Difficulty | null;
   estimatedDurationSeconds: number | null;
   thumbnailUrl: string | null;
+  /** HLS manifest (Cloudflare Stream); expo-video plays it natively. */
   videoUrl: string | null;
+  /** The MP4 of the same video, for offline downloads. */
+  videoDownloadUrl: string | null;
   /** A video is attached but not playable yet (still uploading or processing). */
   videoPending: boolean;
   videoDurationSeconds: number | null;

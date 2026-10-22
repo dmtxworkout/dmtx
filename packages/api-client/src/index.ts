@@ -38,9 +38,11 @@ export type {
   EntitlementResult,
 } from './subscriptions';
 export type {
-  PresignInput,
-  PresignResult,
+  CreateUploadInput,
+  CreateUploadResult,
   MediaAsset,
+  MediaKind,
   MediaStatus,
   MediaListQuery,
+  UploadHooks,
 } from './media';

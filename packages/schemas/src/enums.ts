@@ -76,9 +76,9 @@ export const mediaKindSchema = enumOf(MEDIA_KIND);
 export type MediaKind = z.infer<typeof mediaKindSchema>;
 
 // uploading: the record exists but the bytes are still on their way (the admin
-// keeps working meanwhile); ready: playable. Processing is for a transcoding
-// step (Cloudflare Stream) and failed for one that broke.
-export const MEDIA_PROCESSING_STATUS = ['uploading', 'uploaded', 'processing', 'ready', 'failed'] as const;
+// keeps working meanwhile); processing: Cloudflare Stream is encoding the
+// video; ready: servable; failed: Stream could not encode it.
+export const MEDIA_PROCESSING_STATUS = ['uploading', 'processing', 'ready', 'failed'] as const;
 export const mediaProcessingStatusSchema = enumOf(MEDIA_PROCESSING_STATUS);
 export type MediaProcessingStatus = z.infer<typeof mediaProcessingStatusSchema>;
 

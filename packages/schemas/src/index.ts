@@ -4,7 +4,6 @@ export * from './tempo';
 export * from './load';
 export * from './goal';
 export * from './format-config';
-export * from './media';
 export * from './billing';
 export * from './dto/exercise';
 export * from './dto/workout';

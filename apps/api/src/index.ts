@@ -12,6 +12,7 @@ import { programsRoute } from './routes/programs';
 import { skillsRoute } from './routes/skills';
 import { subscriptionsRoute } from './routes/subscriptions';
 import { appRoute } from './routes/app';
+import { webhooksRoute } from './routes/webhooks';
 
 const app = createApp();
 // An unexpected error reaches the admin as JSON with its message (the UI shows
@@ -39,6 +40,9 @@ app.use('*', async (c, next) => {
 
 // Better Auth handles all of /api/auth/* (public — before the session/admin gate).
 app.on(['GET', 'POST'], '/api/auth/*', (c) => createAuth(c.env).handler(c.req.raw));
+
+// Inbound webhooks (Cloudflare Stream): verified by signature, no session.
+app.route('/api/webhooks', webhooksRoute);
 
 // Resolve the session for the rest of the API surface.
 app.use('/api/*', withSession);

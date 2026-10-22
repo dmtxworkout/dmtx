@@ -1,6 +1,7 @@
 import { forwardRef, useState } from 'react';
 import {
   ActivityIndicator,
+  PixelRatio,
   Pressable,
   Text,
   TextInput,
@@ -124,6 +125,17 @@ export function Placeholder({ className = '' }: { className?: string }) {
   return <View className={`bg-[#1c1c21] ${className}`} />;
 }
 
+// Cloudflare Images resizes on request: the API sends `w=1200` and the thumb
+// asks for the width it is actually drawn at (times the screen's pixel
+// ratio), so a 62 px cell does not download a hero.
+const WIDTHS = [240, 360, 480, 640, 800, 1200, 1600];
+export function sizedImageUrl(uri: string, layoutWidth: number): string {
+  if (!uri.includes('imagedelivery.net/')) return uri;
+  const px = layoutWidth * Math.min(3, PixelRatio.get());
+  const w = WIDTHS.find((x) => x >= px) ?? WIDTHS[WIDTHS.length - 1]!;
+  return uri.replace(/\bw=\d+/, `w=${w}`);
+}
+
 /** Thumbnail with graceful fallback to a placeholder. */
 export function Thumb({
   uri,
@@ -134,10 +146,12 @@ export function Thumb({
   className?: string;
   radius?: number;
 }) {
+  const [width, setWidth] = useState(0);
   if (!uri) return <Placeholder className={className} />;
   return (
     <Image
-      source={{ uri }}
+      source={{ uri: width ? sizedImageUrl(uri, width) : undefined }}
+      onLayout={(e) => setWidth(Math.round(e.nativeEvent.layout.width))}
       style={{ borderRadius: radius }}
       className={className}
       contentFit="cover"

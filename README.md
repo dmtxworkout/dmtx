@@ -7,7 +7,7 @@ The "Netflix of workouts." A two-sided fitness platform:
 
 ## Stack
 
-Turborepo + pnpm · TypeScript · Next.js (admin) · Hono API on Cloudflare Workers · PostgreSQL on Neon + Drizzle · Better Auth · Cloudflare R2 · Stripe (self-managed billing) · Resend.
+Turborepo + pnpm · TypeScript · Next.js (admin) · Hono API on Cloudflare Workers · PostgreSQL on Neon + Drizzle · Better Auth · Cloudflare Images + Stream · Stripe (self-managed billing) · Resend.
 
 See **`CLAUDE.md`** and **`docs/`** for architecture, data model, conventions, and the admin screen specs.
 

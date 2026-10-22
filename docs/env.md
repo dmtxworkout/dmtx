@@ -21,7 +21,7 @@ Create the first admin: sign up via the app, then set that user's `role` to `adm
 | Service | Why | Get it |
 |---|---|---|
 | **Neon** (Postgres) | database | neon.tech — use a per-dev **branch** (the Neon HTTP driver can't hit a bare local Postgres) |
-| **Cloudflare R2** | media storage | R2 → create bucket `dmtx-media` + an S3 API token (access key/secret) |
+| **Cloudflare Images + Stream** | media (images resized on request, video encoded to HLS) | Images & Stream → Plans → both storage blocks; then an API token with `Account · Cloudflare Images · Edit` and `Account · Stream · Edit`; then `pnpm --filter @dmtx/api cf:setup` |
 | **Resend** | auth + transactional email | resend.com — **verify the sending domain early** (DNS can take up to 48h) |
 | **Stripe** | payments (billing phase) | stripe.com |
 | **Vercel** + **Cloudflare** | hosting (admin / API) | deploy targets |
@@ -29,9 +29,11 @@ Create the first admin: sign up via the app, then set that user's `role` to `adm
 ## Variables
 
 **`apps/api/.dev.vars`** (secrets; production via `wrangler secret put`):
-`DATABASE_URL`, `BETTER_AUTH_SECRET` (≥32 chars), `RESEND_API_KEY`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_PUBLIC_BASE_URL`.
+`DATABASE_URL`, `BETTER_AUTH_SECRET` (≥32 chars), `RESEND_API_KEY`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`, and the media delivery codes the setup script fills in: `CF_IMAGES_ACCOUNT_HASH`, `CF_STREAM_CUSTOMER_CODE`, `CF_STREAM_SIGNING_KEY_ID`, `CF_STREAM_SIGNING_KEY_JWK` (videos require signed URLs when the key is set), `CF_STREAM_WEBHOOK_SECRET` (production only).
 
-**`apps/api/wrangler.toml` `[vars]`** (non-secret): `BETTER_AUTH_URL`, `ADMIN_ORIGIN`, `EMAIL_FROM`, `R2_BUCKET`.
+**Media setup**: with `CF_ACCOUNT_ID` and `CF_API_TOKEN` in `.dev.vars`, run `pnpm --filter @dmtx/api cf:setup`. It turns on Images' flexible variants, discovers the Images account hash and the Stream customer code, creates a Stream signing key and appends the four `CF_*` values to `.dev.vars`. In production, run it again with `--webhook https://api.dmtx.app/api/webhooks/stream` to register Stream's "video ready" webhook (locally the API polls Stream instead), and `wrangler secret put` each `CF_*` name.
+
+**`apps/api/wrangler.toml` `[vars]`** (non-secret): `BETTER_AUTH_URL`, `ADMIN_ORIGIN`, `EMAIL_FROM`.
 
 **`packages/db/.env`**: `DATABASE_URL` (for `drizzle-kit`).
 
@@ -40,5 +42,5 @@ Create the first admin: sign up via the app, then set that user's `role` to `adm
 ## Production notes
 
 - Host admin + API under a **shared parent domain** (`admin.dmtx.app` / `api.dmtx.app`) for cross-subdomain auth cookies; set `ADMIN_ORIGIN` + `BETTER_AUTH_URL` accordingly and enable Better Auth `crossSubDomainCookies`.
-- Set R2 bucket **CORS** to allow the admin origin with `GET` and `PUT` (direct uploads: one PUT for small files, one PUT per part for files ≥32 MB, assembled server-side with ListParts so no response header has to be exposed). Add a lifecycle rule that aborts incomplete multipart uploads after a day or two, so parts of an upload the browser abandoned don't linger.
+- Media needs no CORS or bucket configuration: Images' direct-upload URLs and Stream's tus endpoint accept browser uploads as they are. Register the Stream webhook (above) so videos become `ready` without an admin tab open; the Images and Stream storage blocks do not grow on their own — when a block is full, uploads fail with Cloudflare's message in the tray, and the fix is one more block in Images & Stream → Plans.
 - CI: Turbo remote cache (`TURBO_TOKEN`/`TURBO_TEAM`), and a migration check against an ephemeral Neon branch.

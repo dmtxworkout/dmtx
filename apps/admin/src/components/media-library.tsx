@@ -66,6 +66,8 @@ export function MediaBrowser({
   const { data, isLoading } = useQuery({
     queryKey: ['media', kind, search],
     queryFn: () => api.media.list({ kind: kind === 'all' ? undefined : kind, search: search || undefined, pageSize: 200 }),
+    // While Stream encodes a video, the list asks again until it is ready.
+    refetchInterval: (q) => (q.state.data?.data.some((m) => m.status === 'processing') ? 5000 : false),
   });
   const items = data?.data ?? [];
 
@@ -183,7 +185,7 @@ export function MediaBrowser({
             {items.map((m) => {
               const on = selected.includes(m.id);
               const up = uploads.find((u) => u.assetId === m.id);
-              const pending = m.status === 'uploading' || m.status === 'processing' || (up && up.status !== 'done');
+              const pending = m.status !== 'ready' || (up && up.status !== 'done');
               return (
                 <div
                   key={m.id}
@@ -198,7 +200,13 @@ export function MediaBrowser({
                     {pending ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
                         <span className="font-mono text-[11px] text-ink-2">
-                          {up?.status === 'uploading' ? `Subiendo ${uploadPct(up)}%` : up?.status === 'error' ? 'Error' : up ? 'Procesando…' : 'Interrumpida'}
+                          {up?.status === 'uploading'
+                            ? `Subiendo ${uploadPct(up)}%`
+                            : up?.status === 'error' || m.status === 'failed'
+                              ? 'Error'
+                              : up || m.status === 'processing'
+                                ? 'Procesando…'
+                                : 'Interrumpida'}
                         </span>
                         {up?.status === 'uploading' && (
                           <div className="h-1 w-full overflow-hidden rounded-full bg-line-2">
@@ -206,11 +214,9 @@ export function MediaBrowser({
                           </div>
                         )}
                       </div>
-                    ) : m.kind === 'image' ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.viewUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
                     ) : (
-                      <video src={m.viewUrl} muted className="absolute inset-0 h-full w-full object-cover" />
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.thumbnailUrl ?? undefined} alt="" className="absolute inset-0 h-full w-full object-cover" />
                     )}
                   </button>
                   <label className="absolute left-3.5 top-3.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-line-2 bg-surface shadow-sm">

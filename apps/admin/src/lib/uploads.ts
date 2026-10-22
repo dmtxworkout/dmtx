@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
+import { prepareImage } from '@/lib/prepare-image';
 
 export type UploadStatus = 'uploading' | 'processing' | 'done' | 'error';
 export interface UploadEntry {
@@ -36,23 +37,26 @@ const patch = (assetId: string, p: Partial<UploadEntry>) => {
  * exists; rejects only if the upload could not even start. Progress and the
  * outcome are read through `useUploads`.
  */
-export function startUpload(file: File, kind: 'image' | 'video'): Promise<string> {
+export function startUpload(original: File, kind: 'image' | 'video'): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let assetId: string | null = null;
-    api.media
-      .upload(file, kind, {
-        onStarted: (asset) => {
-          assetId = asset.id;
-          entries = [...entries, { assetId: asset.id, name: file.name, kind, loaded: 0, total: file.size, status: 'uploading' }];
-          emit();
-          resolve(asset.id);
-        },
-        onProgress: (loaded, total) => {
-          if (assetId) patch(assetId, loaded >= total ? { loaded: total, total, status: 'processing' } : { loaded, total });
-        },
-      })
+    // An image over Cloudflare Images' 10 MB is re-encoded first (see prepare-image).
+    (kind === 'image' ? prepareImage(original) : Promise.resolve(original))
+      .then((file) =>
+        api.media.upload(file, kind, {
+          onStarted: (asset) => {
+            assetId = asset.id;
+            entries = [...entries, { assetId: asset.id, name: file.name, kind, loaded: 0, total: file.size, status: 'uploading' }];
+            emit();
+            resolve(asset.id);
+          },
+          onProgress: (loaded, total) => {
+            if (assetId) patch(assetId, loaded >= total ? { loaded: total, total, status: 'processing' } : { loaded, total });
+          },
+        }),
+      )
       .then((asset) => {
-        patch(asset.id, { status: 'done', loaded: asset.sizeBytes ?? file.size, asset });
+        patch(asset.id, { status: 'done', loaded: asset.sizeBytes ?? original.size, total: asset.sizeBytes ?? original.size, asset });
         // Finished uploads leave the tray after a moment.
         window.setTimeout(() => {
           entries = entries.filter((e) => e.assetId !== asset.id);

@@ -1,21 +1,15 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, isNull } from 'drizzle-orm';
-import { uuidv7 } from 'uuidv7';
 import { mediaAssets } from '@dmtx/db';
-import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema, slugify } from '@dmtx/schemas';
+import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx/schemas';
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
-import { displayName, r2Client, r2Endpoint, viewUrl } from '../lib/media';
+import { imagesDelete, imagesDirectUpload, imagesGet, streamCreateUpload, streamDelete } from '../lib/cloudflare';
+import { refreshVideo, serializeAsset } from '../lib/media';
 import { requireAdmin } from '../middleware/auth';
 
 const kindEnum = z.enum(['video', 'image']);
-
-const presignRequest = z.object({
-  filename: z.string().min(1),
-  contentType: z.string().min(1),
-  kind: kindEnum,
-});
 const statusEnum = z.enum(MEDIA_PROCESSING_STATUS);
 const assetSchema = z.object({
   id: z.uuid(),
@@ -23,57 +17,49 @@ const assetSchema = z.object({
   name: z.string(),
   mimeType: z.string().nullable(),
   sizeBytes: z.number().nullable(),
-  /** `uploading` until the bytes are in; only `ready` assets are served to the app. */
+  durationSeconds: z.number().nullable(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  /** `uploading` until the bytes are in, `processing` while Stream encodes; only `ready` assets are served to the app. */
   status: statusEnum,
-  viewUrl: z.string(),
+  /** Image: delivery URL (1600 px); video: HLS manifest. Null until ready. */
+  viewUrl: z.string().nullable(),
+  /** A 400 px square (image) or Stream's poster frame (video). Null until ready. */
+  thumbnailUrl: z.string().nullable(),
+  /** Video only: Stream's player, for an iframe. */
+  embedUrl: z.string().nullable(),
   createdAt: z.iso.datetime(),
 });
-const presignResponse = z.object({
+const createUploadRequest = z.object({
+  filename: z.string().min(1),
+  contentType: z.string().min(1),
+  kind: kindEnum,
+  sizeBytes: z.number().int().positive(),
+});
+const createUploadResponse = z.object({
   asset: assetSchema,
-  key: z.string(),
   uploadUrl: z.string(),
-  method: z.literal('PUT'),
-  headers: z.record(z.string(), z.string()),
+  /** `form`: one multipart POST with the file (images); `tus`: resumable PATCHes (videos). */
+  protocol: z.enum(['form', 'tus']),
 });
-const completeRequest = z.object({
-  /** Set when the upload went in parts. */
-  uploadId: z.string().min(1).optional(),
-  sizeBytes: z.number().int().nonnegative().optional(),
-});
-const abortRequest = z.object({ uploadId: z.string().min(1).optional() });
 const listQuery = paginationQuerySchema.extend({ kind: kindEnum.optional() });
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
-type MediaRow = typeof mediaAssets.$inferSelect;
-async function serialize(env: Env, r: MediaRow) {
-  return {
-    id: r.id,
-    kind: r.kind,
-    name: displayName(r.r2Key),
-    mimeType: r.mimeType,
-    sizeBytes: r.sizeBytes,
-    status: r.processingStatus,
-    createdAt: r.createdAt.toISOString(),
-    viewUrl: await viewUrl(env, r.r2Key),
-  };
-}
-
-/** The R2 key for a new upload: `<kind>/<uuid>-<slug>.<ext>`. */
-function keyFor(kind: 'video' | 'image', filename: string): string {
-  const base = slugify(filename.replace(/\.[^.]+$/, '')) || 'file';
-  const ext = filename.includes('.') ? `.${filename.split('.').pop()}` : '';
-  return `${kind}/${uuidv7()}-${base}${ext}`;
-}
-
-/** The media record is created the moment an upload starts, as `uploading`, so the admin can keep working. */
-async function createUploading(db: Database, env: Env, key: string, kind: 'video' | 'image', contentType: string) {
+/** The media record exists from the moment an upload starts, as `uploading`, so the admin can keep working. */
+async function createUploading(db: Database, externalId: string, name: string, kind: 'video' | 'image', contentType: string, sizeBytes: number) {
   const [row] = await db
     .insert(mediaAssets)
-    .values({ r2Key: key, bucket: env.R2_BUCKET, kind, mimeType: contentType, processingStatus: 'uploading' })
+    .values({ externalId, name, kind, mimeType: contentType, sizeBytes, processingStatus: 'uploading' })
     .returning();
   if (!row) throw new Error('No se pudo crear el asset de medios');
   return row;
+}
+
+/** Remove the file at Cloudflare (best effort; the row is handled by the caller). */
+async function deleteRemote(env: Env, kind: 'video' | 'image', externalId: string) {
+  if (kind === 'image') await imagesDelete(env, externalId);
+  else await streamDelete(env, externalId);
 }
 
 export const mediaRoute = createApp();
@@ -99,7 +85,7 @@ mediaRoute.openapi(
     const where = and(
       isNull(mediaAssets.deletedAt),
       kind ? eq(mediaAssets.kind, kind) : undefined,
-      search ? ilike(mediaAssets.r2Key, `%${search}%`) : undefined,
+      search ? ilike(mediaAssets.name, `%${search}%`) : undefined,
     );
     const [rows, [totals]] = await Promise.all([
       db
@@ -111,167 +97,60 @@ mediaRoute.openapi(
         .offset((page - 1) * pageSize),
       db.select({ value: count() }).from(mediaAssets).where(where),
     ]);
-    const data = await Promise.all(rows.map((r) => serialize(c.env, r)));
+    // Videos Stream is still encoding: ask how they are doing (a few per request).
+    let polls = 0;
+    const fresh = await Promise.all(
+      rows.map((r) => (r.kind === 'video' && r.processingStatus === 'processing' && polls++ < 5 ? refreshVideo(db, c.env, r).catch(() => r) : r)),
+    );
+    const data = await Promise.all(fresh.map((r) => serializeAsset(c.env, r)));
     return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
 
-// --- Presign a single PUT (small files); the record is created right away ----
+// --- Start an upload: the record is created right away -----------------------
+// Images: a one-time URL the browser POSTs the file to. Videos: a resumable
+// tus upload the browser drives in chunks. In both cases the bytes go straight
+// to Cloudflare; the Worker never sees them.
 mediaRoute.openapi(
   createRoute({
     method: 'post',
-    path: '/presign',
+    path: '/uploads',
     tags: ['media'],
-    request: { body: { content: { 'application/json': { schema: presignRequest } } } },
+    request: { body: { content: { 'application/json': { schema: createUploadRequest } } } },
     responses: {
-      200: {
-        description: 'URL prefirmada para subir a R2',
-        content: { 'application/json': { schema: presignResponse } },
-      },
+      200: { description: 'Subida abierta', content: { 'application/json': { schema: createUploadResponse } } },
     },
   }),
   async (c) => {
-    const { filename, contentType, kind } = c.req.valid('json');
-    const key = keyFor(kind, filename);
-    const signed = await r2Client(c.env).sign(r2Endpoint(c.env, key), {
-      method: 'PUT',
-      headers: { 'content-type': contentType },
-      aws: { signQuery: true },
-    });
-    const row = await createUploading(c.get('db'), c.env, key, kind, contentType);
-    return c.json(
-      { asset: await serialize(c.env, row), key, uploadUrl: signed.url, method: 'PUT' as const, headers: { 'content-type': contentType } },
-      200,
-    );
-  },
-);
-
-// --- Multipart upload (big files: parts in parallel, each one retried on its own)
-// Start creates the S3 multipart upload and returns its id; sign presigns one
-// PUT per part; complete asks R2 for the parts it received (ListParts, so the
-// browser never needs to read ETag headers through CORS) and assembles the
-// object. The media record is created afterwards with POST /media as usual.
-const multipartStartRequest = presignRequest;
-const multipartStartResponse = z.object({ asset: assetSchema, key: z.string(), uploadId: z.string() });
-const multipartSignRequest = z.object({
-  key: z.string().min(1),
-  uploadId: z.string().min(1),
-  partNumbers: z.array(z.number().int().min(1).max(10000)).min(1).max(10000),
-});
-const multipartSignResponse = z.object({ urls: z.array(z.object({ partNumber: z.number(), url: z.string() })) });
-
-function xmlTag(xml: string, tag: string): string | null {
-  const m = xml.match(new RegExp(`<${tag}>([^<]*)</${tag}>`));
-  return m ? m[1]!.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : null;
-}
-const xmlText = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-/** What R2 said went wrong, for the error message. */
-const r2Error = (xml: string) => [xmlTag(xml, 'Code'), xmlTag(xml, 'Message')].filter(Boolean).join(': ');
-
-mediaRoute.openapi(
-  createRoute({
-    method: 'post',
-    path: '/multipart/start',
-    tags: ['media'],
-    request: { body: { content: { 'application/json': { schema: multipartStartRequest } } } },
-    responses: {
-      200: { description: 'Subida multipart iniciada', content: { 'application/json': { schema: multipartStartResponse } } },
-    },
-  }),
-  async (c) => {
-    const { filename, contentType, kind } = c.req.valid('json');
-    const key = keyFor(kind, filename);
-    const res = await r2Client(c.env).fetch(`${r2Endpoint(c.env, key)}?uploads`, {
-      method: 'POST',
-      headers: { 'content-type': contentType },
-    });
-    const xml = await res.text();
-    const uploadId = res.ok ? xmlTag(xml, 'UploadId') : null;
-    if (!uploadId) throw new Error(`R2 no inició la subida (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
-    const row = await createUploading(c.get('db'), c.env, key, kind, contentType);
-    return c.json({ asset: await serialize(c.env, row), key, uploadId }, 200);
-  },
-);
-
-mediaRoute.openapi(
-  createRoute({
-    method: 'post',
-    path: '/multipart/sign',
-    tags: ['media'],
-    request: { body: { content: { 'application/json': { schema: multipartSignRequest } } } },
-    responses: {
-      200: { description: 'URLs prefirmadas, una por parte', content: { 'application/json': { schema: multipartSignResponse } } },
-    },
-  }),
-  async (c) => {
-    const { key, uploadId, partNumbers } = c.req.valid('json');
-    const client = r2Client(c.env);
-    const urls = await Promise.all(
-      partNumbers.map(async (partNumber) => {
-        const url = new URL(r2Endpoint(c.env, key));
-        url.searchParams.set('partNumber', String(partNumber));
-        url.searchParams.set('uploadId', uploadId);
-        url.searchParams.set('X-Amz-Expires', '7200');
-        const signed = await client.sign(url.toString(), { method: 'PUT', aws: { signQuery: true } });
-        return { partNumber, url: signed.url };
-      }),
-    );
-    return c.json({ urls }, 200);
-  },
-);
-
-/** Ask R2 for the parts it received and assemble the object (ListParts, so the browser never needs ETag headers through CORS). */
-async function completeMultipart(env: Env, key: string, uploadId: string) {
-  const client = r2Client(env);
-  const endpoint = r2Endpoint(env, key);
-  const parts: { partNumber: number; etag: string }[] = [];
-  let marker: string | null = null;
-  for (let page = 0; page < 20; page += 1) {
-    const url = new URL(endpoint);
-    url.searchParams.set('uploadId', uploadId);
-    url.searchParams.set('max-parts', '1000');
-    if (marker) url.searchParams.set('part-number-marker', marker);
-    const res = await client.fetch(url.toString(), { method: 'GET' });
-    const xml = await res.text();
-    if (!res.ok) throw new Error(`R2 no listó las partes (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
-    for (const m of xml.matchAll(/<Part>([\s\S]*?)<\/Part>/g)) {
-      const n = Number(xmlTag(m[1]!, 'PartNumber'));
-      const etag = xmlTag(m[1]!, 'ETag');
-      if (n && etag) parts.push({ partNumber: n, etag });
+    const { filename, contentType, kind, sizeBytes } = c.req.valid('json');
+    const db = c.get('db');
+    if (kind === 'image') {
+      const { id, uploadURL } = await imagesDirectUpload(c.env, filename);
+      const row = await createUploading(db, id, filename, kind, contentType, sizeBytes);
+      return c.json({ asset: await serializeAsset(c.env, row), uploadUrl: uploadURL, protocol: 'form' as const }, 200);
     }
-    if (xmlTag(xml, 'IsTruncated') !== 'true') break;
-    marker = xmlTag(xml, 'NextPartNumberMarker');
-    if (!marker) break;
-  }
-  if (!parts.length) throw new Error('R2 no recibió ninguna parte');
-  parts.sort((a, b) => a.partNumber - b.partNumber);
-  const body = `<CompleteMultipartUpload>${parts
-    .map((p) => `<Part><PartNumber>${p.partNumber}</PartNumber><ETag>${xmlText(p.etag)}</ETag></Part>`)
-    .join('')}</CompleteMultipartUpload>`;
-  const res = await client.fetch(`${endpoint}?uploadId=${encodeURIComponent(uploadId)}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/xml' },
-    body,
-  });
-  const xml = await res.text();
-  if (!res.ok || xml.includes('<Error>')) throw new Error(`R2 no pudo ensamblar el archivo (${res.status}${r2Error(xml) ? `: ${r2Error(xml)}` : ''})`);
-}
+    const { uid, uploadUrl } = await streamCreateUpload(c.env, filename, sizeBytes);
+    const row = await createUploading(db, uid, filename, kind, contentType, sizeBytes);
+    return c.json({ asset: await serializeAsset(c.env, row), uploadUrl, protocol: 'tus' as const }, 200);
+  },
+);
 
-// --- Complete: the bytes are in R2; the asset becomes ready -----------------
+// --- Complete: the bytes are at Cloudflare -----------------------------------
+// An image is ready at once; a video goes to `processing` until Stream has
+// encoded it (the admin polls GET /media/:id, or the webhook tells us).
 mediaRoute.openapi(
   createRoute({
     method: 'post',
     path: '/{id}/complete',
     tags: ['media'],
-    request: { params: idParam, body: { content: { 'application/json': { schema: completeRequest } } } },
+    request: { params: idParam },
     responses: {
-      200: { description: 'Asset listo', content: { 'application/json': { schema: assetSchema } } },
+      200: { description: 'Asset listo o en proceso', content: { 'application/json': { schema: assetSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { uploadId, sizeBytes } = c.req.valid('json');
     const db = c.get('db');
     const [row] = await db
       .select()
@@ -279,13 +158,24 @@ mediaRoute.openapi(
       .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
-    if (uploadId) await completeMultipart(c.env, row.r2Key, uploadId);
-    const [done] = await db
+    if (row.processingStatus !== 'uploading') return c.json(await serializeAsset(c.env, row), 200);
+    if (row.kind === 'image') {
+      const info = await imagesGet(c.env, row.externalId);
+      if (info.draft) throw new Error('Cloudflare Images no recibió el archivo');
+      const [done] = await db
+        .update(mediaAssets)
+        .set({ processingStatus: 'ready', updatedAt: new Date() })
+        .where(eq(mediaAssets.id, id))
+        .returning();
+      return c.json(await serializeAsset(c.env, done!), 200);
+    }
+    const [processing] = await db
       .update(mediaAssets)
-      .set({ processingStatus: 'ready', sizeBytes: sizeBytes ?? row.sizeBytes, updatedAt: new Date() })
+      .set({ processingStatus: 'processing', updatedAt: new Date() })
       .where(eq(mediaAssets.id, id))
       .returning();
-    return c.json(await serialize(c.env, done!), 200);
+    // A short video may be ready already.
+    return c.json(await serializeAsset(c.env, await refreshVideo(db, c.env, processing!)), 200);
   },
 );
 
@@ -295,7 +185,7 @@ mediaRoute.openapi(
     method: 'post',
     path: '/{id}/abort',
     tags: ['media'],
-    request: { params: idParam, body: { content: { 'application/json': { schema: abortRequest } } } },
+    request: { params: idParam },
     responses: {
       204: { description: 'Subida descartada' },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
@@ -303,7 +193,6 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { uploadId } = c.req.valid('json');
     const db = c.get('db');
     const [row] = await db
       .select()
@@ -311,15 +200,13 @@ mediaRoute.openapi(
       .where(and(eq(mediaAssets.id, id), eq(mediaAssets.processingStatus, 'uploading')))
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
-    if (uploadId) {
-      await r2Client(c.env).fetch(`${r2Endpoint(c.env, row.r2Key)}?uploadId=${encodeURIComponent(uploadId)}`, { method: 'DELETE' });
-    }
+    await deleteRemote(c.env, row.kind, row.externalId);
     await db.delete(mediaAssets).where(eq(mediaAssets.id, id));
     return c.body(null, 204);
   },
 );
 
-// --- Get one -----------------------------------------------------------------
+// --- Get one (a processing video is checked with Stream on the way) ----------
 mediaRoute.openapi(
   createRoute({
     method: 'get',
@@ -333,18 +220,18 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const [row] = await c
-      .get('db')
+    const db = c.get('db');
+    const [row] = await db
       .select()
       .from(mediaAssets)
       .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
-    return c.json(await serialize(c.env, row), 200);
+    return c.json(await serializeAsset(c.env, await refreshVideo(db, c.env, row)), 200);
   },
 );
 
-// --- Delete (soft) -----------------------------------------------------------
+// --- Delete: the file goes at Cloudflare too (storage is billed) -------------
 mediaRoute.openapi(
   createRoute({
     method: 'delete',
@@ -358,13 +245,14 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const [row] = await c
-      .get('db')
+    const db = c.get('db');
+    const [row] = await db
       .update(mediaAssets)
       .set({ deletedAt: new Date() })
       .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
-      .returning({ id: mediaAssets.id });
+      .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
+    await deleteRemote(c.env, row.kind, row.externalId);
     return c.body(null, 204);
   },
 );
