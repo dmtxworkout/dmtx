@@ -53,7 +53,6 @@ async function daysOf(db: Database, programIds: string[]) {
 function serializeDay(d: DayRow & { workout: WorkoutRow | null }) {
   return {
     id: d.id,
-    title: d.title,
     isRestDay: d.isRestDay,
     workoutId: d.workout?.id ?? null,
     type: d.workout?.type ?? ('structured' as const),
@@ -88,7 +87,7 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
   for (let i = 0; i < days.length; i += 1) {
     const d = days[i]!;
     const current = d.id ? byId.get(d.id) : undefined;
-    const label = d.title?.trim() || `Día ${i + 1}`;
+    const label = `Día ${i + 1}`;
     const structured = d.type === 'structured';
     const hasContent = !d.isRestDay && (structured ? !!d.sourceText?.trim() : !!d.videoAssetId);
     let workoutId: string | null = null;
@@ -122,7 +121,7 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
       // Became a rest day (or was emptied): its rutina goes.
       await retire([current.workoutId]);
     }
-    const dayValues = { position: i, title: d.title?.trim() || null, isRestDay: d.isRestDay, workoutId };
+    const dayValues = { position: i, isRestDay: d.isRestDay, workoutId };
     if (current) await db.update(programDays).set(dayValues).where(eq(programDays.id, current.id));
     else await db.insert(programDays).values({ programId: program.id, ...dayValues });
   }

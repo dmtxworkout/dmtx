@@ -845,9 +845,9 @@ For time cap 20 min
             después) o la elimina.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            Cada día es una de tres cosas: una rutina escrita en el editor, una sola clase en video, o descanso. Puedes
-            ponerle nombre si el usuario debe ver algo distinto de «Día N». Para reutilizar una rutina del catálogo,
-            insértala desde el menú + (Rutinas): se copia su texto. Para publicar, ningún día puede quedar vacío.
+            Cada día es una de tres cosas: una rutina escrita en el editor, una sola clase en video, o descanso. Para
+            reutilizar una rutina del catálogo, insértala desde el menú + (Rutinas): se copia su texto. Para publicar,
+            ningún día puede quedar vacío.
           </p>
         </>
       ),

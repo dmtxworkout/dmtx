@@ -211,6 +211,13 @@
       "when": 1792677437876,
       "tag": "0029_drop_program_type_and_playlist",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792678763472,
+      "tag": "0030_drop_program_day_title",
+      "breakpoints": true
     }
   ]
 }

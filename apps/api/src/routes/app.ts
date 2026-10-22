@@ -697,7 +697,6 @@ appRoute.get('/programs/:id', async (c) => {
       position: d.position,
       week: Math.floor(d.position / 7) + 1,
       isRestDay: d.isRestDay,
-      title: d.title,
       workout: w ? workoutSummary(w, url(media, w.thumbnailAssetId)) : null,
     })),
   });

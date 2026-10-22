@@ -163,7 +163,6 @@ export interface ProgramDay {
   /** 1-based week the day falls in (seven days per week). */
   week: number;
   isRestDay: boolean;
-  title: string | null;
   /** The day's own rutina (structured or a video); null on a rest day. */
   workout: WorkoutSummary | null;
 }

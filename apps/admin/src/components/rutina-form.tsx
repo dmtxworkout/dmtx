@@ -118,16 +118,18 @@ AMRAP \${minutos 2} min
 
 type DayState = {
   id: string | null;
-  title: string;
   isRestDay: boolean;
   type: 'structured' | 'video';
   sections: SectionTexts;
   videoAssetId: string | null;
 };
-const emptyDay = (): DayState => ({ id: null, title: '', isRestDay: false, type: 'structured', sections: { ...EMPTY_SECTIONS }, videoAssetId: null });
+const emptyDay = (): DayState => ({ id: null, isRestDay: false, type: 'structured', sections: { ...EMPTY_SECTIONS }, videoAssetId: null });
 const copyDay = (d: DayState): DayState => ({ ...d, id: null, sections: { ...d.sections } });
 const dayHasContent = (d: DayState) => (d.type === 'video' ? !!d.videoAssetId : !!joinSections(d.sections).trim());
-const dayLabel = (d: DayState | undefined, i: number) => d?.title.trim() || `Día ${i + 1}`;
+const dayLabel = (i: number) => `${es.programs.day} ${i + 1}`;
+// Programs are written in whole weeks that start on Monday.
+const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const WEEKDAY_INITIALS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
 const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
 
 /**
@@ -321,9 +323,9 @@ function WeekStrip({
               dragFrom.current = null;
               setOver(null);
             }}
-            title={d.isRestDay ? `${dayLabel(d, i)} · ${es.programs.restDay}` : dayLabel(d, i)}
+            title={`${WEEKDAYS[j]} · ${dayLabel(i)}${d.isRestDay ? ` · ${es.programs.restDay}` : ''}`}
             className={cn(
-              'flex h-8 w-11 shrink-0 items-center justify-center gap-1 rounded-md border font-mono text-[11px]',
+              'flex h-9 w-11 shrink-0 flex-col items-center justify-center rounded-md border font-mono text-[11px] leading-none',
               isActive
                 ? 'border-accent bg-accent-tint font-semibold text-accent-dark'
                 : d.isRestDay
@@ -335,8 +337,11 @@ function WeekStrip({
             )}
             style={d.isRestDay && !isActive ? { background: HATCH } : undefined}
           >
-            {i + 1}
-            {has && !d.isRestDay && <span className={cn('h-1.5 w-1.5 rounded-full', d.type === 'video' ? 'bg-[#0451a5]' : 'bg-accent')} />}
+            <span className={cn('mb-0.5 text-[9px]', isActive ? 'text-accent-dark/70' : 'text-faint-2')}>{WEEKDAY_INITIALS[j]}</span>
+            <span className="flex items-center gap-1">
+              {i + 1}
+              {has && !d.isRestDay && <span className={cn('h-1.5 w-1.5 rounded-full', d.type === 'video' ? 'bg-[#0451a5]' : 'bg-accent')} />}
+            </span>
           </button>
         );
       })}
@@ -408,7 +413,6 @@ export function RutinaForm({
         ? (() => {
             const loaded = program.days.map((d) => ({
               id: d.id,
-              title: d.title ?? '',
               isRestDay: d.isRestDay,
               type: d.type,
               sections: splitSections(d.sourceText),
@@ -846,7 +850,6 @@ export function RutinaForm({
     const structure = structured && !d.isRestDay ? toWorkoutInput(parseRutina(text, { catalog })) : null;
     return {
       id: d.id ?? undefined,
-      title: d.title.trim() || null,
       isRestDay: d.isRestDay,
       type: d.type,
       sourceText: structured ? text : null,
@@ -980,7 +983,7 @@ export function RutinaForm({
           if (errors.length) {
             setActiveDay(i);
             setActiveSection(p.lines[errors[0]!.line]?.section ?? 'main');
-            toast(`${errors.length === 1 ? 'Hay 1 línea con error' : `Hay ${errors.length} líneas con error`} en «${dayLabel(d, i)}». Corrígelo antes de guardar.`, 'error');
+            toast(`${errors.length === 1 ? 'Hay 1 línea con error' : `Hay ${errors.length} líneas con error`} en «${dayLabel(i)}». Corrígelo antes de guardar.`, 'error');
             shakeBar();
             return;
           }
@@ -988,7 +991,7 @@ export function RutinaForm({
         // A published program can't have a day with nothing in it: write it or make it a rest day.
         if (status === 'published' && !dayHasContent(d)) {
           setActiveDay(i);
-          toast(`«${dayLabel(d, i)}» está vacío. Escribe su rutina, elige un video o márcalo como descanso antes de publicar.`, 'error');
+          toast(`«${dayLabel(i)}» está vacío. Escribe su rutina, elige un video o márcalo como descanso antes de publicar.`, 'error');
           shakeBar();
           return;
         }
@@ -1110,18 +1113,11 @@ export function RutinaForm({
                 onRemoveWeek={removeWeek}
               />
               <span className="hidden h-5 w-px bg-line-2 sm:block" />
-              {/* The day's own settings: name and what it is */}
+              {/* What the day is */}
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="shrink-0 font-mono text-[11px] text-muted">
-                  {es.programs.day} {activeDay + 1}
+                <span className="shrink-0 font-mono text-[11px] text-ink-2">
+                  <span className="font-semibold">{dayLabel(activeDay)}</span> · {WEEKDAYS[activeDay % 7]}
                 </span>
-                <input
-                  value={activeDayState.title}
-                  onChange={(e) => setDay(activeDay, { title: e.target.value })}
-                  placeholder="Nombre (opcional)"
-                  title="Nombre del día (así lo verá el usuario; vacío = «Día N»)"
-                  className="h-8 w-44 min-w-0 rounded-md border border-line-2 bg-surface px-2 text-[12px] font-semibold text-ink placeholder:font-normal placeholder:text-faint-2 focus:border-accent focus:outline-none"
-                />
                 <span className="flex-1" />
                 <div className="flex shrink-0 items-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]">
                   {(
@@ -1665,10 +1661,10 @@ export function RutinaForm({
         )}
           {/* Right: live athlete-facing preview */}
           <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
-            <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDayState, activeDay) : name} />
+            <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDay) : name} />
             {programMode && (
               <p className="font-mono text-[11px] text-muted">
-                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {es.programs.day} {activeDay + 1} de «{name || newLabel}».
+                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {WEEKDAYS[activeDay % 7]} · {es.programs.day} {activeDay + 1} de «{name || newLabel}».
               </p>
             )}
             {activeTab > 0 && activeVariant && (

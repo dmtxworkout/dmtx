@@ -56,7 +56,7 @@ export default function ProgramaDetalle() {
 
           {p.days.map((d, i) => {
             const w = d.workout;
-            const dayName = d.isRestDay ? 'Descanso' : (d.title ?? `Día ${d.position + 1}`);
+            const dayName = d.isRestDay ? 'Descanso' : `Día ${d.position + 1}`;
             return (
               <View key={d.id}>
                 {d.position % 7 === 0 ? (

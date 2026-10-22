@@ -12,8 +12,6 @@ import { workoutBlockInputSchema } from './workout';
 export const programDayInputSchema = z.object({
   /** Present for a day that already exists; missing days are deleted. */
   id: uuidSchema.optional(),
-  /** Shown in the app instead of "Día N" when set. */
-  title: z.string().max(200).nullish(),
   isRestDay: z.boolean().default(false),
   type: workoutTypeSchema.default('structured'),
   sourceText: z.string().max(50000).nullish(),
@@ -41,7 +39,6 @@ export type UpdateProgramInput = z.infer<typeof updateProgramSchema>;
 // --- Responses ---------------------------------------------------------------
 export const programDaySchema = z.object({
   id: uuidSchema,
-  title: z.string().nullable(),
   isRestDay: z.boolean(),
   /** The owned workout; null on a rest day (or a day never written). */
   workoutId: uuidSchema.nullable(),

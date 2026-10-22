@@ -64,8 +64,6 @@ export const programDays = pgTable('program_days', {
     .references(() => programs.id, { onDelete: 'cascade' }),
   position: integer().notNull().default(0),
   isRestDay: boolean().notNull().default(false),
-  title: text(),
-  notes: text(),
   // The day's rutina (written in the editor, owned by the program); null on a rest day.
   workoutId: uuid().references(() => workouts.id, { onDelete: 'set null' }),
   ...timestamps,
