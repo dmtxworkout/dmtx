@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { ActionsMenu } from '@/components/ui/actions-menu';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
+import { SplitButton } from '@/components/ui/split-button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
@@ -203,16 +204,18 @@ export function MediaViewer({ id }: { id: string }) {
             <Button type="button" variant="outline" size="sm" onClick={discardAll} disabled={savingAll}>
               Descartar
             </Button>
-            <Button type="button" size="sm" onClick={() => void saveAll()} disabled={savingAll || !name.trim()}>
-              {editor.savingLabel ?? (savingAll ? es.app.saving : es.app.save)}
-            </Button>
-            {a.kind === 'image' && a.status === 'ready' && (
-              <ActionsMenu
-                label=""
-                size="sm"
-                ariaLabel="Más opciones para guardar"
-                items={[{ label: 'Guardar como nueva imagen', disabled: savingAll, onSelect: () => void saveAsNew() }]}
+            {a.kind === 'image' && a.status === 'ready' ? (
+              <SplitButton
+                label={editor.savingLabel ?? (savingAll ? es.app.saving : es.app.save)}
+                onClick={() => void saveAll()}
+                disabled={savingAll || !name.trim()}
+                menuLabel="Más opciones para guardar"
+                items={[{ label: 'Guardar como nueva imagen', onSelect: () => void saveAsNew() }]}
               />
+            ) : (
+              <Button type="button" size="sm" onClick={() => void saveAll()} disabled={savingAll || !name.trim()}>
+                {savingAll ? es.app.saving : es.app.save}
+              </Button>
             )}
           </>
         ) : (
