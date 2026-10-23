@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,7 +10,7 @@ import { es } from '@/i18n/es';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
-import { MediaBrowser, type MediaKindFilter } from '@/components/media-library';
+import { MediaBrowser } from '@/components/media-library';
 import { FolderPicker, folderPath } from '@/components/folder-picker';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/toast';
@@ -33,9 +33,14 @@ function Biblioteca() {
   const foldersQ = useQuery({ queryKey: ['media-folders'], queryFn: () => api.media.folders() });
   const folders = foldersQ.data?.items ?? [];
   const path = folderPath(folders, folderId);
-  const openFolder = (id: string | null) => router.push(id ? `/biblioteca?carpeta=${id}` : '/biblioteca');
+  const openFolder = (id: string | null) =>
+    router.push(id ? `/biblioteca?carpeta=${id}` : '/biblioteca');
   // New folder / rename: one small dialog with a name.
-  const [folderDialog, setFolderDialog] = useState<{ mode: 'create' | 'rename'; folder?: MediaFolder; name: string } | null>(null);
+  const [folderDialog, setFolderDialog] = useState<{
+    mode: 'create' | 'rename';
+    folder?: MediaFolder;
+    name: string;
+  } | null>(null);
   const [folderToDelete, setFolderToDelete] = useState<MediaFolder | null>(null);
   const [moveOpen, setMoveOpen] = useState(false);
   const refreshFolders = () => qc.invalidateQueries({ queryKey: ['media-folders'] });
@@ -48,7 +53,8 @@ function Biblioteca() {
     mutationFn: async () => {
       if (!folderDialog) return;
       const name = folderDialog.name.trim();
-      if (folderDialog.mode === 'create') await api.media.createFolder({ name, parentId: folderId });
+      if (folderDialog.mode === 'create')
+        await api.media.createFolder({ name, parentId: folderId });
       else if (folderDialog.folder) await api.media.updateFolder(folderDialog.folder.id, { name });
     },
     onSuccess: () => {
@@ -63,7 +69,8 @@ function Biblioteca() {
     onSuccess: (_, f) => {
       toast(
         <>
-          Carpeta <strong className="font-extrabold">{f.name}</strong> eliminada; su contenido pasó a la carpeta de arriba.
+          Carpeta <strong className="font-extrabold">{f.name}</strong> eliminada; su contenido pasó
+          a la carpeta de arriba.
         </>,
       );
       setFolderToDelete(null);
@@ -73,15 +80,18 @@ function Biblioteca() {
     },
     onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
-  const [kind, setKind] = useState<MediaKindFilter>('all');
+  const uploadRef = useRef<{ upload: () => void } | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const move = useMutation({
     mutationFn: (target: string | null) => api.media.move(selected, target),
     onSuccess: ({ moved }, target) => {
-      const name = target ? (folders.find((f) => f.id === target)?.name ?? 'la carpeta') : 'Biblioteca';
+      const name = target
+        ? (folders.find((f) => f.id === target)?.name ?? 'la carpeta')
+        : 'Biblioteca';
       toast(
         <>
-          {moved === 1 ? '1 archivo movido' : `${moved} archivos movidos`} a <strong className="font-extrabold">{name}</strong>
+          {moved === 1 ? '1 archivo movido' : `${moved} archivos movidos`} a{' '}
+          <strong className="font-extrabold">{name}</strong>
         </>,
       );
       setMoveOpen(false);
@@ -91,10 +101,15 @@ function Biblioteca() {
     onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const { data } = useQuery({ queryKey: ['media', 'count'], queryFn: () => api.media.list({ pageSize: 1 }) });
+  const { data } = useQuery({
+    queryKey: ['media', 'count'],
+    queryFn: () => api.media.list({ pageSize: 1 }),
+  });
 
   // Before deleting, where each marked file is used: those are kept and listed.
-  const [usage, setUsage] = useState<{ id: string; name: string; items: MediaUsageItem[] }[] | null>(null);
+  const [usage, setUsage] = useState<
+    { id: string; name: string; items: MediaUsageItem[] }[] | null
+  >(null);
   useEffect(() => {
     if (!confirmDelete) {
       setUsage(null);
@@ -148,7 +163,10 @@ function Biblioteca() {
                   {i === path.length - 1 ? (
                     <span>{f.name}</span>
                   ) : (
-                    <Link href={`/biblioteca?carpeta=${f.id}`} className="text-ink-3 hover:text-ink">
+                    <Link
+                      href={`/biblioteca?carpeta=${f.id}`}
+                      className="text-ink-3 hover:text-ink"
+                    >
                       {f.name}
                     </Link>
                   )}
@@ -159,16 +177,28 @@ function Biblioteca() {
             es.media.title
           )
         }
-        subtitle={data && !path.length ? `${data.total} archivo${data.total === 1 ? '' : 's'}` : undefined}
+        subtitle={
+          data && !path.length ? `${data.total} archivo${data.total === 1 ? '' : 's'}` : undefined
+        }
         actions={
-          <Button type="button" variant="outline" size="sm" onClick={() => setFolderDialog({ mode: 'create', name: '' })}>
-            Nueva carpeta
-          </Button>
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setFolderDialog({ mode: 'create', name: '' })}
+            >
+              Nueva carpeta
+            </Button>
+            <Button type="button" size="sm" onClick={() => uploadRef.current?.upload()}>
+              Subir
+            </Button>
+          </>
         }
       />
       <MediaBrowser
-        kind={kind}
-        onKindChange={setKind}
+        kind="all"
+        uploadRef={uploadRef}
         selectable="multi"
         selected={selected}
         onSelectedChange={setSelected}
@@ -195,19 +225,36 @@ function Biblioteca() {
             <Button type="button" variant="outline" onClick={() => setMoveOpen(true)}>
               Mover a…
             </Button>
-            <Button type="button" onClick={() => setConfirmDelete(true)} disabled={remove.isPending}>
+            <Button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              disabled={remove.isPending}
+            >
               {es.app.delete}
             </Button>
           </div>
         </div>
       )}
 
-      <FolderPicker open={moveOpen} folders={folders} current={folderId} onClose={() => setMoveOpen(false)} onPick={(target) => move.mutate(target)} onCreate={createFolder} />
+      <FolderPicker
+        open={moveOpen}
+        folders={folders}
+        current={folderId}
+        onClose={() => setMoveOpen(false)}
+        onPick={(target) => move.mutate(target)}
+        onCreate={createFolder}
+      />
 
       <Dialog
         open={!!folderDialog}
         onClose={() => setFolderDialog(null)}
-        title={folderDialog?.mode === 'rename' ? 'Renombrar carpeta' : path.length ? `Nueva carpeta en ${path[path.length - 1]!.name}` : 'Nueva carpeta'}
+        title={
+          folderDialog?.mode === 'rename'
+            ? 'Renombrar carpeta'
+            : path.length
+              ? `Nueva carpeta en ${path[path.length - 1]!.name}`
+              : 'Nueva carpeta'
+        }
         className="max-w-sm"
       >
         {folderDialog && (
@@ -226,21 +273,39 @@ function Biblioteca() {
               <Button type="button" variant="outline" onClick={() => setFolderDialog(null)}>
                 {es.app.cancel}
               </Button>
-              <Button type="button" disabled={!folderDialog.name.trim() || saveFolder.isPending} onClick={() => saveFolder.mutate()}>
-                {saveFolder.isPending ? es.app.saving : folderDialog.mode === 'rename' ? es.app.save : 'Crear'}
+              <Button
+                type="button"
+                disabled={!folderDialog.name.trim() || saveFolder.isPending}
+                onClick={() => saveFolder.mutate()}
+              >
+                {saveFolder.isPending
+                  ? es.app.saving
+                  : folderDialog.mode === 'rename'
+                    ? es.app.save
+                    : 'Crear'}
               </Button>
             </div>
           </div>
         )}
       </Dialog>
 
-      <Dialog open={!!folderToDelete} onClose={() => setFolderToDelete(null)} title="Eliminar carpeta" className="max-w-sm">
+      <Dialog
+        open={!!folderToDelete}
+        onClose={() => setFolderToDelete(null)}
+        title="Eliminar carpeta"
+        className="max-w-sm"
+      >
         {folderToDelete && (
           <div className="flex flex-col gap-4 p-5">
             <p className="text-[14px] leading-relaxed text-ink-2">
-              ¿Eliminar la carpeta <strong className="font-semibold text-ink">{folderToDelete.name}</strong>? Los archivos y carpetas que tenga dentro no se borran: pasan a{' '}
+              ¿Eliminar la carpeta{' '}
+              <strong className="font-semibold text-ink">{folderToDelete.name}</strong>? Los
+              archivos y carpetas que tenga dentro no se borran: pasan a{' '}
               <strong className="font-semibold text-ink">
-                {folderToDelete.parentId ? (folders.find((f) => f.id === folderToDelete.parentId)?.name ?? 'la carpeta de arriba') : 'Biblioteca'}
+                {folderToDelete.parentId
+                  ? (folders.find((f) => f.id === folderToDelete.parentId)?.name ??
+                    'la carpeta de arriba')
+                  : 'Biblioteca'}
               </strong>
               .
             </p>
@@ -248,7 +313,11 @@ function Biblioteca() {
               <Button type="button" variant="outline" onClick={() => setFolderToDelete(null)}>
                 {es.app.cancel}
               </Button>
-              <Button type="button" disabled={deleteFolder.isPending} onClick={() => deleteFolder.mutate(folderToDelete)}>
+              <Button
+                type="button"
+                disabled={deleteFolder.isPending}
+                onClick={() => deleteFolder.mutate(folderToDelete)}
+              >
                 {deleteFolder.isPending ? es.app.saving : es.app.delete}
               </Button>
             </div>
@@ -256,7 +325,12 @@ function Biblioteca() {
         )}
       </Dialog>
 
-      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Eliminar archivos" className="max-w-md">
+      <Dialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Eliminar archivos"
+        className="max-w-md"
+      >
         <div className="flex flex-col gap-4 p-5">
           {usage === null ? (
             <p className="text-[14px] text-muted">{es.app.loading}</p>
@@ -284,9 +358,15 @@ function Biblioteca() {
               )}
               {free.length > 0 && (
                 <p className="text-[14px] leading-relaxed text-ink-2">
-                  {inUse.length ? 'El resto' : free.length === 1 ? 'Este archivo' : `Estos ${free.length} archivos`}{' '}
-                  {free.length === 1 ? 'no se usa en ningún contenido' : 'no se usan en ningún contenido'}. ¿Eliminar{free.length === 1 ? 'lo' : 'los'}? Se borra
-                  también de Cloudflare.
+                  {inUse.length
+                    ? 'El resto'
+                    : free.length === 1
+                      ? 'Este archivo'
+                      : `Estos ${free.length} archivos`}{' '}
+                  {free.length === 1
+                    ? 'no se usa en ningún contenido'
+                    : 'no se usan en ningún contenido'}
+                  . ¿Eliminar{free.length === 1 ? 'lo' : 'los'}? Se borra también de Cloudflare.
                 </p>
               )}
               <div className="flex justify-end gap-2">
@@ -294,8 +374,16 @@ function Biblioteca() {
                   {free.length ? es.app.cancel : 'Entendido'}
                 </Button>
                 {free.length > 0 && (
-                  <Button type="button" disabled={remove.isPending} onClick={() => remove.mutate(free)}>
-                    {remove.isPending ? es.app.saving : free.length === selected.length ? es.app.delete : `Eliminar ${free.length}`}
+                  <Button
+                    type="button"
+                    disabled={remove.isPending}
+                    onClick={() => remove.mutate(free)}
+                  >
+                    {remove.isPending
+                      ? es.app.saving
+                      : free.length === selected.length
+                        ? es.app.delete
+                        : `Eliminar ${free.length}`}
                   </Button>
                 )}
               </div>

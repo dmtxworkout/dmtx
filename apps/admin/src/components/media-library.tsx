@@ -5,7 +5,7 @@
 // name and type underneath. Dropping files anywhere on it uploads them. Used
 // by the Biblioteca page (multi-select, delete) and by the picker dialog
 // (single select, Listo).
-import { type DragEvent, useRef, useState } from 'react';
+import { type DragEvent, type RefObject, useImperativeHandle, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MediaAsset, MediaFolder } from '@dmtx/api-client';
 import { api } from '@/lib/api';
@@ -75,6 +75,7 @@ export function MediaBrowser({
   onSelectedChange,
   onOpen,
   layout = 'grid',
+  uploadRef,
   folder,
   className,
 }: {
@@ -88,6 +89,8 @@ export function MediaBrowser({
   onOpen?: (id: string) => void;
   /** Tiles (the picker) or Shopify-style rows with alt text, date, size, where each file is used and «Reemplazar». */
   layout?: 'grid' | 'table';
+  /** Lets the page put the «Subir» button where it wants (the header): `current.upload()` opens the file dialog. */
+  uploadRef?: RefObject<{ upload: () => void } | null>;
   /** Browsing by folder (table only): the open folder, every folder (for its subfolders), and what to do with them. */
   folder?: {
     id: string | null;
@@ -100,6 +103,7 @@ export function MediaBrowser({
 }) {
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  useImperativeHandle(uploadRef, () => ({ upload: () => inputRef.current?.click() }), []);
   // «Reemplazar» on a row: the chosen file takes that asset's place (same id).
   const replaceRef = useRef<HTMLInputElement>(null);
   const [replacing, setReplacing] = useState<MediaAsset | null>(null);
@@ -155,7 +159,11 @@ export function MediaBrowser({
     try {
       // The records exist right away; the bytes go on in the background (see the tray).
       const ids = await Promise.all(
-        chosen.map((file) => startUpload(file, file.type.startsWith('video/') ? 'video' : 'image', { folderId: folder?.id ?? null })),
+        chosen.map((file) =>
+          startUpload(file, file.type.startsWith('video/') ? 'video' : 'image', {
+            folderId: folder?.id ?? null,
+          }),
+        ),
       );
       await qc.invalidateQueries({ queryKey: ['media'] });
       // What was just uploaded is what you came for: mark it.
@@ -214,7 +222,11 @@ export function MediaBrowser({
   const someOn = items.some((m) => selected.includes(m.id));
   // Subfolders of the open folder (not while searching: a search is about files).
   const subfolders =
-    folder && !search ? folder.all.filter((f) => f.parentId === (folder.id ?? null)).sort((a, b) => a.name.localeCompare(b.name, 'es')) : [];
+    folder && !search
+      ? folder.all
+          .filter((f) => f.parentId === (folder.id ?? null))
+          .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+      : [];
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -249,20 +261,7 @@ export function MediaBrowser({
               {es.media[k]}
             </Chip>
           ))}
-        {layout === 'table' && (
-          <>
-            {error && <p className="text-xs text-accent-dark">{error}</p>}
-            <Button
-              type="button"
-              size="sm"
-              disabled={uploading}
-              onClick={() => inputRef.current?.click()}
-            >
-              <UploadIcon className="mr-1.5 h-4 w-4" />
-              {uploading ? es.app.uploading : 'Subir'}
-            </Button>
-          </>
-        )}
+        {layout === 'table' && error && <p className="text-xs text-accent-dark">{error}</p>}
       </div>
       {/* The table has no drop zone of its own: the whole list takes a drop, like Shopify. */}
       {layout === 'table' && dragging > 0 && (
@@ -328,7 +327,11 @@ export function MediaBrowser({
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <SearchIcon className="h-10 w-10 text-faint-2" />
             <p className="mt-2 text-lg font-semibold">
-              {search ? 'Sin resultados' : folder?.id ? 'Esta carpeta está vacía' : 'La biblioteca está vacía'}
+              {search
+                ? 'Sin resultados'
+                : folder?.id
+                  ? 'Esta carpeta está vacía'
+                  : 'La biblioteca está vacía'}
             </p>
             <p className="text-sm text-muted">
               {search
@@ -369,7 +372,11 @@ export function MediaBrowser({
             </THead>
             <TBody>
               {subfolders.map((f) => (
-                <TR key={`folder-${f.id}`} className="cursor-pointer" onClick={() => folder?.onOpen(f.id)}>
+                <TR
+                  key={`folder-${f.id}`}
+                  className="cursor-pointer"
+                  onClick={() => folder?.onOpen(f.id)}
+                >
                   <TD />
                   <TD>
                     <div className="flex items-center gap-3">
@@ -385,10 +392,18 @@ export function MediaBrowser({
                   <TD className="text-faint-2">—</TD>
                   <TD onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-1">
-                      <button type="button" onClick={() => folder?.onRename(f)} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink">
+                      <button
+                        type="button"
+                        onClick={() => folder?.onRename(f)}
+                        className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink"
+                      >
                         Renombrar
                       </button>
-                      <button type="button" onClick={() => folder?.onDelete(f)} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-accent-dark">
+                      <button
+                        type="button"
+                        onClick={() => folder?.onDelete(f)}
+                        className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-accent-dark"
+                      >
                         Eliminar
                       </button>
                     </div>
