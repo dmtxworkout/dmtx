@@ -3,7 +3,7 @@
 The "Netflix of workouts." A two-sided fitness platform:
 
 - **Admin portal** (`apps/admin`) — where admins build exercises → workouts (rutinas) → programs → skills, plus taxonomy and collections. UI in **Spanish**. _(built first)_
-- **Mobile app** (`apps/mobile`) — Expo consumer app: browse and play content, timers/counters, goals, progress, offline downloads. _(later)_
+- **Mobile app** (`apps/mobile`) — Expo consumer app: browse and play content, timers/counters, goals, progress, offline downloads of video rutinas (HLS saved by the OS at a chosen quality).
 
 ## Stack
 

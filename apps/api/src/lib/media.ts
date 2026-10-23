@@ -2,7 +2,7 @@ import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { mediaAssets } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
-import { imageUrl, streamEnableDownloads, streamGet, streamToken, streamUrls } from './cloudflare';
+import { imageUrl, streamGet, streamToken, streamUrls } from './cloudflare';
 
 export type MediaRow = typeof mediaAssets.$inferSelect;
 
@@ -40,14 +40,13 @@ export async function serializeAsset(env: Env, r: MediaRow) {
 
 /**
  * Ask Stream how a video is doing and record it: `ready` with its duration,
- * size and dimensions (and the MP4 requested), `failed` with the reason, or
+ * size and dimensions, `failed` with the reason, or
  * still `processing`. Returns the row as it is afterwards.
  */
 export async function refreshVideo(db: Database, env: Env, row: MediaRow): Promise<MediaRow> {
   if (row.kind !== 'video' || row.processingStatus !== 'processing') return row;
   const v = await streamGet(env, row.externalId);
   if (v.status.state === 'ready' || v.readyToStream) {
-    await streamEnableDownloads(env, row.externalId);
     const [done] = await db
       .update(mediaAssets)
       .set({
@@ -74,10 +73,8 @@ export async function refreshVideo(db: Database, env: Env, row: MediaRow): Promi
 }
 
 export interface ResolvedMedia {
-  /** Image: delivery URL at 1200 px (the app rewrites `w=`); video: HLS manifest. */
+  /** Image: delivery URL at 1200 px (the app rewrites `w=`); video: HLS manifest (the app streams it and downloads it for offline use). */
   url: string;
-  /** Video only: the MP4 for offline use. */
-  downloadUrl: string | null;
 }
 
 /**
@@ -99,9 +96,8 @@ export async function resolveMediaUrls(
     .where(and(inArray(mediaAssets.id, unique), isNull(mediaAssets.deletedAt), eq(mediaAssets.processingStatus, 'ready')));
   const entries = await Promise.all(
     rows.map(async (r): Promise<[string, ResolvedMedia]> => {
-      if (r.kind === 'image') return [r.id, { url: imageUrl(env, r.externalId, { w: 1200, fit: 'scale-down' }), downloadUrl: null }];
-      const s = streamUrls(env, await streamToken(env, r.externalId));
-      return [r.id, { url: s.hls, downloadUrl: s.download }];
+      if (r.kind === 'image') return [r.id, { url: imageUrl(env, r.externalId, { w: 1200, fit: 'scale-down' }) }];
+      return [r.id, { url: streamUrls(env, await streamToken(env, r.externalId)).hls }];
     }),
   );
   return new Map(entries);

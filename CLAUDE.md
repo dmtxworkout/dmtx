@@ -14,6 +14,7 @@ DMTX is the **"Netflix of workouts"**: a Spanish-language fitness platform with 
 | [docs/billing.md](docs/billing.md) | Self-managed billing engine + reporting |
 | [docs/conventions.md](docs/conventions.md) | How to add an entity end-to-end; code patterns |
 | [docs/rutina-text.md](docs/rutina-text.md) | The rutina text notation the admin editor parses (grammar, modifiers, diagnostics) |
+| [docs/mobile-downloads.md](docs/mobile-downloads.md) | Offline downloads in the app: the `hls-downloads` module (iOS/Android), the queue, the screens |
 | [docs/env.md](docs/env.md) | Required env vars and where they live |
 | [docs/roadmap.md](docs/roadmap.md) | What's built vs. next |
 | [features/](features/) | Backlog of planned-but-not-scheduled features (e.g. coach marketplace) |

@@ -35,8 +35,6 @@ type ExerciseRow = typeof exercises.$inferSelect;
 
 const url = (m: Map<string, ResolvedMedia>, id: string | null): string | null =>
   id ? (m.get(id)?.url ?? null) : null;
-const downloadUrl = (m: Map<string, ResolvedMedia>, id: string | null): string | null =>
-  id ? (m.get(id)?.downloadUrl ?? null) : null;
 
 const mins = (seconds: number | null): number | null =>
   seconds ? Math.max(1, Math.round(seconds / 60)) : null;
@@ -594,9 +592,8 @@ appRoute.get('/workouts/:id', async (c) => {
     difficulty: w.difficulty,
     estimatedDurationSeconds: w.estimatedDurationSeconds,
     thumbnailUrl: url(media, w.thumbnailAssetId),
+    // The signed HLS manifest: the app streams it, and downloads it for offline use at the quality it chooses.
     videoUrl: url(media, w.videoAssetId),
-    // The MP4 for offline use (Stream produces it once the video is ready).
-    videoDownloadUrl: downloadUrl(media, w.videoAssetId),
     // The admin attached a video that is still uploading or processing.
     videoPending: !!w.videoAssetId && !url(media, w.videoAssetId),
     videoDurationSeconds: w.videoDurationSeconds,

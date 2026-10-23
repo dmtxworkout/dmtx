@@ -9,9 +9,9 @@
 | Backend API | Hono + `@hono/zod-openapi` | → Cloudflare Workers (portable to Node/Lambda) |
 | Database | PostgreSQL on Neon + Drizzle ORM | `neon-http` driver (pure `fetch`) |
 | Auth | Better Auth (admin roles plugin) + Resend | mounted inside the API |
-| Media | Cloudflare Images (images, resized on request) + Cloudflare Stream (video: HLS + MP4) | the browser uploads straight to Cloudflare; one account token |
+| Media | Cloudflare Images (images, resized on request) + Cloudflare Stream (video: HLS, signed) | the browser uploads straight to Cloudflare; one account token; the app streams HLS and saves it offline through the OS (`apps/mobile/modules/hls-downloads`) |
 | Payments | Stripe (payment rail) + **self-managed billing** | see [billing.md](billing.md) |
-| Mobile | Expo / React Native | later |
+| Mobile | Expo / React Native (dev build) | one local Expo module: `hls-downloads` (Swift: AVAssetDownloadTask; Kotlin: local HLS mirror) |
 
 ## Request / data flow
 

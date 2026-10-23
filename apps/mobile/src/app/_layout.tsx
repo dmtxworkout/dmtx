@@ -20,6 +20,7 @@ import {
   IBMPlexMono_600SemiBold,
 } from '@expo-google-fonts/ibm-plex-mono';
 import { useSession } from '../lib/auth';
+import { initDownloads } from '../lib/downloads';
 import { UnitsProvider } from '../lib/units-context';
 import { colors } from '../theme';
 
@@ -78,6 +79,10 @@ export default function RootLayout() {
   useEffect(() => {
     if (fontsLoaded) void SplashScreen.hideAsync();
   }, [fontsLoaded]);
+  // Downloads left queued or running when the app last closed pick up again.
+  useEffect(() => {
+    void initDownloads();
+  }, []);
 
   if (!fontsLoaded) return null;
 

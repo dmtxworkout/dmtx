@@ -5,7 +5,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Loading, Thumb } from '../../../components/ui';
+import { DownloadButton } from '../../../components/download-button';
 import { api } from '../../../lib/api';
+import { useDownload } from '../../../lib/downloads';
 import { difficultyLabel, es, formatLabel } from '../../../i18n';
 import { durationLabel, loadLabel, mmss, pluralName, targetLabel, tempoDash } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
@@ -80,6 +82,9 @@ export default function RutinaDetalle() {
   const insets = useSafeAreaInsets();
   const { units } = useUnits();
   const q = useQuery({ queryKey: ['workout', id], queryFn: () => api.workout(id) });
+  // Saved for offline use: the page opens from the copy kept with the download when the API cannot be reached.
+  const download = useDownload(id);
+  const offlineCopy = download?.status === 'done' ? download.workout : undefined;
   // Variants (RX / Escalada / …): the base page offers a level; the chosen
   // variant's content replaces the base's below and is what gets played.
   const [variantId, setVariantId] = useState<string | null>(null);
@@ -89,8 +94,9 @@ export default function RutinaDetalle() {
     enabled: !!variantId,
   });
 
-  if (q.isLoading) return <Loading />;
-  if (q.isError || !q.data) {
+  const loaded = q.data ?? offlineCopy;
+  if (q.isLoading && !loaded) return <Loading />;
+  if (!loaded) {
     return (
       <View className="flex-1 items-center justify-center bg-bg px-8">
         <Text className="text-center font-sans text-[15px] text-ink-3">{es.common.error}</Text>
@@ -98,7 +104,7 @@ export default function RutinaDetalle() {
     );
   }
 
-  const base = q.data;
+  const base = loaded;
   const w = variantId && vq.data ? vq.data : base;
   const levels = base.variants.length
     ? [{ id: base.id, label: base.variantLabel || 'Principal' }, ...base.variants]
@@ -270,6 +276,7 @@ export default function RutinaDetalle() {
             {w.type === 'video' ? (
               <Text className="font-sans text-[14px] leading-6 text-ink-3">
                 Rutina en video · {durationLabel(w.videoDurationSeconds)}
+                {download?.status === 'done' ? ' · Disponible sin conexión' : ''}
               </Text>
             ) : null}
           </View>
@@ -284,10 +291,11 @@ export default function RutinaDetalle() {
         <Pressable className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2">
           <Text className="text-[19px] text-ink">♡</Text>
         </Pressable>
+        {w.type === 'video' ? <DownloadButton workout={w} /> : null}
         <Button
-          label={variantId && !vq.data ? 'Cargando…' : 'Empezar rutina'}
+          label={variantId && !vq.data ? 'Cargando…' : w.type === 'video' ? 'Ver rutina' : 'Empezar rutina'}
           className="flex-1"
-          onPress={() => router.push(`/(app)/entrenar/${playId}`)}
+          onPress={() => router.push(w.type === 'video' ? `/(app)/video/${playId}` : `/(app)/entrenar/${playId}`)}
         />
       </View>
     </View>

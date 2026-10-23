@@ -102,8 +102,6 @@ export interface StreamVideo {
 
 export const streamGet = (env: Env, uid: string) => cfRequest<StreamVideo>(env, `/stream/${uid}`);
 export const streamDelete = (env: Env, uid: string) => cfRequest(env, `/stream/${uid}`, { method: 'DELETE' }).catch(() => undefined);
-/** Ask Stream to produce the MP4 (idempotent; the file appears a little after the video is ready). */
-export const streamEnableDownloads = (env: Env, uid: string) => cfRequest(env, `/stream/${uid}/downloads`, { method: 'POST' }).catch(() => undefined);
 
 const keyCache = new Map<string, Promise<CryptoKey>>();
 function signingKey(env: Env): Promise<CryptoKey> {
@@ -139,7 +137,6 @@ export function streamUrls(env: Env, token: string) {
     hls: `${base}/manifest/video.m3u8`,
     thumbnail: `${base}/thumbnails/thumbnail.jpg?time=1s&width=800`,
     iframe: `${base}/iframe`,
-    download: `${base}/downloads/default.mp4`,
   };
 }
 

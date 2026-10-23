@@ -33,7 +33,12 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 110
         }
-      ]
+      ],
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-video",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
