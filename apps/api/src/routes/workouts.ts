@@ -1,4 +1,3 @@
-import { estimateDurationSeconds } from '@dmtx/core';
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { workoutBlocks, workoutItems, workouts } from '@dmtx/db';
@@ -14,6 +13,7 @@ import {
 } from '@dmtx/schemas';
 import type { WorkoutBlockInput } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
+import { sectionValues } from '../lib/workout-sections';
 import { requireAdmin } from '../middleware/auth';
 
 const errorSchema = z.object({ error: z.string() });
@@ -55,7 +55,8 @@ function base(w: WorkoutRow) {
     status: w.status,
     thumbnailAssetId: w.thumbnailAssetId,
     videoAssetId: w.videoAssetId,
-    videoDurationSeconds: w.videoDurationSeconds,
+    warmupVideoAssetId: w.warmupVideoAssetId,
+    cooldownVideoAssetId: w.cooldownVideoAssetId,
     variantOfId: w.variantOfId,
     variantLabel: w.variantLabel,
     createdAt: w.createdAt.toISOString(),
@@ -278,7 +279,8 @@ workoutsRoute.openapi(
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
-    const structured = input.type === 'structured';
+    // Each section is text or a video; type, format and duration follow from that.
+    const sections = await sectionValues(db, input);
     // Variants share the base name; their slug carries the level label.
     const wantedSlug =
       input.slug ?? slugify(input.variantOfId ? `${input.name} ${input.variantLabel ?? 'variante'}` : input.name);
@@ -288,25 +290,23 @@ workoutsRoute.openapi(
         slug: await uniqueSlug(db, wantedSlug),
         name: input.name,
         description: input.description ?? null,
-        type: input.type,
-        format: structured ? (input.format ?? null) : null,
+        type: sections.type,
+        format: sections.format,
         difficulty: input.difficulty,
-        // Derived on save: timers for timed formats, a pace heuristic otherwise.
-        estimatedDurationSeconds: structured
-          ? estimateDurationSeconds(input.blocks ?? [])
-          : (input.videoDurationSeconds ?? null),
+        estimatedDurationSeconds: sections.estimatedDurationSeconds,
         status: input.status,
         thumbnailAssetId: input.thumbnailAssetId ?? null,
-        videoAssetId: structured ? null : (input.videoAssetId ?? null),
-        videoDurationSeconds: structured ? null : (input.videoDurationSeconds ?? null),
+        videoAssetId: sections.videoAssetId,
+        warmupVideoAssetId: sections.warmupVideoAssetId,
+        cooldownVideoAssetId: sections.cooldownVideoAssetId,
         scoringGoal: input.scoringGoal ?? null,
-        sourceText: structured ? (input.sourceText ?? null) : null,
+        sourceText: input.sourceText ?? null,
         variantOfId: input.variantOfId ?? null,
         variantLabel: input.variantLabel ?? null,
       })
       .returning();
     if (!row) throw new Error('No se pudo crear la rutina');
-    if (structured && input.blocks.length) await insertBlocks(db, row.id, input.blocks);
+    if (sections.blocks.length) await insertBlocks(db, row.id, sections.blocks);
     return c.json(await loadFull(db, row), 201);
   },
 );
@@ -333,17 +333,29 @@ workoutsRoute.openapi(
     if (input.name !== undefined) set.name = input.name;
     if (input.slug !== undefined) set.slug = input.slug;
     if (input.description !== undefined) set.description = input.description ?? null;
-    if (input.type !== undefined) set.type = input.type;
-    if (input.format !== undefined) set.format = input.format ?? null;
     if (input.difficulty !== undefined) set.difficulty = input.difficulty;
     if (input.status !== undefined) set.status = input.status;
     if (input.thumbnailAssetId !== undefined) set.thumbnailAssetId = input.thumbnailAssetId ?? null;
-    if (input.videoAssetId !== undefined) set.videoAssetId = input.videoAssetId ?? null;
-    if (input.videoDurationSeconds !== undefined) {
-      set.videoDurationSeconds = input.videoDurationSeconds ?? null;
-      set.estimatedDurationSeconds = input.videoDurationSeconds ?? null;
-    }
-    if (input.blocks !== undefined) set.estimatedDurationSeconds = estimateDurationSeconds(input.blocks);
+    // The sections travel together: blocks plus the three videos (the editor always sends them all).
+    let blocks: WorkoutBlockInput[] | undefined;
+    if (input.blocks !== undefined || input.videoAssetId !== undefined || input.warmupVideoAssetId !== undefined || input.cooldownVideoAssetId !== undefined) {
+      const [current] = await db.select().from(workouts).where(eq(workouts.id, id)).limit(1);
+      if (!current) return c.json({ error: 'No encontrado' }, 404);
+      const sections = await sectionValues(db, {
+        blocks: input.blocks ?? [],
+        format: input.format !== undefined ? input.format : current.format,
+        videoAssetId: input.videoAssetId !== undefined ? input.videoAssetId : current.videoAssetId,
+        warmupVideoAssetId: input.warmupVideoAssetId !== undefined ? input.warmupVideoAssetId : current.warmupVideoAssetId,
+        cooldownVideoAssetId: input.cooldownVideoAssetId !== undefined ? input.cooldownVideoAssetId : current.cooldownVideoAssetId,
+      });
+      set.type = sections.type;
+      set.format = sections.format;
+      set.videoAssetId = sections.videoAssetId;
+      set.warmupVideoAssetId = sections.warmupVideoAssetId;
+      set.cooldownVideoAssetId = sections.cooldownVideoAssetId;
+      set.estimatedDurationSeconds = sections.estimatedDurationSeconds;
+      blocks = sections.blocks;
+    } else if (input.format !== undefined) set.format = input.format ?? null;
     if (input.scoringGoal !== undefined) set.scoringGoal = input.scoringGoal ?? null;
     if (input.sourceText !== undefined) set.sourceText = input.sourceText ?? null;
     if (input.variantOfId !== undefined) set.variantOfId = input.variantOfId ?? null;
@@ -356,9 +368,9 @@ workoutsRoute.openapi(
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
 
-    if (input.blocks !== undefined) {
+    if (blocks !== undefined) {
       await db.delete(workoutBlocks).where(eq(workoutBlocks.workoutId, id));
-      if (input.blocks.length) await insertBlocks(db, id, input.blocks);
+      if (blocks.length) await insertBlocks(db, id, blocks);
     }
     return c.json(await loadFull(db, row), 200);
   },

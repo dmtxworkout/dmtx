@@ -1,0 +1,4 @@
+ALTER TABLE "workouts" ADD COLUMN "warmup_video_asset_id" uuid;--> statement-breakpoint
+ALTER TABLE "workouts" ADD COLUMN "cooldown_video_asset_id" uuid;--> statement-breakpoint
+ALTER TABLE "workouts" ADD CONSTRAINT "workouts_warmup_video_asset_id_media_assets_id_fk" FOREIGN KEY ("warmup_video_asset_id") REFERENCES "public"."media_assets"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "workouts" ADD CONSTRAINT "workouts_cooldown_video_asset_id_media_assets_id_fk" FOREIGN KEY ("cooldown_video_asset_id") REFERENCES "public"."media_assets"("id") ON DELETE set null ON UPDATE no action;

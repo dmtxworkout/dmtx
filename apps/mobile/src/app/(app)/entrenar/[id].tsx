@@ -18,6 +18,8 @@ import {
 import { AmrapPlayer } from '../../../components/player-amrap';
 import { EmomPlayer } from '../../../components/player-emom';
 import { CooldownFlow, SectionIntro, SegmentPlayer } from '../../../components/player-guided';
+import { VideoPhase } from '../../../components/video-phase';
+import { localVideoUri, useDownload } from '../../../lib/downloads';
 import type { WorkoutDetail } from '../../../lib/types';
 import { api } from '../../../lib/api';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
@@ -94,6 +96,40 @@ export interface PartResult {
   marks: MarkRow[];
 }
 
+/** The stretch: its video (if it has one), then its guided exercises (if any). */
+function CooldownSequence({
+  workout,
+  view,
+  parts,
+  videoUri,
+  offline,
+  onDone,
+}: {
+  workout: WorkoutDetail;
+  view: WorkoutDetail;
+  parts: WorkoutDetail[];
+  videoUri: string | null;
+  offline: boolean;
+  onDone: () => void;
+}) {
+  const [step, setStep] = useState<'video' | 'parts'>(videoUri ? 'video' : 'parts');
+  if (step === 'video' && videoUri) {
+    return (
+      <VideoPhase
+        title="Estiramiento"
+        name={workout.name}
+        uri={videoUri}
+        offline={offline}
+        durationSeconds={workout.cooldownVideoDurationSeconds}
+        doneLabel={parts.length ? 'Continuar' : 'Terminar'}
+        onDone={() => (parts.length ? setStep('parts') : onDone())}
+        onExit={onDone}
+      />
+    );
+  }
+  return <CooldownFlow workout={view} parts={parts} onDone={onDone} />;
+}
+
 /**
  * Sequences the optional warmup and cooldown around the tracked main workout.
  * Warmup/cooldown are guided but not recorded and never appear in the results.
@@ -117,12 +153,19 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     () => ({ ...workout, blocks: workout.blocks.filter((b) => b.section === 'cooldown') }),
     [workout],
   );
+  // Each section may be a video instead of exercises: the warm-up and the
+  // stretch play before/after the tracked work; a video class replaces it.
+  const download = useDownload(workout.id);
+  const warmupVideo = workout.warmupVideoUrl ? (localVideoUri(download, 'warmup') ?? workout.warmupVideoUrl) : null;
+  const mainVideo = workout.videoUrl ? (localVideoUri(download, 'main') ?? workout.videoUrl) : null;
+  const cooldownVideo = workout.cooldownVideoUrl ? (localVideoUri(download, 'cooldown') ?? workout.cooldownVideoUrl) : null;
+  const mainIsVideo = !!mainVideo || workout.type === 'video';
   const hasWarmup = warmupParts.length > 0;
-  const hasCooldown = cooldownParts.length > 0;
+  const hasCooldown = cooldownParts.length > 0 || !!cooldownVideo;
 
-  const [phase, setPhase] = useState<'warmup-intro' | 'warmup' | 'warmup-done' | 'main' | 'cooldown' | 'summary'>(
-    hasWarmup ? 'warmup-intro' : 'main',
-  );
+  type Phase = 'warmup-video' | 'warmup-intro' | 'warmup' | 'warmup-done' | 'main-video' | 'main' | 'cooldown' | 'summary' | 'finished';
+  const [phase, setPhase] = useState<Phase>(warmupVideo ? 'warmup-video' : hasWarmup ? 'warmup-intro' : mainIsVideo ? 'main-video' : 'main');
+  const goMain = () => setPhase(mainIsVideo ? 'main-video' : 'main');
   const [warmupIdx, setWarmupIdx] = useState(0);
   const [mainIdx, setMainIdx] = useState(0);
   const [results, setResults] = useState<PartResult[]>([]);
@@ -139,6 +182,20 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
   });
 
+  if (phase === 'warmup-video' && warmupVideo) {
+    return (
+      <VideoPhase
+        title="Calentamiento"
+        name={workout.name}
+        uri={warmupVideo}
+        offline={!!localVideoUri(download, 'warmup')}
+        durationSeconds={workout.warmupVideoDurationSeconds}
+        doneLabel={hasWarmup ? 'Continuar' : 'Empezar rutina'}
+        onDone={() => (hasWarmup ? setPhase('warmup-intro') : goMain())}
+        onExit={exit}
+      />
+    );
+  }
   if (phase === 'warmup-intro') {
     return (
       <SectionIntro
@@ -149,7 +206,7 @@ function Session({ workout }: { workout: WorkoutDetail }) {
         doLabel="Hacer calentamiento"
         skipLabel="Saltar calentamiento"
         onDo={() => setPhase('warmup')}
-        onSkip={() => setPhase('main')}
+        onSkip={goMain}
         onExit={exit}
       />
     );
@@ -175,19 +232,66 @@ function Session({ workout }: { workout: WorkoutDetail }) {
         title="Calentamiento completo"
         subtitle="Ahora empieza la rutina"
         doLabel="Empezar rutina"
-        onDo={() => setPhase('main')}
+        onDo={goMain}
         onExit={exit}
       />
     );
   }
 
-  // The cooldown runs after the work but before the results.
+  // The stretch runs after the work but before the results: its video first, then its exercises.
   const renderCooldown = hasCooldown
-    ? (onDone: () => void) => <CooldownFlow workout={cooldownView} parts={cooldownParts} onDone={onDone} />
+    ? (onDone: () => void) => (
+        <CooldownSequence
+          workout={workout}
+          view={cooldownView}
+          parts={cooldownParts}
+          videoUri={cooldownVideo}
+          offline={!!localVideoUri(download, 'cooldown')}
+          onDone={onDone}
+        />
+      )
     : undefined;
 
+  // A video class: nothing to track, so the stretch (if any) and a plain finish follow it.
+  if (phase === 'main-video' && mainIsVideo) {
+    if (!mainVideo) {
+      return (
+        <View className="flex-1 items-center justify-center gap-4 bg-bg px-8">
+          <Text className="text-center font-extrabold text-[20px] text-ink">{workout.name}</Text>
+          <Text className="text-center font-sans text-[14px] leading-6 text-ink-3">El video todavía se está preparando. Vuelve en unos minutos.</Text>
+          <Pressable onPress={exit} className="h-[52px] items-center justify-center rounded-xl bg-surface-2 px-6">
+            <Text className="font-semibold text-[15px] text-ink">Volver</Text>
+          </Pressable>
+        </View>
+      );
+    }
+    return (
+      <VideoPhase
+        title="Rutina"
+        name={workout.name}
+        uri={mainVideo}
+        offline={!!localVideoUri(download, 'main')}
+        durationSeconds={workout.videoDurationSeconds}
+        doneLabel={hasCooldown ? 'Continuar' : 'Terminar'}
+        onDone={() => setPhase(hasCooldown ? 'cooldown' : 'finished')}
+        onExit={exit}
+      />
+    );
+  }
+  if (phase === 'finished') {
+    return (
+      <View className="flex-1 items-center justify-center gap-4 bg-bg px-8">
+        <Text className="text-center font-extrabold text-[24px] text-ink">¡Rutina completada!</Text>
+        <Text className="text-center font-sans text-[14px] leading-6 text-ink-3">{workout.name}</Text>
+        <Pressable onPress={exit} className="h-[52px] items-center justify-center rounded-xl bg-accent px-8">
+          <Text className="font-bold text-[15px] text-white">Volver</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   // One main part: the players own their summary and save, as before.
-  if (mainParts.length <= 1) {
+  if (!mainIsVideo && mainParts.length <= 1) {
     const main = mainParts[0] ?? { ...workout, blocks: [] };
     if (main.format === 'amrap') return <AmrapPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
     if (main.format === 'emom') return <EmomPlayer workout={main} onFinish={exit} renderCooldown={renderCooldown} />;
@@ -209,7 +313,7 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     return <Player key={key} workout={part} partIndex={mainIdx + 1} partCount={mainParts.length} onPartDone={onPartDone} />;
   }
   if (phase === 'cooldown' && renderCooldown) {
-    return <>{renderCooldown(() => setPhase('summary'))}</>;
+    return <>{renderCooldown(() => setPhase(mainIsVideo ? 'finished' : 'summary'))}</>;
   }
 
   // Combined summary.

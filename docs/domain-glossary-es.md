@@ -56,3 +56,5 @@ Each phase is seconds, or **"X"** for explosive / as fast as possible.
 | rpe | RPE |
 | absolute | Peso absoluto (kg/lb) |
 | bodyweight | Peso corporal (+ carga) |
+
+| Estiramiento | stretch (`cooldown` section) | The third section of a rutina, after the main work; «Enfriamiento» was the earlier name and still parses. |

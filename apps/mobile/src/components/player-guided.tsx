@@ -100,7 +100,7 @@ export function CooldownFlow({
     return (
       <SectionIntro
         workout={workout}
-        title="Enfriamiento"
+        title="Estiramiento"
         subtitle="¿Quieres enfriar?"
         note="Enfriar ayuda a tu recuperación y baja las pulsaciones poco a poco."
         doLabel="Hacer enfriamiento"

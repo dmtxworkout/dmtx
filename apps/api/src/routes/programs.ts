@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { programDays, programs, workoutBlocks, workouts } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
-import { estimateDurationSeconds } from '@dmtx/core';
+import { sectionValues } from '../lib/workout-sections';
 import {
   createProgramSchema,
   paginated,
@@ -58,7 +58,8 @@ function serializeDay(d: DayRow & { workout: WorkoutRow | null }) {
     type: d.workout?.type ?? ('structured' as const),
     sourceText: d.workout?.sourceText ?? '',
     videoAssetId: d.workout?.videoAssetId ?? null,
-    videoDurationSeconds: d.workout?.videoDurationSeconds ?? null,
+    warmupVideoAssetId: d.workout?.warmupVideoAssetId ?? null,
+    cooldownVideoAssetId: d.workout?.cooldownVideoAssetId ?? null,
   };
 }
 
@@ -88,20 +89,22 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
     const d = days[i]!;
     const current = d.id ? byId.get(d.id) : undefined;
     const label = `Día ${i + 1}`;
-    const structured = d.type === 'structured';
-    const hasContent = !d.isRestDay && (structured ? !!d.sourceText?.trim() : !!d.videoAssetId);
+    // Each section of the day is text or a video; a day with neither is empty.
+    const sections = await sectionValues(db, d);
+    const hasContent = !d.isRestDay && (sections.hasContent || !!d.sourceText?.trim());
     let workoutId: string | null = null;
     if (hasContent) {
       const values = {
         name: `${program.name} · ${label}`,
-        type: d.type,
-        format: structured ? (d.format ?? null) : null,
+        type: sections.type,
+        format: sections.format,
         difficulty: program.difficulty,
-        estimatedDurationSeconds: structured ? estimateDurationSeconds(d.blocks) : (d.videoDurationSeconds ?? null),
+        estimatedDurationSeconds: sections.estimatedDurationSeconds,
         status: program.status,
-        sourceText: structured ? (d.sourceText ?? null) : null,
-        videoAssetId: structured ? null : (d.videoAssetId ?? null),
-        videoDurationSeconds: structured ? null : (d.videoDurationSeconds ?? null),
+        sourceText: d.sourceText ?? null,
+        videoAssetId: sections.videoAssetId,
+        warmupVideoAssetId: sections.warmupVideoAssetId,
+        cooldownVideoAssetId: sections.cooldownVideoAssetId,
         ownerProgramId: program.id,
       };
       if (current?.workoutId) {
@@ -116,7 +119,7 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
         if (!w) throw new Error('No se pudo crear la rutina del día');
         workoutId = w.id;
       }
-      if (structured && d.blocks.length) await insertBlocks(db, workoutId, d.blocks);
+      if (sections.blocks.length) await insertBlocks(db, workoutId, sections.blocks);
     } else if (current?.workoutId) {
       // Became a rest day (or was emptied): its rutina goes.
       await retire([current.workoutId]);

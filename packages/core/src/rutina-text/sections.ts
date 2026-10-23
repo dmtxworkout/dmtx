@@ -14,7 +14,7 @@ const EMPTY = new Catalog([]);
 
 const HEADER: Record<Exclude<BlockSection, 'main'>, string> = {
   warmup: 'Calentamiento',
-  cooldown: 'Enfriamiento',
+  cooldown: 'Estiramiento',
   goal: 'Objetivo',
 };
 

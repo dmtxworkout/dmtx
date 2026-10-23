@@ -382,12 +382,12 @@ function SceneSections() {
         .${n} .g-doc-a { animation:${n}-doc-a 8s ease-out infinite; }
         .${n} .g-doc-b { position:absolute; left:8px; right:8px; top:44px; animation:${n}-doc-b 8s ease-out infinite; }
       `}
-      caption="Encima del editor hay una pestaña por sección: Rutina, Calentamiento y Enfriamiento. Cada una se escribe igual que la rutina; en la vista previa salen como secciones separadas y una pestaña vacía no se muestra."
+      caption="Encima del editor hay una pestaña por sección: Rutina, Calentamiento y Estiramiento. Cada una se escribe igual que la rutina; en la vista previa salen como secciones separadas y una pestaña vacía no se muestra."
     >
       <div className="-mx-2 -mt-2 mb-2 flex h-8 items-stretch border-b border-line bg-surface-2 font-mono text-[11px]">
         <span className="g-tab-a flex items-center border-r border-line px-3">Rutina</span>
         <span className="g-tab-b flex items-center border-r border-line px-3">Calentamiento</span>
-        <span className="flex items-center border-r border-line px-3 text-muted">Enfriamiento</span>
+        <span className="flex items-center border-r border-line px-3 text-muted">Estiramiento</span>
       </div>
       <div className="g-doc-a">
         <Row n={1}>
@@ -510,7 +510,7 @@ function SceneVersions({ skillMode }: { skillMode: boolean }) {
       <div className="-mx-2 -mt-2 mb-2 flex h-8 items-stretch border-b border-line bg-surface-2 font-mono text-[11px]">
         <span className="flex items-center border-r border-line px-3 text-ink shadow-[inset_0_-2px_0_var(--color-accent)]">Rutina</span>
         <span className="flex items-center border-r border-line px-3 text-muted">Calentamiento</span>
-        <span className="flex items-center border-r border-line px-3 text-muted">Enfriamiento</span>
+        <span className="flex items-center border-r border-line px-3 text-muted">Estiramiento</span>
         {skillMode && <span className="flex items-center border-r border-line px-3 text-muted">Objetivo</span>}
         <span className="flex-1" />
         <span className="mr-2 flex items-center gap-1.5 self-center rounded-md border-l border-line px-2 py-1 text-[11px]">

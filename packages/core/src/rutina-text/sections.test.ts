@@ -21,7 +21,7 @@ For time cap 20 min
 
 40 burpees
 
-Enfriamiento
+Estiramiento
   plancha 1 min // respira
 `);
     expect(splitSections(doc)).toEqual(parts);

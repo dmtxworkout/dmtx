@@ -48,8 +48,37 @@ const FORMAT_LABEL: Record<WorkoutFormat, string> = {
 };
 
 
-const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Calentamiento', cooldown: 'Enfriamiento', goal: 'Objetivo' };
+const SECTION_TAB: Record<BlockSection, string> = { main: 'Rutina', warmup: 'Calentamiento', cooldown: 'Estiramiento', goal: 'Objetivo' };
 const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '', goal: '' };
+// Each of the three sections is written as text or carries a video; the
+// choice is kept apart from the video itself so a tab can be switched to
+// «Video» before any file is chosen.
+type VideoSection = 'warmup' | 'main' | 'cooldown';
+const VIDEO_SECTIONS: VideoSection[] = ['warmup', 'main', 'cooldown'];
+type SectionVideos = Record<VideoSection, string | null>;
+type SectionKinds = Record<VideoSection, 'text' | 'video'>;
+type SectionDurations = Record<VideoSection, number | null>;
+const EMPTY_VIDEOS: SectionVideos = { warmup: null, main: null, cooldown: null };
+const EMPTY_DURATIONS: SectionDurations = { warmup: null, main: null, cooldown: null };
+const kindsFrom = (v: SectionVideos): SectionKinds => ({
+  warmup: v.warmup ? 'video' : 'text',
+  main: v.main ? 'video' : 'text',
+  cooldown: v.cooldown ? 'video' : 'text',
+});
+/** The texts of the sections written as text; a section that is a video contributes nothing. */
+const textOnly = (secs: SectionTexts, kinds: SectionKinds): SectionTexts => ({
+  ...secs,
+  warmup: kinds.warmup === 'video' ? '' : secs.warmup,
+  main: kinds.main === 'video' ? '' : secs.main,
+  cooldown: kinds.cooldown === 'video' ? '' : secs.cooldown,
+});
+const sectionHasContent = (secs: SectionTexts, kinds: SectionKinds, videos: SectionVideos, sec: VideoSection) =>
+  kinds[sec] === 'video' ? !!videos[sec] : !!secs[sec].trim();
+const videosOf = (sections: SectionVideos, kinds: SectionKinds) => ({
+  videoAssetId: kinds.main === 'video' ? sections.main : null,
+  warmupVideoAssetId: kinds.warmup === 'video' ? sections.warmup : null,
+  cooldownVideoAssetId: kinds.cooldown === 'video' ? sections.cooldown : null,
+});
 const GOAL_PLACEHOLDER = 'Las marcas que desbloquean el siguiente nivel, una por línea:\n3 Dominadas\nPlancha 60s\nSentadilla 5x5 @100 kg';
 
 const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque reutilizable…';
@@ -120,21 +149,29 @@ AMRAP \${minutos 2} min
 type DayState = {
   id: string | null;
   isRestDay: boolean;
-  type: 'structured' | 'video';
   sections: SectionTexts;
-  videoAssetId: string | null;
-  videoDurationSeconds: number | null;
+  videos: SectionVideos;
+  kinds: SectionKinds;
+  durations: SectionDurations;
 };
 const emptyDay = (): DayState => ({
   id: null,
   isRestDay: false,
-  type: 'structured',
   sections: { ...EMPTY_SECTIONS },
-  videoAssetId: null,
-  videoDurationSeconds: null,
+  videos: { ...EMPTY_VIDEOS },
+  kinds: kindsFrom(EMPTY_VIDEOS),
+  durations: { ...EMPTY_DURATIONS },
 });
-const copyDay = (d: DayState): DayState => ({ ...d, id: null, sections: { ...d.sections } });
-const dayHasContent = (d: DayState) => (d.type === 'video' ? !!d.videoAssetId : !!joinSections(d.sections).trim());
+const copyDay = (d: DayState): DayState => ({
+  ...d,
+  id: null,
+  sections: { ...d.sections },
+  videos: { ...d.videos },
+  kinds: { ...d.kinds },
+  durations: { ...d.durations },
+});
+const dayHasContent = (d: DayState) => VIDEO_SECTIONS.some((sec) => sectionHasContent(d.sections, d.kinds, d.videos, sec));
+const dayIsVideo = (d: DayState) => d.kinds.main === 'video';
 const dayLabel = (i: number) => `${es.programs.day} ${i + 1}`;
 // Programs are written in whole weeks that start on Monday.
 const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
@@ -192,7 +229,9 @@ function WeekStrip({
   const weekHasContent = (w: number) => days.slice(w * 7, w * 7 + 7).some((d) => d.isRestDay || dayHasContent(d));
   const uploads = useUploads();
   const uploadingVideo = (d: DayState) =>
-    d.type === 'video' && !!d.videoAssetId && uploads.some((u) => u.assetId === d.videoAssetId && (u.status === 'uploading' || u.status === 'processing'));
+    VIDEO_SECTIONS.some(
+      (sec) => d.kinds[sec] === 'video' && !!d.videos[sec] && uploads.some((u) => u.assetId === d.videos[sec] && (u.status === 'uploading' || u.status === 'processing')),
+    );
   return (
     <div className="flex items-center gap-1.5">
       <div ref={menuRef} className="relative mr-1">
@@ -335,7 +374,7 @@ function WeekStrip({
               dragFrom.current = null;
               setOver(null);
             }}
-            title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : d.type === 'video' ? 'video' : 'rutina'}`}
+            title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : dayIsVideo(d) ? 'video' : 'rutina'}`}
             className={cn(
               'flex h-9 w-12 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
               // The cell names its weekday and says in words what the day holds
@@ -348,9 +387,9 @@ function WeekStrip({
             style={d.isRestDay ? { background: HATCH } : undefined}
           >
             <span>{WEEKDAY_SHORT[j]}</span>
-            {has && !d.isRestDay && (
+            {(has || d.isRestDay) && (
               <span className={cn('mt-0.5 text-[8.5px]', isActive ? 'text-accent-dark/70' : 'text-muted')}>
-                {d.type === 'video' ? 'video' : 'rutina'}
+                {d.isRestDay ? 'descanso' : dayIsVideo(d) ? 'video' : 'rutina'}
               </span>
             )}
           </button>
@@ -410,27 +449,28 @@ export function RutinaForm({
   const [description, setDescription] = useState(workout?.description ?? skill?.description ?? program?.description ?? '');
   const [difficulty, setDifficulty] = useState(workout?.difficulty ?? skill?.difficulty ?? program?.difficulty ?? 'beginner');
   const [status, setStatus] = useState(workout?.status ?? skill?.status ?? program?.status ?? 'draft');
-  const [typeState, setType] = useState<'structured' | 'video'>(workout?.type ?? 'structured');
+  const initialVideos: SectionVideos = {
+    warmup: workout?.warmupVideoAssetId ?? null,
+    main: workout?.videoAssetId ?? null,
+    cooldown: workout?.cooldownVideoAssetId ?? null,
+  };
+  const [videosState, setVideosState] = useState<SectionVideos>(initialVideos);
+  const [kindsState, setKindsState] = useState<SectionKinds>(() => kindsFrom(initialVideos));
+  const [durationsState, setDurationsState] = useState<SectionDurations>({ ...EMPTY_DURATIONS });
   // A new rutina asks for name + type in one dialog, then opens the editor.
   const [createOpen, setCreateOpen] = useState(!workout && !blockMode && !skill && !program);
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(
     workout?.thumbnailAssetId ?? skill?.thumbnailAssetId ?? program?.thumbnailAssetId ?? null,
   );
-  const [videoAssetIdState, setVideoAssetIdState] = useState<string | null>(workout?.videoAssetId ?? null);
-  const [videoDurationState, setVideoDurationState] = useState<number | null>(workout?.videoDurationSeconds ?? null);
   // Program days: a new program starts with one empty week.
   const [days, setDays] = useState<DayState[]>(() =>
     programMode
       ? program?.days.length
         ? (() => {
-            const loaded = program.days.map((d) => ({
-              id: d.id,
-              isRestDay: d.isRestDay,
-              type: d.type,
-              sections: splitSections(d.sourceText),
-              videoAssetId: d.videoAssetId,
-              videoDurationSeconds: d.videoDurationSeconds,
-            }));
+            const loaded = program.days.map((d): DayState => {
+              const videos: SectionVideos = { warmup: d.warmupVideoAssetId, main: d.videoAssetId, cooldown: d.cooldownVideoAssetId };
+              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, kinds: kindsFrom(videos), durations: { ...EMPTY_DURATIONS } };
+            });
             // Always whole weeks: pad the last one with empty days.
             const pad = (7 - (loaded.length % 7)) % 7;
             return [...loaded, ...Array.from({ length: pad }, emptyDay)];
@@ -461,14 +501,20 @@ export function RutinaForm({
     setDays((ds) => ds.filter((_, i) => Math.floor(i / 7) !== w));
     setActiveDay((a) => (Math.floor(a / 7) === w ? Math.max(0, w * 7 - 7) : a > w * 7 ? a - 7 : a));
   };
-  // In program mode the type and the video belong to the active day.
-  const type = activeDayState ? activeDayState.type : typeState;
-  const videoAssetId = activeDayState ? activeDayState.videoAssetId : videoAssetIdState;
-  const setVideoAssetId = (id: string | null) => (programMode ? setDay(activeDay, { videoAssetId: id }) : setVideoAssetIdState(id));
-  const videoDurationSeconds = activeDayState ? activeDayState.videoDurationSeconds : videoDurationState;
-  // Read from the file's metadata by the media field; stored so the app can show the length.
-  const setVideoDuration = (secs: number | null) =>
-    programMode ? setDay(activeDay, { videoDurationSeconds: secs }) : setVideoDurationState(secs);
+  // In program mode the sections' kinds and videos belong to the active day.
+  const videos = activeDayState ? activeDayState.videos : videosState;
+  const kinds = activeDayState ? activeDayState.kinds : kindsState;
+  const durations = activeDayState ? activeDayState.durations : durationsState;
+  // What the main section is, for lists and the catalog; the API derives the same.
+  const type: 'structured' | 'video' = kinds.main === 'video' ? 'video' : 'structured';
+  const setVideo = (sec: VideoSection, id: string | null) =>
+    programMode ? setDay(activeDay, { videos: { ...videos, [sec]: id } }) : setVideosState((v) => ({ ...v, [sec]: id }));
+  const setKind = (sec: VideoSection, k: 'text' | 'video') =>
+    programMode ? setDay(activeDay, { kinds: { ...kinds, [sec]: k } }) : setKindsState((v) => ({ ...v, [sec]: k }));
+  // Read from Stream by the media field, for the duration shown while editing (the API stores its own from the asset).
+  const setVideoDuration = (sec: VideoSection, secs: number | null) =>
+    programMode ? setDay(activeDay, { durations: { ...durations, [sec]: secs } }) : setDurationsState((v) => ({ ...v, [sec]: secs }));
+  const videoSeconds = VIDEO_SECTIONS.reduce((n, sec) => n + (kinds[sec] === 'video' && videos[sec] ? (durations[sec] ?? 0) : 0), 0);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);
@@ -636,7 +682,7 @@ export function RutinaForm({
     return changed;
   };
   // The whole rutina (all sections) of the active version, as one document.
-  const doc = useMemo(() => joinSections(activeSections), [activeSections]);
+  const doc = useMemo(() => joinSections(textOnly(activeSections, kinds)), [activeSections, kinds]);
   const editorReady = sections !== null && variants !== null;
   const addVariant = (label: string) => {
     setVariants((vs) => [...(vs ?? []), { id: null, label, sections: { ...activeSections } }]);
@@ -695,18 +741,15 @@ export function RutinaForm({
   const parsedTab = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
   const format = parsed.main?.format ?? 'for_time';
 
-  const previewModel = useMemo(
-    () => previewFrom(parsed, type, type === 'video' && !!videoAssetId, blockMode),
-    [parsed, type, videoAssetId, blockMode],
-  );
+  const previewModel = useMemo(() => previewFrom(parsed, { kinds, videos, durations }, blockMode), [parsed, kinds, videos, durations, blockMode]);
 
 
   const mainFormats = parsed.blocks
     .filter((b) => b.section === 'main' && b.kind === 'part' && b.format)
     .map((b) => FORMAT_LABEL[b.format!.format]);
   // Estimated on the fly from the text; the API stores the same number on save.
-  const estimatedSeconds =
-    type === 'video' ? videoDurationSeconds : estimateDurationSeconds(toWorkoutInput(parsed).blocks);
+  const textSeconds = parsed.blocks.length ? (estimateDurationSeconds(toWorkoutInput(parsed).blocks) ?? 0) : 0;
+  const estimatedSeconds = textSeconds + videoSeconds || null;
   const durationLabel = estimatedSeconds ? `${Math.ceil(estimatedSeconds / 60)} min` : null;
   const weekCount = Math.ceil(days.length / 7);
   const metaLine = [
@@ -788,23 +831,22 @@ export function RutinaForm({
   // ---- Save -----------------------------------------------------------------
   // The payload for one version's sections; metadata is shared by base and variants.
   const payloadFor = (secs: SectionTexts, variant: { ofId: string; label: string } | null): CreateWorkoutInput => {
-    const structured = type === 'structured';
-    const tabText = joinSections(secs);
-    const structure = structured ? toWorkoutInput(parseRutina(tabText, { catalog })) : null;
+    // The sections written as text go as text + blocks; the videos by id (the API derives type and duration).
+    const tabText = joinSections(textOnly(secs, kinds));
+    const structure = toWorkoutInput(parseRutina(tabText, { catalog }));
     return {
       name,
       description: description || null,
       type,
-      format: structure?.format ?? null,
-      sourceText: structured ? tabText : null,
+      format: structure.format ?? null,
+      sourceText: tabText || null,
       difficulty,
       status,
       thumbnailAssetId,
-      videoAssetId: structured ? null : videoAssetId,
-      videoDurationSeconds: structured ? null : videoDurationSeconds,
+      ...videosOf(videos, kinds),
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
-      blocks: structure?.blocks ?? [],
+      blocks: structure.blocks,
     };
   };
   const saveBlock = useMutation({
@@ -863,18 +905,15 @@ export function RutinaForm({
   });
   // A program: every day is a rutina (text + structure, or a video) owned by it.
   const dayPayload = (d: DayState): ProgramDayInput => {
-    const structured = d.type === 'structured';
-    const text = joinSections(d.sections);
-    const structure = structured && !d.isRestDay ? toWorkoutInput(parseRutina(text, { catalog })) : null;
+    const text = joinSections(textOnly(d.sections, d.kinds));
+    const structure = !d.isRestDay ? toWorkoutInput(parseRutina(text, { catalog })) : null;
     return {
       id: d.id ?? undefined,
       isRestDay: d.isRestDay,
-      type: d.type,
-      sourceText: structured ? text : null,
+      sourceText: text || null,
       format: structure?.format ?? null,
       blocks: structure?.blocks ?? [],
-      videoAssetId: structured ? null : d.videoAssetId,
-      videoDurationSeconds: structured ? null : d.videoDurationSeconds,
+      ...(d.isRestDay ? { videoAssetId: null, warmupVideoAssetId: null, cooldownVideoAssetId: null } : videosOf(d.videos, d.kinds)),
     };
   };
   const saveProgram = useMutation({
@@ -886,7 +925,7 @@ export function RutinaForm({
       // The server assigns ids to new days; keep the texts as edited.
       const next = days.map((d, i) => ({ ...d, id: saved.days[i]?.id ?? d.id }));
       setDays(next);
-      setBaseline({ ...currentRef.current, days: next });
+      setBaseline({ ...currentRef.current, days: next.map((d) => ({ ...d, durations: EMPTY_DURATIONS })) });
       qc.setQueryData(['program', saved.id], saved);
       qc.invalidateQueries({ queryKey: ['programs'] });
       qc.invalidateQueries({ queryKey: ['workouts'] });
@@ -931,8 +970,8 @@ export function RutinaForm({
     difficulty: typeof difficulty;
     status: typeof status;
     thumbnailAssetId: string | null;
-    videoAssetId: string | null;
-    videoDurationSeconds: number | null;
+    videos: SectionVideos;
+    kinds: SectionKinds;
     baseLabel: string;
     sections: SectionTexts;
     variants: VariantTab[];
@@ -944,12 +983,13 @@ export function RutinaForm({
     difficulty,
     status,
     thumbnailAssetId,
-    videoAssetId: videoAssetIdState,
-    videoDurationSeconds: videoDurationState,
+    videos: videosState,
+    kinds: kindsState,
     baseLabel,
     sections: sections ?? EMPTY_SECTIONS,
     variants: tabs,
-    days,
+    // The durations the media fields report are display-only: not a change.
+    days: days.map((d) => ({ ...d, durations: EMPTY_DURATIONS })),
   };
   const [baseline, setBaseline] = useState<Snapshot | null>(null);
   const currentRef = useRef(current);
@@ -969,8 +1009,8 @@ export function RutinaForm({
     setDifficulty(baseline.difficulty);
     setStatus(baseline.status);
     setThumbnailAssetId(baseline.thumbnailAssetId);
-    setVideoAssetIdState(baseline.videoAssetId);
-    setVideoDurationState(baseline.videoDurationSeconds);
+    setVideosState(baseline.videos);
+    setKindsState(baseline.kinds);
     setBaseLabel(baseline.baseLabel);
     setSections(baseline.sections);
     setVariants(baseline.variants);
@@ -999,8 +1039,8 @@ export function RutinaForm({
       for (let i = 0; i < days.length; i += 1) {
         const d = days[i]!;
         if (d.isRestDay) continue;
-        if (d.type === 'structured') {
-          const p = parseRutina(joinSections(d.sections), { catalog });
+        {
+          const p = parseRutina(joinSections(textOnly(d.sections, d.kinds)), { catalog });
           const errors = p.diagnostics.filter((x) => x.severity === 'error');
           if (errors.length) {
             setActiveDay(i);
@@ -1021,10 +1061,20 @@ export function RutinaForm({
       saveProgram.mutate();
       return;
     }
-    if (type === 'structured') {
+    // A section switched to «Video» needs its file before publishing.
+    if (!blockMode && !skillMode && status === 'published') {
+      const missing = VIDEO_SECTIONS.find((sec) => kinds[sec] === 'video' && !videos[sec]);
+      if (missing) {
+        setActiveSection(missing);
+        toast(`La sección «${SECTION_TAB[missing]}» es un video pero aún no tiene ninguno. Súbelo o elígelo de la biblioteca antes de publicar.`, 'error');
+        shakeBar();
+        return;
+      }
+    }
+    {
       const all = [{ label: baseLabel.trim() || (skillMode ? 'Nivel 1' : 'Principal'), sections: sections ?? EMPTY_SECTIONS }, ...tabs];
       for (let i = 0; i < all.length; i += 1) {
-        const p = parseRutina(joinSections(all[i]!.sections), { catalog });
+        const p = parseRutina(joinSections(textOnly(all[i]!.sections, kinds)), { catalog });
         const errors = p.diagnostics.filter((d) => d.severity === 'error');
         const n = errors.length;
         if (n > 0) {
@@ -1141,24 +1191,17 @@ export function RutinaForm({
                   <span className="font-semibold">{WEEKDAYS[activeDay % 7]}</span>
                 </span>
                 <span className="flex-1" />
-                <div className="flex shrink-0 items-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]">
-                  {(
-                    [
-                      { id: 'structured', label: es.workouts.types.structured, on: !activeDayState.isRestDay && activeDayState.type === 'structured' },
-                      { id: 'video', label: es.workouts.types.video, on: !activeDayState.isRestDay && activeDayState.type === 'video' },
-                      { id: 'rest', label: es.programs.restDay, on: activeDayState.isRestDay },
-                    ] as const
-                  ).map((o) => (
-                    <button
-                      key={o.id}
-                      type="button"
-                      onClick={() => setDay(activeDay, o.id === 'rest' ? { isRestDay: true } : { isRestDay: false, type: o.id })}
-                      className={cn('rounded px-2 py-1', o.on ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setDay(activeDay, { isRestDay: !activeDayState.isRestDay })}
+                  className={cn(
+                    'shrink-0 rounded-md border px-2.5 py-1 font-mono text-[11px]',
+                    activeDayState.isRestDay ? 'border-ink bg-ink text-white' : 'border-line-2 bg-surface text-ink-3 hover:text-ink',
+                  )}
+                  title="Marcar el día como descanso (sin rutina)"
+                >
+                  {es.programs.restDay}
+                </button>
               </div>
             </div>
             {activeDayState.isRestDay ? (
@@ -1166,12 +1209,12 @@ export function RutinaForm({
                 <span className="text-[15px] font-bold text-ink-2">Día de descanso</span>
                 <p className="text-[12px] text-muted">El usuario verá «Descanso» en este día.</p>
               </div>
-            ) : type === 'structured' ? (
+            ) : (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
               {(blockMode ? (['main'] as const) : skillMode ? (['main', 'warmup', 'cooldown', 'goal'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
-                const empty = !activeSections[sec].trim();
+                const empty = sec === 'goal' ? !activeSections.goal.trim() : !sectionHasContent(activeSections, kinds, videos, sec);
                 return (
                   <div
                     key={sec}
@@ -1186,9 +1229,27 @@ export function RutinaForm({
                     )}
                   >
                     {blockMode ? 'Bloque' : SECTION_TAB[sec]}
+                    {sec !== 'goal' && kinds[sec] === 'video' && <span className="text-[9px] uppercase tracking-wider text-faint-2">video</span>}
                   </div>
                 );
               })}
+              {!blockMode && activeSection !== 'goal' && (
+                <div
+                  className="ml-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
+                  title="Esta sección se escribe como rutina o es un video"
+                >
+                  {(['text', 'video'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setKind(activeSection, k)}
+                      className={cn('rounded px-2 py-0.5', kinds[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
+                    >
+                      {k === 'text' ? 'Rutina' : 'Video'}
+                    </button>
+                  ))}
+                </div>
+              )}
               <span className="flex-1" />
               <div className="flex items-center gap-0.5 px-2">
                 <button
@@ -1386,6 +1447,18 @@ export function RutinaForm({
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
+              ) : activeSection !== 'goal' && kinds[activeSection] === 'video' ? (
+                <div className="flex flex-col gap-3.5 overflow-y-auto px-7 py-5">
+                  <div className="max-w-xl">
+                    <MediaField
+                      kind="video"
+                      label={`${SECTION_TAB[activeSection]} en video`}
+                      value={videos[activeSection]}
+                      onChange={(id) => setVideo(activeSection, id)}
+                      onDuration={(secs) => setVideoDuration(activeSection, secs)}
+                    />
+                  </div>
+                </div>
               ) : (
                 <RutinaTextEditor
                   key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
@@ -1414,27 +1487,14 @@ export function RutinaForm({
               )}
             </div>
           </div>
-            ) : (
-          <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
-            <div className="max-w-xl">
-              <MediaField
-                kind="video"
-                label={es.workouts.video}
-                value={videoAssetId}
-                onChange={setVideoAssetId}
-                onDuration={setVideoDuration}
-              />
-            </div>
-          </div>
-
             )}
           </div>
-        ) : type === 'structured' ? (
+        ) : (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
             <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
               {(blockMode ? (['main'] as const) : skillMode ? (['main', 'warmup', 'cooldown', 'goal'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
-                const empty = !activeSections[sec].trim();
+                const empty = sec === 'goal' ? !activeSections.goal.trim() : !sectionHasContent(activeSections, kinds, videos, sec);
                 return (
                   <div
                     key={sec}
@@ -1449,9 +1509,27 @@ export function RutinaForm({
                     )}
                   >
                     {blockMode ? 'Bloque' : SECTION_TAB[sec]}
+                    {sec !== 'goal' && kinds[sec] === 'video' && <span className="text-[9px] uppercase tracking-wider text-faint-2">video</span>}
                   </div>
                 );
               })}
+              {!blockMode && activeSection !== 'goal' && (
+                <div
+                  className="ml-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
+                  title="Esta sección se escribe como rutina o es un video"
+                >
+                  {(['text', 'video'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setKind(activeSection, k)}
+                      className={cn('rounded px-2 py-0.5', kinds[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
+                    >
+                      {k === 'text' ? 'Rutina' : 'Video'}
+                    </button>
+                  ))}
+                </div>
+              )}
               <span className="flex-1" />
               <div className="flex items-center gap-0.5 px-2">
                 <button
@@ -1649,6 +1727,18 @@ export function RutinaForm({
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
+              ) : activeSection !== 'goal' && kinds[activeSection] === 'video' ? (
+                <div className="flex flex-col gap-3.5 overflow-y-auto px-7 py-5">
+                  <div className="max-w-xl">
+                    <MediaField
+                      kind="video"
+                      label={`${SECTION_TAB[activeSection]} en video`}
+                      value={videos[activeSection]}
+                      onChange={(id) => setVideo(activeSection, id)}
+                      onDuration={(secs) => setVideoDuration(activeSection, secs)}
+                    />
+                  </div>
+                </div>
               ) : (
                 <RutinaTextEditor
                   key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
@@ -1677,19 +1767,6 @@ export function RutinaForm({
               )}
             </div>
           </div>
-        ) : (
-          <div className="flex min-w-0 flex-1 flex-col gap-3.5 overflow-y-auto px-7 py-5">
-            <div className="max-w-xl">
-              <MediaField
-                kind="video"
-                label={es.workouts.video}
-                value={videoAssetId}
-                onChange={setVideoAssetId}
-                onDuration={setVideoDuration}
-              />
-            </div>
-          </div>
-
         )}
           {/* Right: live athlete-facing preview */}
           <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
@@ -1786,13 +1863,13 @@ export function RutinaForm({
                 {(
                   [
                     { v: 'structured', desc: 'Ejercicios escritos en el editor' },
-                    { v: 'video', desc: 'Una sola clase en video' },
+                    { v: 'video', desc: 'La rutina principal es una clase en video' },
                   ] as const
                 ).map((o) => (
                   <button
                     key={o.v}
                     type="button"
-                    onClick={() => setType(o.v)}
+                    onClick={() => setKindsState((k) => ({ ...k, main: o.v === 'video' ? 'video' : 'text' }))}
                     className={cn(
                       'flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left',
                       type === o.v ? 'border-accent bg-accent-tint/40' : 'border-line-2 bg-surface hover:bg-surface-2',
@@ -1803,7 +1880,7 @@ export function RutinaForm({
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-[11px] text-muted">El tipo no se puede cambiar después.</p>
+              <p className="mt-2 text-[11px] text-muted">Después, cada sección (calentamiento, rutina, estiramiento) puede ser texto o video.</p>
             </div>
           )}
           <div className="flex justify-end gap-2">

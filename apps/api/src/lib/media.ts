@@ -76,6 +76,8 @@ export async function refreshVideo(db: Database, env: Env, row: MediaRow): Promi
 export interface ResolvedMedia {
   /** Image: delivery URL at 1200 px (the app rewrites `w=`); video: HLS manifest (the app streams it and downloads it for offline use). */
   url: string;
+  /** Video: its length as Stream measured it. */
+  durationSeconds: number | null;
 }
 
 /**
@@ -92,13 +94,13 @@ export async function resolveMediaUrls(
   const unique = [...new Set(ids.filter((id): id is string => Boolean(id)))];
   if (unique.length === 0) return new Map();
   const rows = await db
-    .select({ id: mediaAssets.id, kind: mediaAssets.kind, externalId: mediaAssets.externalId })
+    .select({ id: mediaAssets.id, kind: mediaAssets.kind, externalId: mediaAssets.externalId, durationSeconds: mediaAssets.durationSeconds })
     .from(mediaAssets)
     .where(and(inArray(mediaAssets.id, unique), isNull(mediaAssets.deletedAt), eq(mediaAssets.processingStatus, 'ready')));
   const entries = await Promise.all(
     rows.map(async (r): Promise<[string, ResolvedMedia]> => {
-      if (r.kind === 'image') return [r.id, { url: imageUrl(env, r.externalId, { w: 1200, fit: 'scale-down' }) }];
-      return [r.id, { url: streamUrls(env, await streamToken(env, r.externalId)).hls }];
+      if (r.kind === 'image') return [r.id, { url: imageUrl(env, r.externalId, { w: 1200, fit: 'scale-down' }), durationSeconds: null }];
+      return [r.id, { url: streamUrls(env, await streamToken(env, r.externalId)).hls, durationSeconds: r.durationSeconds }];
     }),
   );
   return new Map(entries);

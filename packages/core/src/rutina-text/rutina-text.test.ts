@@ -330,7 +330,7 @@ describe('completionsAt', () => {
 
   it('suggests group headers and sections', () => {
     expect(at('For time\n3 r')?.options[0]).toMatchObject({ label: '3 rondas', type: 'group' });
-    expect(at('For time\n10 burpees\n\nEnf')?.options[0]?.label).toBe('Enfriamiento');
+    expect(at('For time\n10 burpees\n\nEst')?.options[0]?.label).toBe('Estiramiento');
   });
 
   it('suggests exercises after a count inside a group, and formats by prefix anywhere', () => {
@@ -448,7 +448,7 @@ Enfriamiento
 Fuerza
   sentadilla 5x5
 
-Enfriamiento
+Estiramiento
   plancha 1 min
 `;
     const first = toWorkoutInput(parse(text));
@@ -460,7 +460,7 @@ Enfriamiento
 Fuerza
   5x5 Sentadilla
 
-Enfriamiento
+Estiramiento
   Plancha 1 min
 `);
     expect(toWorkoutInput(parse(out))).toEqual(first);

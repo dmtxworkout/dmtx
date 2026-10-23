@@ -136,11 +136,15 @@ export interface WorkoutDetail {
   difficulty: Difficulty | null;
   estimatedDurationSeconds: number | null;
   thumbnailUrl: string | null;
-  /** HLS manifest (Cloudflare Stream, signed for 24 h); expo-video plays it and the downloads module stores it offline. */
+  /** Each section may be a video (signed HLS manifest, 24 h): the main class, the warm-up, the stretch. expo-video plays them; the downloads module stores them offline. */
   videoUrl: string | null;
+  warmupVideoUrl: string | null;
+  cooldownVideoUrl: string | null;
   /** A video is attached but not playable yet (still uploading or processing). */
   videoPending: boolean;
   videoDurationSeconds: number | null;
+  warmupVideoDurationSeconds: number | null;
+  cooldownVideoDurationSeconds: number | null;
   /** Tags derived from the exercises: muscle groups worked (primary) and equipment needed. */
   muscles: string[];
   equipment: string[];

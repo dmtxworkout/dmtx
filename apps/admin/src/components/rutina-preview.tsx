@@ -45,9 +45,11 @@ export type PvBlock = {
   loose?: boolean;
 };
 export type PvSection = { name: string | null; formatLabel?: string | null; blocks: PvBlock[] };
+/** A section that is a video: its length, or `missing` while no file is chosen. */
+export type PvVideo = { seconds: number | null; missing: boolean };
 export type PvModel = {
-  type: 'structured' | 'video';
-  hasVideo: boolean;
+  /** The sections that are videos instead of text. */
+  videos: Partial<Record<'warmup' | 'main' | 'cooldown', PvVideo>>;
   formatLabel: string;
   headline: string;
   warmup: PvSection | null;
@@ -137,6 +139,26 @@ function Blocks({ blocks }: { blocks: PvBlock[] }) {
   );
 }
 
+const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+/** A section the athlete plays as a video. */
+function VideoSection({ label, video }: { label: string; video: PvVideo }) {
+  return (
+    <section>
+      <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">{label}</div>
+      {video.missing ? (
+        <div className="text-[13px] text-muted">Sube un video para esta sección</div>
+      ) : (
+        <div className="flex items-center gap-2 text-[14px] text-ink">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink text-[10px] text-white">▶</span>
+          <span className="font-medium">Clase en video</span>
+          {video.seconds ? <span className="font-mono text-[12px] text-muted">{mmss(video.seconds)}</span> : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Section({ label, blocks }: { label: string; blocks: PvBlock[] }) {
   const empty = !blocks.some(function has(b): boolean {
     return b.items.length > 0 || (b.blocks ?? []).some(has);
@@ -169,7 +191,8 @@ export function RutinaPreview({
   const hasContent = (blocks: PvBlock[]): boolean => blocks.some((b) => b.items.length > 0 || hasContent(b.blocks ?? []));
   const mainHasContent = hasContent(model.main);
   const goals = model.goals ?? [];
-  const empty = !model.warmup && !model.cooldown && !mainHasContent && !model.hasVideo && !goals.length;
+  const videoCount = Object.keys(model.videos).length;
+  const empty = !model.warmup && !model.cooldown && !mainHasContent && !videoCount && !goals.length;
   // The main section is headed by the format itself (e.g. "AMRAP 10 min").
   const mainLabel = `${model.formatLabel}${model.headline ? ` ${model.headline}` : ''}`;
 
@@ -194,28 +217,32 @@ export function RutinaPreview({
           <div className="py-8 text-center">
             <div className="text-[13px] font-semibold text-ink-3">Aún no hay nada que mostrar</div>
             <div className="mt-1 text-[12px] leading-snug text-muted">
-              Añade ejercicios, un calentamiento o un enfriamiento y aparecerán aquí tal como los verá
+              Añade ejercicios, un calentamiento o un estiramiento y aparecerán aquí tal como los verá
               el usuario.
             </div>
           </div>
-        ) : model.type === 'video' ? (
-          <div className="py-8 text-center text-[13px] text-ink-3">
-            {model.hasVideo ? 'Rutina en video' : 'Sube un video para esta rutina'}
-          </div>
         ) : (
           <div className="flex flex-col gap-6">
-            {model.warmup && (
-              <Section
-                label={`Calentamiento${model.warmup.formatLabel ? ` · ${model.warmup.formatLabel}` : ''}`}
-                blocks={model.warmup.blocks}
-              />
+            {model.videos.warmup ? (
+              <VideoSection label="Calentamiento" video={model.videos.warmup} />
+            ) : (
+              model.warmup && (
+                <Section
+                  label={`Calentamiento${model.warmup.formatLabel ? ` · ${model.warmup.formatLabel}` : ''}`}
+                  blocks={model.warmup.blocks}
+                />
+              )
             )}
-            <Section label={mainLabel} blocks={model.main} />
-            {model.cooldown && (
-              <Section
-                label={`Enfriamiento${model.cooldown.formatLabel ? ` · ${model.cooldown.formatLabel}` : ''}`}
-                blocks={model.cooldown.blocks}
-              />
+            {model.videos.main ? <VideoSection label={model.formatLabel || 'Rutina'} video={model.videos.main} /> : <Section label={mainLabel} blocks={model.main} />}
+            {model.videos.cooldown ? (
+              <VideoSection label="Estiramiento" video={model.videos.cooldown} />
+            ) : (
+              model.cooldown && (
+                <Section
+                  label={`Estiramiento${model.cooldown.formatLabel ? ` · ${model.cooldown.formatLabel}` : ''}`}
+                  blocks={model.cooldown.blocks}
+                />
+              )
             )}
             {goals.length > 0 && (
               <section>
@@ -292,13 +319,28 @@ const pvBlock = (b: ParsedBlock): PvBlock => ({
 });
 const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
 
+/** Which sections are videos, with their files and lengths as the editor knows them. */
+export type PvSections = {
+  kinds: Record<'warmup' | 'main' | 'cooldown', 'text' | 'video'>;
+  videos: Record<'warmup' | 'main' | 'cooldown', string | null>;
+  durations: Record<'warmup' | 'main' | 'cooldown', number | null>;
+};
+const ALL_TEXT: PvSections = {
+  kinds: { warmup: 'text', main: 'text', cooldown: 'text' },
+  videos: { warmup: null, main: null, cooldown: null },
+  durations: { warmup: null, main: null, cooldown: null },
+};
+
 export function previewFrom(
   parsed: ParsedRutina,
-  type: 'structured' | 'video',
-  hasVideo: boolean,
+  sections: PvSections = ALL_TEXT,
   /** A reusable block is one piece of text: no "Rutina" section label over it. */
   blockMode = false,
 ): PvModel {
+  const videos: PvModel['videos'] = {};
+  for (const sec of ['warmup', 'main', 'cooldown'] as const) {
+    if (sections.kinds[sec] === 'video') videos[sec] = { seconds: sections.durations[sec], missing: !sections.videos[sec] };
+  }
   // Parts carry the format headers inside the list, so the section labels are plain.
   const section = (s: 'warmup' | 'cooldown'): PvSection | null => {
     const blocks = parsed.blocks.filter((b) => b.section === s);
@@ -306,9 +348,8 @@ export function previewFrom(
     return { name: null, formatLabel: null, blocks: pvBlocks(blocks) };
   };
   return {
-    type,
-    hasVideo,
-    formatLabel: blockMode ? '' : type === 'structured' ? 'Rutina' : 'Video',
+    videos,
+    formatLabel: blockMode ? '' : 'Rutina',
     headline: '',
     warmup: section('warmup'),
     main: pvBlocks(parsed.blocks.filter((b) => b.section === 'main')),

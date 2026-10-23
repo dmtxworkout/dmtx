@@ -35,6 +35,8 @@ type ExerciseRow = typeof exercises.$inferSelect;
 
 const url = (m: Map<string, ResolvedMedia>, id: string | null): string | null =>
   id ? (m.get(id)?.url ?? null) : null;
+const duration = (m: Map<string, ResolvedMedia>, id: string | null): number | null =>
+  id ? (m.get(id)?.durationSeconds ?? null) : null;
 
 const mins = (seconds: number | null): number | null =>
   seconds ? Math.max(1, Math.round(seconds / 60)) : null;
@@ -571,6 +573,8 @@ appRoute.get('/workouts/:id', async (c) => {
   const media = await resolveMediaUrls(db, c.env, [
     w.thumbnailAssetId,
     w.videoAssetId,
+    w.warmupVideoAssetId,
+    w.cooldownVideoAssetId,
     ...exRows.map((e) => e.demoVideoAssetId),
     ...exRows.map((e) => e.thumbnailAssetId),
   ]);
@@ -592,11 +596,15 @@ appRoute.get('/workouts/:id', async (c) => {
     difficulty: w.difficulty,
     estimatedDurationSeconds: w.estimatedDurationSeconds,
     thumbnailUrl: url(media, w.thumbnailAssetId),
-    // The signed HLS manifest: the app streams it, and downloads it for offline use at the quality it chooses.
+    // Each section may be a video: the signed HLS manifest the app streams (and downloads for offline use).
     videoUrl: url(media, w.videoAssetId),
+    warmupVideoUrl: url(media, w.warmupVideoAssetId),
+    cooldownVideoUrl: url(media, w.cooldownVideoAssetId),
     // The admin attached a video that is still uploading or processing.
-    videoPending: !!w.videoAssetId && !url(media, w.videoAssetId),
-    videoDurationSeconds: w.videoDurationSeconds,
+    videoPending: [w.videoAssetId, w.warmupVideoAssetId, w.cooldownVideoAssetId].some((id) => !!id && !url(media, id)),
+    videoDurationSeconds: duration(media, w.videoAssetId),
+    warmupVideoDurationSeconds: duration(media, w.warmupVideoAssetId),
+    cooldownVideoDurationSeconds: duration(media, w.cooldownVideoAssetId),
     // The player builds each part's timing from its block; nothing at this level.
     formatConfig: null,
     scoringGoal: w.scoringGoal ?? null,

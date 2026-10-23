@@ -1,5 +1,5 @@
 import { Alert, Pressable, Text, View } from 'react-native';
-import { enqueueDownload, formatBytes, removeDownloadEntry, retryDownload, useDownload } from '../lib/downloads';
+import { enqueueDownload, formatBytes, removeDownloadEntry, retryDownload, sectionVideos, useDownload } from '../lib/downloads';
 import type { WorkoutDetail } from '../lib/types';
 
 /**
@@ -9,7 +9,7 @@ import type { WorkoutDetail } from '../lib/types';
  */
 export function DownloadButton({ workout }: { workout: WorkoutDetail }) {
   const d = useDownload(workout.id);
-  const disabled = !workout.videoUrl && !d;
+  const disabled = !sectionVideos(workout).length && !d;
 
   function onPress() {
     if (!d) {

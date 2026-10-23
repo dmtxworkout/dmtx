@@ -26,7 +26,7 @@ import type {
  * Rutina text grammar (line based, Spanish/English keywords, case- and
  * accent-insensitive). See docs/rutina-text.md for the human version.
  *
- *   Calentamiento               section header (also Enfriamiento, Rutina)
+ *   Calentamiento               section header (also Estiramiento, Rutina; Enfriamiento is still read)
  *   AMRAP 12 min                a PART: a format + the blocks indented under it
  *   3 rondas, descanso 1 min    group header; items follow until a blank line
  *   41 burpees                  item: count + exercise + modifiers
@@ -53,7 +53,7 @@ function mask(s: string, re: RegExp): { m: RegExpMatchArray | null; s: string } 
 }
 
 const SECTION_RE =
-  /^\s*(calentamiento|warm ?-?up|enfriamiento|cool ?-?down|vuelta a la calma|principal|main|rutina|wod|objetivo|objetivos|goal|goals)\s*:?\s*$/;
+  /^\s*(calentamiento|warm ?-?up|estiramientos?|stretch(?:ing)?|enfriamiento|cool ?-?down|vuelta a la calma|principal|main|rutina|wod|objetivo|objetivos|goal|goals)\s*:?\s*$/;
 const SECTION_OF: Record<string, BlockSection> = {
   objetivo: 'goal',
   objetivos: 'goal',
@@ -63,6 +63,10 @@ const SECTION_OF: Record<string, BlockSection> = {
   warmup: 'warmup',
   'warm-up': 'warmup',
   'warm up': 'warmup',
+  estiramiento: 'cooldown',
+  estiramientos: 'cooldown',
+  stretch: 'cooldown',
+  stretching: 'cooldown',
   enfriamiento: 'cooldown',
   cooldown: 'cooldown',
   'cool-down': 'cooldown',
@@ -93,6 +97,7 @@ const KEYWORDS = [
   'rondas',
   'superserie',
   'calentamiento',
+  'estiramiento',
   'enfriamiento',
   'rutina',
   'amrap',

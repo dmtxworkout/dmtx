@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button, Loading, Thumb } from '../../../components/ui';
 import { DownloadButton } from '../../../components/download-button';
 import { api } from '../../../lib/api';
-import { useDownload } from '../../../lib/downloads';
+import { sectionVideos, useDownload } from '../../../lib/downloads';
 import { difficultyLabel, es, formatLabel } from '../../../i18n';
 import { durationLabel, loadLabel, mmss, pluralName, targetLabel, tempoDash } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
@@ -142,11 +142,19 @@ export default function RutinaDetalle() {
     flush();
     return out;
   };
-  const sections = [
+  // A section that is a video shows as one row; text sections list their parts.
+  type Sec = { key: string; label: string; units: PvUnit[]; video?: { seconds: number | null } };
+  const videoSec = (section: 'warmup' | 'main' | 'cooldown', label: string, url: string | null, seconds: number | null): Sec[] =>
+    url || (section === 'main' && w.type === 'video') ? [{ key: `video-${section}`, label, units: [], video: { seconds } }] : [];
+  const allSections: Sec[] = [
+    ...videoSec('warmup', 'Calentamiento', w.warmupVideoUrl, w.warmupVideoDurationSeconds),
     ...partsOf('warmup', 'Calentamiento'),
+    ...videoSec('main', 'Rutina', w.videoUrl, w.videoDurationSeconds),
     ...partsOf('main', 'Rutina'),
-    ...partsOf('cooldown', 'Enfriamiento'),
-  ].filter((s) => s.units.length > 0);
+    ...videoSec('cooldown', 'Estiramiento', w.cooldownVideoUrl, w.cooldownVideoDurationSeconds),
+    ...partsOf('cooldown', 'Estiramiento'),
+  ];
+  const sections = allSections.filter((s) => s.units.length > 0 || s.video);
 
   return (
     <View className="flex-1 bg-bg">
@@ -228,6 +236,19 @@ export default function RutinaDetalle() {
                 <Text className="font-mono-semibold text-[10px] uppercase tracking-widest text-ink-3">
                   {sec.label}
                 </Text>
+                {sec.video ? (
+                  <View className="flex-row items-center gap-3">
+                    <View className="h-9 w-[58px] items-center justify-center rounded-[7px] bg-surface-2">
+                      <Text className="text-[13px] text-ink">▶</Text>
+                    </View>
+                    <View className="min-w-0 flex-1">
+                      <Text className="font-semibold text-[14px] text-ink">Clase en video</Text>
+                      <Text className="font-mono text-[10px] text-ink-3">
+                        {w.videoPending && !sec.video.seconds ? 'El video se está preparando' : durationLabel(sec.video.seconds)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
                 {sec.units.map((u, ui) => (
                   <View key={ui} className="gap-2">
                     {u.rounds != null && u.rounds > 1 ? (
@@ -273,11 +294,8 @@ export default function RutinaDetalle() {
                 ))}
               </View>
             ))}
-            {w.type === 'video' ? (
-              <Text className="font-sans text-[14px] leading-6 text-ink-3">
-                Rutina en video · {durationLabel(w.videoDurationSeconds)}
-                {download?.status === 'done' ? ' · Disponible sin conexión' : ''}
-              </Text>
+            {download?.status === 'done' ? (
+              <Text className="font-sans text-[13px] leading-6 text-ink-3">Disponible sin conexión</Text>
             ) : null}
           </View>
         </View>
@@ -291,11 +309,11 @@ export default function RutinaDetalle() {
         <Pressable className="h-[52px] w-[52px] items-center justify-center rounded-xl bg-surface-2">
           <Text className="text-[19px] text-ink">♡</Text>
         </Pressable>
-        {w.type === 'video' ? <DownloadButton workout={w} /> : null}
+        {sectionVideos(w).length ? <DownloadButton workout={w} /> : null}
         <Button
-          label={variantId && !vq.data ? 'Cargando…' : w.type === 'video' ? 'Ver rutina' : 'Empezar rutina'}
+          label={variantId && !vq.data ? 'Cargando…' : 'Empezar rutina'}
           className="flex-1"
-          onPress={() => router.push(w.type === 'video' ? `/(app)/video/${playId}` : `/(app)/entrenar/${playId}`)}
+          onPress={() => router.push(`/(app)/entrenar/${playId}`)}
         />
       </View>
     </View>

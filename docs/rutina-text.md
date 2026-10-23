@@ -23,7 +23,7 @@ For time cap 20 min
 
   41 burpees
 
-Enfriamiento
+Estiramiento
   plancha 1 min
 ```
 
@@ -36,7 +36,7 @@ mode: a header with nothing indented under it is simply empty (and warned
 about), and blank lines never close anything.
 
 The admin edits each section in its own tab (Rutina · Calentamiento ·
-Enfriamiento), so the headers are never typed there: `splitSections` /
+Estiramiento), so the headers are never typed there: `splitSections` /
 `joinSections` in `@dmtx/core` turn the stored document into three unindented
 texts and back. Variants (RX / Escalada) are whole versions of the rutina,
 switched from the same bar.
@@ -45,7 +45,7 @@ switched from the same bar.
 
 | Line | Meaning |
 |---|---|
-| `Calentamiento` / `Enfriamiento` (/ `Rutina`) | Section header (`warmup` / `cooldown` / `main`). Content indented under it belongs to it; dedent returns to `main`. Also `Warmup`, `Cooldown`, `Vuelta a la calma`. |
+| `Calentamiento` / `Estiramiento` (/ `Rutina`) | Section header (`warmup` / `cooldown` / `main`). Content indented under it belongs to it; dedent returns to `main`. Also `Warmup`, `Stretch`, `Cooldown`, `Enfriamiento`, `Vuelta a la calma` (the serializer writes `Estiramiento`). |
 | `AMRAP 12 min` | **Part**: a format header; the blocks indented under it play on that format. A section can hold several parts in sequence, plus loose blocks outside any part (played once, in order). Parts and groups nest freely by indentation: `EMOM … › 3 rondas › AMRAP 3 min › exercises`. A container holds either exercise lines or child blocks; lines after a nested block become loose runs among the children, order kept. Main without any part defaults to `For time`. |
 | `3 rondas, descanso 1 min - Pierna:` | **Group header** → block with `rounds`, optional trailing rest item and label. Also `Superserie`, `Circuito 3 rondas`, `Bloque:`, `5 series`. Its items are the lines indented under it; blank lines change nothing, dedenting to the header's column leaves the group. A header with no exercise indented under it gets an `empty_group` warning. |
 | `41 burpees` | **Item**: count + exercise + modifiers (see below). A loose item is its own single block. |

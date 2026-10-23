@@ -239,6 +239,20 @@
       "when": 1792694759564,
       "tag": "0033_media_external_id_name",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1792777184032,
+      "tag": "0034_workouts_section_videos",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1792777184521,
+      "tag": "0035_workouts_drop_video_duration",
+      "breakpoints": true
     }
   ]
 }

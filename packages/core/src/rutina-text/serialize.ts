@@ -143,7 +143,7 @@ export function itemLine(it: SerializableItem, name: string, format: WorkoutForm
 const SECTION_TITLE: Record<BlockSection, string> = {
   warmup: 'Calentamiento',
   main: 'Rutina',
-  cooldown: 'Enfriamiento',
+  cooldown: 'Estiramiento',
   goal: 'Objetivo',
 };
 

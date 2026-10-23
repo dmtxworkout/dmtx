@@ -1,0 +1,1 @@
+ALTER TABLE "workouts" DROP COLUMN "video_duration_seconds";

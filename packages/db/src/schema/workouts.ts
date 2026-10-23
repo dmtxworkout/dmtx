@@ -21,9 +21,11 @@ import { skills } from './skills';
 import { programs } from './programs';
 
 /**
- * A workout (rutina). Polymorphic via `type`:
- *  - structured: built from blocks/items; `format` + `formatConfig` drive timing.
- *  - video: a single video (`videoAssetId`); `format`/blocks are null.
+ * A workout (rutina) in three sections (warm-up, main, stretch), each either
+ * text (blocks with that `section`) or a video (`warmupVideoAssetId`,
+ * `videoAssetId`, `cooldownVideoAssetId`). `type` says what the main section
+ * is (`video` when `videoAssetId` is set), for lists and filters; `format` is
+ * the main section's first part's. Video durations come from media_assets.
  */
 export const workouts = pgTable('workouts', {
   id: primaryId(),
@@ -44,7 +46,8 @@ export const workouts = pgTable('workouts', {
   // A program day's rutina belongs to the program the same way.
   ownerProgramId: uuid().references(() => programs.id, { onDelete: 'cascade' }),
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
-  videoDurationSeconds: integer(),
+  warmupVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
+  cooldownVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.
   variantOfId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'cascade' }),
   variantLabel: text(),

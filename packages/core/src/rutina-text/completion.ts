@@ -23,7 +23,7 @@ export interface CompletionExtra {
 export interface CompletionOptions {
   explicit?: boolean;
   extras?: CompletionExtra[];
-  /** Offer "Calentamiento" / "Enfriamiento" headers (off when sections are edited in tabs). */
+  /** Offer "Calentamiento" / "Estiramiento" headers (off when sections are edited in tabs). */
   sections?: boolean;
   /**
    * Offer structure while typing: formats, rondas, descanso, templates, blocks,
@@ -138,7 +138,7 @@ const FORMAT_UNITS: Record<FormatKey, Unit[]> = {
 
 const SECTIONS: Completion[] = [
   { label: 'Calentamiento', detail: 'lo indentado debajo es el calentamiento', type: 'section', apply: 'Calentamiento' },
-  { label: 'Enfriamiento', detail: 'lo indentado debajo es el enfriamiento', type: 'section', apply: 'Enfriamiento' },
+  { label: 'Estiramiento', detail: 'lo indentado debajo es el estiramiento', type: 'section', apply: 'Estiramiento' },
   { label: 'Rutina', detail: 'vuelve a la parte principal (o quita la sangría)', type: 'section', apply: 'Rutina' },
   { label: 'Objetivo', detail: 'marcas que desbloquean el siguiente nivel (habilidades)', type: 'section', apply: 'Objetivo' },
 ];

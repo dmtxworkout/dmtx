@@ -58,13 +58,17 @@ export const createWorkoutSchema = z.object({
   name: z.string().min(1).max(200),
   slug: slugSchema.optional(),
   description: z.string().max(5000).nullish(),
-  type: workoutTypeSchema,
+  /** Derived by the API from the main section: `video` when `videoAssetId` is set. */
+  type: workoutTypeSchema.optional(),
   format: workoutFormatSchema.nullish(),
   difficulty: difficultySchema,
   status: contentStatusSchema.default('draft'),
   thumbnailAssetId: uuidSchema.nullish(),
+  // Each section is a video or text (its blocks): the main section's video,
+  // and the warm-up's and the stretch's. Durations come from the media assets.
   videoAssetId: uuidSchema.nullish(),
-  videoDurationSeconds: z.number().int().positive().nullish(),
+  warmupVideoAssetId: uuidSchema.nullish(),
+  cooldownVideoAssetId: uuidSchema.nullish(),
   scoringGoal: goalSchema.nullish(),
   // The rutina as the admin wrote it (comments and spacing included); the
   // editor reopens this text instead of regenerating it from the blocks.
@@ -111,7 +115,8 @@ export const workoutSchema = z.object({
   status: contentStatusSchema,
   thumbnailAssetId: uuidSchema.nullable(),
   videoAssetId: uuidSchema.nullable(),
-  videoDurationSeconds: z.number().nullable(),
+  warmupVideoAssetId: uuidSchema.nullable(),
+  cooldownVideoAssetId: uuidSchema.nullable(),
   scoringGoal: goalSchema.nullable(),
   sourceText: z.string().nullable(),
   variantOfId: uuidSchema.nullable(),
