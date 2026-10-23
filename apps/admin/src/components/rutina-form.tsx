@@ -138,7 +138,7 @@ const dayHasContent = (d: DayState) => (d.type === 'video' ? !!d.videoAssetId : 
 const dayLabel = (i: number) => `${es.programs.day} ${i + 1}`;
 // Programs are written in whole weeks that start on Monday.
 const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-const WEEKDAY_INITIALS = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const WEEKDAY_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
 
 /**
@@ -337,19 +337,22 @@ function WeekStrip({
             }}
             title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : d.type === 'video' ? 'video' : 'rutina'}`}
             className={cn(
-              'flex h-9 w-11 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
-              // The cell itself says what the day is: filled with a stripe at the
-              // bottom (orange = rutina, blue = video), dashed = empty, hatched = rest.
+              'flex h-9 w-12 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
+              // The cell names its weekday and says in words what the day holds
+              // (rutina / video); dashed = empty, hatched = rest.
               isActive ? 'border-accent font-semibold text-accent-dark' : d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
               isActive ? (d.isRestDay ? '' : 'bg-accent-tint') : 'hover:border-line-3 hover:text-ink',
-              has && !d.isRestDay && (d.type === 'video' ? 'shadow-[inset_0_-3px_0_#0451a5]' : 'shadow-[inset_0_-3px_0_var(--color-accent)]'),
               uploadingVideo(d) && 'animate-pulse',
               over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
             )}
             style={d.isRestDay ? { background: HATCH } : undefined}
           >
-            <span className={cn('mb-0.5 text-[9px]', isActive ? 'text-accent-dark/70' : 'text-faint-2')}>{WEEKDAY_INITIALS[j]}</span>
-            <span>{i + 1}</span>
+            <span>{WEEKDAY_SHORT[j]}</span>
+            {has && !d.isRestDay && (
+              <span className={cn('mt-0.5 text-[8.5px]', isActive ? 'text-accent-dark/70' : 'text-muted')}>
+                {d.type === 'video' ? 'video' : 'rutina'}
+              </span>
+            )}
           </button>
         );
       })}
@@ -1135,7 +1138,7 @@ export function RutinaForm({
               {/* What the day is */}
               <div className="flex min-w-0 flex-1 items-center gap-2">
                 <span className="shrink-0 font-mono text-[11px] text-ink-2">
-                  <span className="font-semibold">{dayLabel(activeDay)}</span> · {WEEKDAYS[activeDay % 7]}
+                  <span className="font-semibold">{WEEKDAYS[activeDay % 7]}</span>
                 </span>
                 <span className="flex-1" />
                 <div className="flex shrink-0 items-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]">
