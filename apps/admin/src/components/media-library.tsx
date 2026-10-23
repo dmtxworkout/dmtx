@@ -23,7 +23,7 @@ import {
   useUploads,
   type UploadEntry,
 } from '@/lib/uploads';
-import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
+import { USAGE_LABEL_PLURAL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
 import { FolderIcon } from '@/components/folder-picker';
 import { IconButton } from '@/components/ui/icon-button';
 import { Popover } from '@/components/ui/popover';
@@ -32,6 +32,7 @@ import { toast } from '@/components/ui/toast';
 export type MediaKindFilter = 'all' | 'image' | 'video';
 
 const ReplaceIcon = ({ className }: { className?: string }) => (
+  // Two curved arrows (swap): the file is exchanged for another.
   <svg
     viewBox="0 0 24 24"
     fill="none"
@@ -42,10 +43,10 @@ const ReplaceIcon = ({ className }: { className?: string }) => (
     className={className}
     aria-hidden="true"
   >
-    <path d="M4 7h11l-3-3" />
-    <path d="M20 17H9l3 3" />
-    <rect x="4" y="11" width="6" height="9" rx="1" />
-    <rect x="14" y="4" width="6" height="9" rx="1" />
+    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+    <path d="M16 16h5v5" />
   </svg>
 );
 const LinkIcon = ({ className }: { className?: string }) => (
@@ -64,7 +65,7 @@ const LinkIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-/** «N usos ▾» with the list in a popover at the document root (a scrolling table cannot clip it). */
+/** «N usos» with the list in a popover at the document root (a scrolling table cannot clip it): grouped by kind of content, each a row that opens it. */
 function UsageCell({
   id,
   usage,
@@ -79,36 +80,61 @@ function UsageCell({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const groups = (['program', 'workout', 'exercise', 'skill', 'skillLevel', 'collection'] as const)
+    .map((type) => [type, usage.filter((u) => u.type === type)] as const)
+    .filter(([, items]) => items.length);
   return (
     <>
       <button
         ref={ref}
         type="button"
         onClick={onToggle}
-        className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12.5px] font-medium text-ink hover:bg-surface-3"
+        className={cn(
+          'inline-flex items-center gap-1 whitespace-nowrap rounded-md border px-2 py-1 text-[12px] font-medium text-ink transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          open
+            ? 'border-line-2 bg-surface-2'
+            : 'border-transparent hover:border-line-2 hover:bg-surface',
+        )}
         aria-expanded={open}
         aria-controls={`usage-${id}`}
       >
-        {usage.length} {usage.length === 1 ? 'uso' : 'usos'} ▾
+        {usage.length} {usage.length === 1 ? 'uso' : 'usos'}
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3 w-3 text-ink-3"
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </button>
       {open && (
-        <Popover anchor={ref} onClose={onClose}>
-          <ul id={`usage-${id}`} className="flex flex-col gap-1">
-            {usage.map((u) => (
-              <li key={`${u.type}-${u.id}-${u.field}`} className="text-[12.5px]">
-                <Link
-                  href={`${USAGE_PATH[u.type]}/${u.id}`}
-                  className="font-medium text-accent hover:text-accent-dark"
-                >
-                  {u.name}
-                </Link>
-                <span className="text-muted">
-                  {' '}
-                  · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
-                </span>
-              </li>
+        <Popover anchor={ref} onClose={onClose} width={300}>
+          <div id={`usage-${id}`} className="flex flex-col">
+            {groups.map(([type, items]) => (
+              <div key={type} className="py-1">
+                <div className="px-2 pb-1 pt-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-2">
+                  {USAGE_LABEL_PLURAL[type]}
+                </div>
+                {items.map((u) => (
+                  <Link
+                    key={`${u.id}-${u.field}`}
+                    href={`${USAGE_PATH[u.type]}/${u.id}`}
+                    className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-[13px] text-ink hover:bg-surface-2"
+                  >
+                    <span className="truncate font-medium">{u.name}</span>
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-muted">
+                      {usageFieldLabel(u.field)}
+                    </span>
+                  </Link>
+                ))}
+              </div>
             ))}
-          </ul>
+          </div>
         </Popover>
       )}
     </>
@@ -591,7 +617,7 @@ export function MediaBrowser({
                               setTimeout(() => replaceRef.current?.click(), 0);
                             }}
                           >
-                            <ReplaceIcon className="h-4 w-4" />
+                            <ReplaceIcon className="h-[17px] w-[17px]" />
                           </IconButton>
                         )}
                         {!pending && (m.kind === 'image' ? m.viewUrl : m.embedUrl) && (
@@ -606,7 +632,7 @@ export function MediaBrowser({
                                 .then(() => toast('Enlace copiado'));
                             }}
                           >
-                            <LinkIcon className="h-4 w-4" />
+                            <LinkIcon className="h-[17px] w-[17px]" />
                           </IconButton>
                         )}
                       </div>

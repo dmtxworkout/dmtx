@@ -9,6 +9,14 @@ export const USAGE_LABEL: Record<MediaUsageItem['type'], string> = {
   skillLevel: 'Nivel de habilidad',
   collection: 'Colección',
 };
+export const USAGE_LABEL_PLURAL: Record<MediaUsageItem['type'], string> = {
+  exercise: 'Ejercicios',
+  workout: 'Rutinas',
+  program: 'Programas',
+  skill: 'Habilidades',
+  skillLevel: 'Niveles de habilidad',
+  collection: 'Colecciones',
+};
 export const USAGE_PATH: Record<MediaUsageItem['type'], string> = {
   exercise: '/ejercicios',
   workout: '/rutinas',
@@ -17,4 +25,5 @@ export const USAGE_PATH: Record<MediaUsageItem['type'], string> = {
   skillLevel: '/habilidades',
   collection: '/colecciones',
 };
-export const usageFieldLabel = (field: MediaUsageItem['field']) => (field === 'video' ? 'video' : 'portada');
+export const usageFieldLabel = (field: MediaUsageItem['field']) =>
+  field === 'video' ? 'video' : 'portada';
