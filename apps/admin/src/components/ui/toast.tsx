@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 type Variant = 'success' | 'error';
-type Toast = { id: number; message: string; variant: Variant };
+type Toast = { id: number; message: ReactNode; variant: Variant };
 
 // Tiny sonner-style store so `toast()` can be called from anywhere without
 // threading a context through every component.
@@ -13,7 +13,7 @@ let listeners: Array<() => void> = [];
 let counter = 0;
 const emit = () => listeners.forEach((l) => l());
 
-export function toast(message: string, variant: Variant = 'success') {
+export function toast(message: ReactNode, variant: Variant = 'success') {
   const id = (counter += 1);
   toasts = [...toasts, { id, message, variant }];
   emit();

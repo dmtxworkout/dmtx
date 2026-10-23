@@ -211,7 +211,7 @@ export function MediaViewer({ id }: { id: string }) {
           {used.length ? (
             <>
               <p className="text-[14px] leading-relaxed text-ink-2">
-                «{a.name}» se usa en {used.length === 1 ? 'este contenido' : `estos ${used.length} contenidos`}. Quítalo de ahí (o cámbialo por otro archivo) y vuelve a intentarlo.
+                <strong className="font-semibold text-ink">{a.name}</strong> se usa en {used.length === 1 ? 'este contenido' : `estos ${used.length} contenidos`}. Quítalo de ahí (o cámbialo por otro archivo) y vuelve a intentarlo.
               </p>
               <ul className="flex flex-col gap-1">
                 {used.map((u) => (
@@ -234,7 +234,9 @@ export function MediaViewer({ id }: { id: string }) {
             </>
           ) : (
             <>
-              <p className="text-[14px] leading-relaxed text-ink-2">¿Eliminar «{a.name}»? Ningún contenido lo usa. El archivo se borra también de Cloudflare.</p>
+              <p className="text-[14px] leading-relaxed text-ink-2">
+                ¿Eliminar <strong className="font-semibold text-ink">{a.name}</strong>? Ningún contenido lo usa. El archivo se borra también de Cloudflare.
+              </p>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
                   {es.app.cancel}

@@ -7,7 +7,7 @@
 // navigation (the app is a single page); only a reload or closing the tab
 // loses it, and the tray warns before that. An upload can be cancelled (one
 // or all): the transfer stops and the record and the file at Cloudflare go.
-import { useEffect, useState } from 'react';
+import { createElement, Fragment, useEffect, useState } from 'react';
 import { isUploadCancelled, type MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { prepareImage } from '@/lib/prepare-image';
@@ -67,7 +67,12 @@ async function checkDuplicate(file: File, kind: 'image' | 'video') {
   const when = new Date(found.createdAt).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
   const ok = await confirm({
     title: 'Ya existe un archivo con ese nombre',
-    message: `«${found.name}» ya está en la biblioteca (subido el ${when}). Si es el mismo archivo, elígelo de la biblioteca en vez de subirlo otra vez: cada copia ocupa espacio y se cobra.`,
+    message: createElement(
+      Fragment,
+      null,
+      createElement('strong', null, found.name),
+      ` ya está en la biblioteca (subido el ${when}). Si es el mismo archivo, elígelo de la biblioteca en vez de subirlo otra vez: cada copia ocupa espacio y se cobra.`,
+    ),
     confirmLabel: 'Subir de todos modos',
     cancelLabel: 'No subir',
   });

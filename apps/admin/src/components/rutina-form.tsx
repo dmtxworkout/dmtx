@@ -1045,7 +1045,12 @@ export function RutinaForm({
           if (errors.length) {
             setActiveDay(i);
             setActiveSection(p.lines[errors[0]!.line]?.section ?? 'main');
-            toast(`${errors.length === 1 ? 'Hay 1 línea con error' : `Hay ${errors.length} líneas con error`} en «${dayLabel(i)}». Corrígelo antes de guardar.`, 'error');
+            toast(
+              <>
+                {errors.length === 1 ? 'Hay 1 línea con error' : `Hay ${errors.length} líneas con error`} en <strong className="font-extrabold">{dayLabel(i)}</strong>. Corrígelo antes de guardar.
+              </>,
+              'error',
+            );
             shakeBar();
             return;
           }
@@ -1053,7 +1058,12 @@ export function RutinaForm({
         // A published program can't have a day with nothing in it: write it or make it a rest day.
         if (status === 'published' && !dayHasContent(d)) {
           setActiveDay(i);
-          toast(`«${dayLabel(i)}» está vacío. Escribe su rutina, elige un video o márcalo como descanso antes de publicar.`, 'error');
+          toast(
+            <>
+              <strong className="font-extrabold">{dayLabel(i)}</strong> está vacío. Escribe su rutina, elige un video o márcalo como descanso antes de publicar.
+            </>,
+            'error',
+          );
           shakeBar();
           return;
         }
@@ -1066,7 +1076,12 @@ export function RutinaForm({
       const missing = VIDEO_SECTIONS.find((sec) => kinds[sec] === 'video' && !videos[sec]);
       if (missing) {
         setActiveSection(missing);
-        toast(`La sección «${SECTION_TAB[missing]}» es un video pero aún no tiene ninguno. Súbelo o elígelo de la biblioteca antes de publicar.`, 'error');
+        toast(
+          <>
+            La sección <strong className="font-extrabold">{SECTION_TAB[missing]}</strong> es un video pero aún no tiene ninguno. Súbelo o elígelo de la biblioteca antes de publicar.
+          </>,
+          'error',
+        );
         shakeBar();
         return;
       }
@@ -1082,9 +1097,16 @@ export function RutinaForm({
           setActiveSection(p.lines[errors[0]!.line]?.section ?? 'main');
           // Not saved: a toast says why and the bar shakes, like a blocked navigation.
           toast(
-            (n === 1 ? 'Hay 1 línea con error' : `Hay ${n} líneas con error`) +
-              (all.length > 1 ? ` en «${all[i]!.label}»` : '') +
-              '. Corrígelo antes de guardar.',
+            <>
+              {n === 1 ? 'Hay 1 línea con error' : `Hay ${n} líneas con error`}
+              {all.length > 1 && (
+                <>
+                  {' '}
+                  en <strong className="font-extrabold">{all[i]!.label}</strong>
+                </>
+              )}
+              . Corrígelo antes de guardar.
+            </>,
             'error',
           );
           shakeBar();
@@ -1100,7 +1122,12 @@ export function RutinaForm({
         if (!goals.length) {
           setActiveTab(i);
           setActiveSection('goal');
-          toast(`El nivel «${all[i]!.label || `Nivel ${i + 1}`}» no tiene objetivo: nadie podría pasar al siguiente. Escríbelo en su pestaña Objetivo.`, 'error');
+          toast(
+            <>
+              El nivel <strong className="font-extrabold">{all[i]!.label || `Nivel ${i + 1}`}</strong> no tiene objetivo: nadie podría pasar al siguiente. Escríbelo en su pestaña Objetivo.
+            </>,
+            'error',
+          );
           shakeBar();
           return;
         }
@@ -1361,7 +1388,9 @@ export function RutinaForm({
                             </>
                           ) : confirmingRemove === i ? (
                             <>
-                              <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">¿Eliminar «{t.label || 'Sin nombre'}»?</span>
+                              <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">
+                                ¿Eliminar <strong className="font-semibold text-ink">{t.label || 'Sin nombre'}</strong>?
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1641,7 +1670,9 @@ export function RutinaForm({
                             </>
                           ) : confirmingRemove === i ? (
                             <>
-                              <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">¿Eliminar «{t.label || 'Sin nombre'}»?</span>
+                              <span className="min-w-0 flex-1 truncate py-1.5 text-[13px] text-ink-2">
+                                ¿Eliminar <strong className="font-semibold text-ink">{t.label || 'Sin nombre'}</strong>?
+                              </span>
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1773,11 +1804,13 @@ export function RutinaForm({
             <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDay) : name} />
             {programMode && (
               <p className="font-mono text-[11px] text-muted">
-                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {WEEKDAYS[activeDay % 7]} · {es.programs.day} {activeDay + 1} de «{name || newLabel}».
+                {es.programs.week} {Math.floor(activeDay / 7) + 1} · {WEEKDAYS[activeDay % 7]} · {es.programs.day} {activeDay + 1} de <strong className="font-semibold text-ink-2">{name || newLabel}</strong>.
               </p>
             )}
             {activeTab > 0 && activeVariant && (
-              <p className="font-mono text-[11px] text-muted">Mostrando {skillMode ? 'el nivel' : 'la variante'} «{activeVariant.label}».</p>
+              <p className="font-mono text-[11px] text-muted">
+                Mostrando {skillMode ? 'el nivel' : 'la variante'} <strong className="font-semibold text-ink-2">{activeVariant.label}</strong>.
+              </p>
             )}
           </aside>
       </div>
@@ -2045,7 +2078,15 @@ export function RutinaForm({
                   .then(() => qc.invalidateQueries({ queryKey: ['exercises'] }))
                   .catch(() => undefined);
               }
-              toast(n ? `Renombrado en ${n} línea${n === 1 ? '' : 's'} · «${previous.name}» queda como alias` : `Ejercicio guardado: ${saved.name}`);
+              toast(
+                n ? (
+                  <>
+                    Renombrado en {n} línea{n === 1 ? '' : 's'} · <strong className="font-extrabold">{previous.name}</strong> queda como alias
+                  </>
+                ) : (
+                  `Ejercicio guardado: ${saved.name}`
+                ),
+              );
             }}
           />
         )}

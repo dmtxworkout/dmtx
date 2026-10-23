@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 
 type Ask = {
   id: number;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel: string;
   cancelLabel: string;
   resolve: (ok: boolean) => void;
@@ -21,7 +21,7 @@ let counter = 0;
 const emit = () => listeners.forEach((l) => l());
 
 /** Ask the admin a yes/no question in a dialog; resolves with the answer. */
-export function confirm(opts: { title: string; message: string; confirmLabel?: string; cancelLabel?: string }): Promise<boolean> {
+export function confirm(opts: { title: string; message: ReactNode; confirmLabel?: string; cancelLabel?: string }): Promise<boolean> {
   return new Promise((resolve) => {
     current?.resolve(false);
     current = {

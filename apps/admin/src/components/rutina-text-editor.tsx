@@ -358,7 +358,7 @@ function buildCard(view: EditorView, diags: Diagnostic[], from: number, to: numb
   const ref = exerciseAt(view.state, from) ?? exerciseAt(view.state, to);
   const { edit } = view.state.field(handlersField);
   if (ref && edit) {
-    button('rt-diag-action', `${PENCIL_ICON}<span>Editar ejercicio «${escape(ref.name)}»</span>`, () => {
+    button('rt-diag-action', `${PENCIL_ICON}<span>Editar ejercicio <strong>${escape(ref.name)}</strong></span>`, () => {
       view.dispatch({ effects: [setGutterTip.of(null), closeHoverTooltips] });
       edit(ref.id);
     });

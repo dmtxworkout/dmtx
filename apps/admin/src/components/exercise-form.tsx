@@ -434,7 +434,7 @@ export function ExerciseForm({
       <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Eliminar ejercicio" className="max-w-sm">
         <div className="flex flex-col gap-4 p-5">
           <p className="text-[14px] leading-relaxed text-ink-2">
-            ¿Eliminar «{exercise?.name}»? Solo se puede eliminar un ejercicio que ninguna rutina ni ningún resultado de
+            ¿Eliminar <strong className="font-semibold text-ink">{exercise?.name}</strong>? Solo se puede eliminar un ejercicio que ninguna rutina ni ningún resultado de
             usuario use. Si está en uso, archívalo.
           </p>
           <div className="flex justify-end gap-2">

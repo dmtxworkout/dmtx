@@ -252,7 +252,7 @@ export function TagTable({ kind }: { kind: Kind }) {
       <Dialog open={confirm} onClose={() => setConfirm(false)} title="Eliminar" className="max-w-sm">
         <div className="flex flex-col gap-4 p-5">
           <p className="text-[14px] leading-relaxed text-ink-2">
-            ¿Eliminar {chosen.length === 1 ? `«${chosen[0]?.name}»` : `estos ${chosen.length} ${kind.plural}`}?{' '}
+            ¿Eliminar {chosen.length === 1 ? <strong className="font-semibold text-ink">{chosen[0]?.name}</strong> : `estos ${chosen.length} ${kind.plural}`}?{' '}
             {affected > 0
               ? `Se quitará de los ejercicios que lo ${chosen.length === 1 ? 'usan' : 'usan'} (${affected} ${affected === 1 ? 'etiqueta' : 'etiquetas'} en total). Los ejercicios siguen igual, solo sin esta etiqueta.`
               : 'Ningún ejercicio lo usa.'}

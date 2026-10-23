@@ -960,7 +960,11 @@ export function RutinaGuide({
         </div>
         <MarkCtx.Provider value={q}>
           <div className="flex min-h-0 flex-1 flex-col gap-7 overflow-y-auto px-5 pb-10 pt-4">
-            {visible.length === 0 && <p className="text-[12px] text-muted">Nada coincide con «{query}».</p>}
+            {visible.length === 0 && (
+              <p className="text-[12px] text-muted">
+                Nada coincide con <strong className="font-semibold text-ink-2">{query}</strong>.
+              </p>
+            )}
             {visible.map((s) => (
               <section key={s.id} id={`guide-${s.id}`} className="flex scroll-mt-4 flex-col gap-3">
                 <h4 className="text-[14px] font-bold text-ink">{marked(s.title, q)}</h4>

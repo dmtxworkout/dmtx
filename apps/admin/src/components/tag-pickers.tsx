@@ -156,7 +156,7 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
                   <span aria-hidden className="text-[15px] leading-none">
                     ⊕
                   </span>
-                  Agregar «{query.trim()}»
+                  Agregar <strong className="font-semibold">{query.trim()}</strong>
                 </button>
               )}
               {total === 0 && !canCreate && <p className="px-2.5 py-2 text-[13px] text-muted">Sin resultados.</p>}
