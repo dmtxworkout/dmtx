@@ -83,20 +83,49 @@ function Biblioteca() {
   });
   const uploadRef = useRef<{ upload: () => void } | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedFolders, setSelectedFolders] = useState<string[]>([]);
+  const clearSelection = () => {
+    setSelected([]);
+    setSelectedFolders([]);
+  };
+  // A folder and everything under it cannot be the destination of its own move.
+  const descendants = (ids: string[]): string[] => {
+    const out = new Set(ids);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const f of folders) {
+        if (f.parentId && out.has(f.parentId) && !out.has(f.id)) {
+          out.add(f.id);
+          grew = true;
+        }
+      }
+    }
+    return [...out];
+  };
   const move = useMutation({
-    mutationFn: (target: string | null) => api.media.move(selected, target),
-    onSuccess: ({ moved }, target) => {
+    mutationFn: async (target: string | null) => {
+      const moved = selected.length ? (await api.media.move(selected, target)).moved : 0;
+      for (const id of selectedFolders) await api.media.updateFolder(id, { parentId: target });
+      return { moved, folders: selectedFolders.length };
+    },
+    onSuccess: ({ moved, folders: nFolders }, target) => {
       const name = target
         ? (folders.find((f) => f.id === target)?.name ?? 'la carpeta')
         : 'Biblioteca';
+      const parts = [
+        moved ? (moved === 1 ? '1 archivo' : `${moved} archivos`) : '',
+        nFolders ? (nFolders === 1 ? '1 carpeta' : `${nFolders} carpetas`) : '',
+      ].filter(Boolean);
       toast(
         <>
-          {moved === 1 ? '1 archivo movido' : `${moved} archivos movidos`} a{' '}
+          {parts.join(' y ')} {moved + nFolders === 1 ? 'movido' : 'movidos'} a{' '}
           <strong className="font-extrabold">{name}</strong>
         </>,
       );
       setMoveOpen(false);
-      setSelected([]);
+      clearSelection();
+      void refreshFolders();
       void qc.invalidateQueries({ queryKey: ['media'] });
     },
     onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
@@ -129,11 +158,15 @@ function Biblioteca() {
   const remove = useMutation({
     mutationFn: async (ids: string[]) => {
       for (const id of ids) await api.media.remove(id);
+      // Marked folders go too (what they hold moves up to the parent).
+      for (const id of selectedFolders) await api.media.removeFolder(id);
     },
     onSuccess: (_, ids) => {
       setSelected((s) => s.filter((id) => !ids.includes(id)));
+      setSelectedFolders([]);
       setConfirmDelete(false);
       qc.invalidateQueries({ queryKey: ['media'] });
+      void refreshFolders();
     },
   });
   const usageLabel: Record<MediaUsageItem['type'], string> = {
@@ -250,16 +283,28 @@ function Biblioteca() {
           onOpen: openFolder,
           onRename: (f) => setFolderDialog({ mode: 'rename', folder: f, name: f.name }),
           onDelete: setFolderToDelete,
+          selected: selectedFolders,
+          onSelectedChange: setSelectedFolders,
         }}
         className="min-h-0 flex-1 px-6 pt-4"
       />
-      {selected.length > 0 && (
-        <div className="flex flex-none items-center justify-between gap-3 border-t border-line bg-surface px-8 py-3">
+      {selected.length + selectedFolders.length > 0 && (
+        <div className="flex flex-none items-center justify-between gap-3 border-t border-line bg-surface px-6 py-3">
           <span className="text-sm text-ink-2">
-            {selected.length} {selected.length === 1 ? 'marcado' : 'marcados'}
+            {[
+              selected.length
+                ? `${selected.length} ${selected.length === 1 ? 'archivo' : 'archivos'}`
+                : '',
+              selectedFolders.length
+                ? `${selectedFolders.length} ${selectedFolders.length === 1 ? 'carpeta' : 'carpetas'}`
+                : '',
+            ]
+              .filter(Boolean)
+              .join(' y ')}{' '}
+            {selected.length + selectedFolders.length === 1 ? 'marcado' : 'marcados'}
           </span>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => setSelected([])}>
+            <Button type="button" variant="outline" onClick={clearSelection}>
               Desmarcar
             </Button>
             <Button type="button" variant="outline" onClick={() => setMoveOpen(true)}>
@@ -281,6 +326,7 @@ function Biblioteca() {
         folders={folders}
         current={folderId}
         onClose={() => setMoveOpen(false)}
+        exclude={descendants(selectedFolders)}
         onPick={(target) => move.mutate(target)}
         onCreate={createFolder}
       />
@@ -376,6 +422,14 @@ function Biblioteca() {
             <p className="text-[14px] text-muted">{es.app.loading}</p>
           ) : (
             <>
+              {selectedFolders.length > 0 && (
+                <p className="text-[14px] leading-relaxed text-ink-2">
+                  {selectedFolders.length === 1
+                    ? 'La carpeta marcada se elimina'
+                    : `Las ${selectedFolders.length} carpetas marcadas se eliminan`}
+                  ; lo que tengan dentro no se borra, pasa a la carpeta de arriba.
+                </p>
+              )}
               {inUse.length > 0 && (
                 <div className="flex flex-col gap-2">
                   <p className="text-[14px] leading-relaxed text-ink-2">
@@ -411,9 +465,9 @@ function Biblioteca() {
               )}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
-                  {free.length ? es.app.cancel : 'Entendido'}
+                  {free.length || selectedFolders.length ? es.app.cancel : 'Entendido'}
                 </Button>
-                {free.length > 0 && (
+                {(free.length > 0 || selectedFolders.length > 0) && (
                   <Button
                     type="button"
                     disabled={remove.isPending}

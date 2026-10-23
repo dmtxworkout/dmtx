@@ -49,6 +49,38 @@ const ReplaceIcon = ({ className }: { className?: string }) => (
     <path d="M16 16h5v5" />
   </svg>
 );
+const PencilIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+);
+const TrashIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M3 6h18" />
+    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
 const LinkIcon = ({ className }: { className?: string }) => (
   <svg
     viewBox="0 0 24 24"
@@ -211,6 +243,9 @@ export function MediaBrowser({
     onOpen: (id: string) => void;
     onRename: (f: MediaFolder) => void;
     onDelete: (f: MediaFolder) => void;
+    /** Folders marked for a bulk action, beside the files. */
+    selected: string[];
+    onSelectedChange: (ids: string[]) => void;
   };
   className?: string;
 }) {
@@ -331,8 +366,8 @@ export function MediaBrowser({
         : n >= 1048576
           ? `${(n / 1048576).toFixed(1)} MB`
           : `${Math.max(1, Math.round(n / 1024))} KB`;
-  const allOn = items.length > 0 && items.every((m) => selected.includes(m.id));
-  const someOn = items.some((m) => selected.includes(m.id));
+  const folderSelected = folder?.selected ?? [];
+  const setFolderSelected = folder?.onSelectedChange ?? (() => undefined);
   // Subfolders of the open folder (not while searching: a search is about files).
   const subfolders =
     folder && !search
@@ -340,6 +375,13 @@ export function MediaBrowser({
           .filter((f) => f.parentId === (folder.id ?? null))
           .sort((a, b) => a.name.localeCompare(b.name, 'es'))
       : [];
+  // «Marcar todos» covers the files and the folders on screen.
+  const total = items.length + subfolders.length;
+  const marked =
+    items.filter((m) => selected.includes(m.id)).length +
+    subfolders.filter((f) => folderSelected.includes(f.id)).length;
+  const allOn = total > 0 && marked === total;
+  const someOn = marked > 0;
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -471,7 +513,10 @@ export function MediaBrowser({
                   <Checkbox
                     checked={allOn}
                     indeterminate={!allOn && someOn}
-                    onChange={(v) => onSelectedChange(v ? items.map((m) => m.id) : [])}
+                    onChange={(v) => {
+                      onSelectedChange(v ? items.map((m) => m.id) : []);
+                      setFolderSelected(v ? subfolders.map((f) => f.id) : []);
+                    }}
                     label={allOn ? 'Desmarcar todos' : 'Marcar todos'}
                   />
                 </TH>
@@ -487,10 +532,23 @@ export function MediaBrowser({
               {subfolders.map((f) => (
                 <TR
                   key={`folder-${f.id}`}
-                  className="cursor-pointer"
+                  className={cn(
+                    'group cursor-pointer',
+                    folderSelected.includes(f.id) && 'bg-accent-tint/30 hover:bg-accent-tint/30',
+                  )}
                   onClick={() => folder?.onOpen(f.id)}
                 >
-                  <TD />
+                  <TD onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={folderSelected.includes(f.id)}
+                      onChange={(v) =>
+                        setFolderSelected(
+                          v ? [...folderSelected, f.id] : folderSelected.filter((x) => x !== f.id),
+                        )
+                      }
+                      label={folderSelected.includes(f.id) ? 'Desmarcar carpeta' : 'Marcar carpeta'}
+                    />
+                  </TD>
                   <TD>
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-accent-tint/60">
@@ -504,21 +562,21 @@ export function MediaBrowser({
                   <TD className="text-right text-faint-2">—</TD>
                   <TD className="text-faint-2">—</TD>
                   <TD onClick={(e) => e.stopPropagation()}>
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
+                    <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                      <IconButton
+                        tooltipAlign="end"
+                        label="Renombrar carpeta"
                         onClick={() => folder?.onRename(f)}
-                        className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink"
                       >
-                        Renombrar
-                      </button>
-                      <button
-                        type="button"
+                        <PencilIcon className="h-[17px] w-[17px]" />
+                      </IconButton>
+                      <IconButton
+                        tooltipAlign="end"
+                        label="Eliminar carpeta"
                         onClick={() => folder?.onDelete(f)}
-                        className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-accent-dark"
                       >
-                        Eliminar
-                      </button>
+                        <TrashIcon className="h-[17px] w-[17px]" />
+                      </IconButton>
                     </div>
                   </TD>
                 </TR>
