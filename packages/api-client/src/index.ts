@@ -44,6 +44,7 @@ export type {
   MediaKind,
   MediaStatus,
   MediaListQuery,
+  MediaUsageItem,
   UploadHooks,
 } from './media';
 export { isUploadCancelled } from './media';

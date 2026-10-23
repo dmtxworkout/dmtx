@@ -44,6 +44,7 @@ export function MediaBrowser({
   selectable,
   selected,
   onSelectedChange,
+  onOpen,
   className,
 }: {
   /** The kinds shown. With `onKindChange`, the chips to switch are shown too. */
@@ -52,6 +53,8 @@ export function MediaBrowser({
   selectable: 'single' | 'multi';
   selected: string[];
   onSelectedChange: (ids: string[]) => void;
+  /** With this, clicking a tile opens the file (the checkbox still marks it); without it, clicking marks. */
+  onOpen?: (id: string) => void;
   className?: string;
 }) {
   const qc = useQueryClient();
@@ -193,9 +196,9 @@ export function MediaBrowser({
                 >
                   <button
                     type="button"
-                    onClick={() => toggle(m.id)}
+                    onClick={() => (onOpen ? onOpen(m.id) : toggle(m.id))}
                     className="relative block aspect-square w-full overflow-hidden rounded-md border border-line-3 bg-surface-2"
-                    title={on ? 'Desmarcar' : 'Marcar'}
+                    title={onOpen ? 'Abrir' : on ? 'Desmarcar' : 'Marcar'}
                   >
                     {pending ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">

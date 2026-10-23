@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
-import { mediaAssets } from '@dmtx/db';
+import { and, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { collections, exercises, mediaAssets, programs, skillLevels, skills, workouts } from '@dmtx/db';
 import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx/schemas';
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
@@ -15,6 +15,7 @@ const assetSchema = z.object({
   id: z.uuid(),
   kind: kindEnum,
   name: z.string(),
+  altText: z.string().nullable(),
   mimeType: z.string().nullable(),
   sizeBytes: z.number().nullable(),
   durationSeconds: z.number().nullable(),
@@ -43,6 +44,17 @@ const createUploadResponse = z.object({
   protocol: z.enum(['form', 'tus']),
 });
 const listQuery = paginationQuerySchema.extend({ kind: kindEnum.optional() });
+const updateRequest = z.object({
+  name: z.string().trim().min(1).max(200).optional(),
+  altText: z.string().trim().max(500).nullable().optional(),
+});
+const usageItem = z.object({
+  /** What references the asset, and the field it is used as. */
+  type: z.enum(['exercise', 'workout', 'program', 'skill', 'skillLevel', 'collection']),
+  id: z.uuid(),
+  name: z.string(),
+  field: z.enum(['video', 'thumbnail']),
+});
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
@@ -229,6 +241,89 @@ mediaRoute.openapi(
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
     return c.json(await serializeAsset(c.env, await refreshVideo(db, c.env, row)), 200);
+  },
+);
+
+// --- Rename / alt text -----------------------------------------------------
+mediaRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/{id}',
+    tags: ['media'],
+    request: { params: idParam, body: { content: { 'application/json': { schema: updateRequest } } } },
+    responses: {
+      200: { description: 'Asset actualizado', content: { 'application/json': { schema: assetSchema } } },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const db = c.get('db');
+    const [row] = await db
+      .update(mediaAssets)
+      .set({ ...(body.name !== undefined ? { name: body.name } : {}), ...(body.altText !== undefined ? { altText: body.altText || null } : {}), updatedAt: new Date() })
+      .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
+      .returning();
+    if (!row) return c.json({ error: 'No encontrado' }, 404);
+    return c.json(await serializeAsset(c.env, row), 200);
+  },
+);
+
+// --- Where an asset is used (so deleting it is an informed choice) ---------
+mediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/usage',
+    tags: ['media'],
+    request: { params: idParam },
+    responses: {
+      200: { description: 'Contenido que usa el asset', content: { 'application/json': { schema: z.object({ items: z.array(usageItem) }) } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = c.get('db');
+    type Item = z.infer<typeof usageItem>;
+    const [ex, wo, pr, sk, lv, co] = await Promise.all([
+      db
+        .select({ id: exercises.id, name: exercises.name, video: exercises.demoVideoAssetId, thumb: exercises.thumbnailAssetId })
+        .from(exercises)
+        .where(and(isNull(exercises.deletedAt), or(eq(exercises.demoVideoAssetId, id), eq(exercises.thumbnailAssetId, id)))),
+      db
+        .select({
+          id: workouts.id,
+          name: workouts.name,
+          video: workouts.videoAssetId,
+          thumb: workouts.thumbnailAssetId,
+          ownerProgramId: workouts.ownerProgramId,
+          ownerSkillId: workouts.ownerSkillId,
+        })
+        .from(workouts)
+        .where(and(isNull(workouts.deletedAt), or(eq(workouts.videoAssetId, id), eq(workouts.thumbnailAssetId, id)))),
+      db.select({ id: programs.id, name: programs.name }).from(programs).where(and(isNull(programs.deletedAt), eq(programs.thumbnailAssetId, id))),
+      db.select({ id: skills.id, name: skills.name }).from(skills).where(and(isNull(skills.deletedAt), eq(skills.thumbnailAssetId, id))),
+      db
+        .select({ id: skillLevels.skillId, name: skillLevels.name })
+        .from(skillLevels)
+        .where(eq(skillLevels.thumbnailAssetId, id)),
+      db.select({ id: collections.id, name: collections.name }).from(collections).where(and(isNull(collections.deletedAt), eq(collections.thumbnailAssetId, id))),
+    ]);
+    const items: Item[] = [
+      ...ex.map((r) => ({ type: 'exercise' as const, id: r.id, name: r.name, field: r.video === id ? ('video' as const) : ('thumbnail' as const) })),
+      // A rutina owned by a program or a skill is edited from its owner's page.
+      ...wo.map((r) => ({
+        type: r.ownerProgramId ? ('program' as const) : r.ownerSkillId ? ('skill' as const) : ('workout' as const),
+        id: r.ownerProgramId ?? r.ownerSkillId ?? r.id,
+        name: r.name,
+        field: r.video === id ? ('video' as const) : ('thumbnail' as const),
+      })),
+      ...pr.map((r) => ({ type: 'program' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+      ...sk.map((r) => ({ type: 'skill' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+      ...lv.map((r) => ({ type: 'skillLevel' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+      ...co.map((r) => ({ type: 'collection' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+    ];
+    return c.json({ items }, 200);
   },
 );
 

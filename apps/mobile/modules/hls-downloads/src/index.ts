@@ -3,15 +3,22 @@
 // Android a local copy of the chosen variant's playlists and segments that
 // ExoPlayer plays from file://. Either way the caller picks a maximum height
 // (480 / 720 / 1080) so a phone does not store a 1080p file it cannot show.
+import { Platform } from 'react-native';
 import HlsDownloads from './HlsDownloadsModule';
 import type { CompleteEvent, ErrorEvent, ProgressEvent } from './HlsDownloads.types';
 
 export type { CompleteEvent, ErrorEvent, ProgressEvent } from './HlsDownloads.types';
 
 // iOS names the package after the title with percent-escapes written out literally,
-// so only plain characters go in it.
+// so only plain characters go in it there; Android shows the title in the
+// progress notification, so it keeps the real name.
 export const startDownload = (id: string, url: string, maxHeight: number, title: string) =>
-  HlsDownloads.start(id, url, maxHeight, title.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-|-$/g, '') || id);
+  HlsDownloads.start(
+    id,
+    url,
+    maxHeight,
+    Platform.OS === 'ios' ? title.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-|-$/g, '') || id : title,
+  );
 export const cancelDownload = (id: string) => HlsDownloads.cancel(id);
 export const removeDownload = (location: string) => HlsDownloads.remove(location);
 export const restoreDownloads = () => HlsDownloads.restore();

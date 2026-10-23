@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
@@ -11,6 +12,7 @@ import { MediaBrowser, type MediaKindFilter } from '@/components/media-library';
 
 export default function BibliotecaPage() {
   const qc = useQueryClient();
+  const router = useRouter();
   const [kind, setKind] = useState<MediaKindFilter>('all');
   const [selected, setSelected] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -39,6 +41,7 @@ export default function BibliotecaPage() {
         selectable="multi"
         selected={selected}
         onSelectedChange={setSelected}
+        onOpen={(id) => router.push(`/biblioteca/${id}`)}
         className="min-h-0 flex-1 px-8 pt-[22px]"
       />
       {selected.length > 0 && (

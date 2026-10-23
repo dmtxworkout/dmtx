@@ -8,6 +8,8 @@ export interface MediaAsset {
   id: string;
   kind: MediaKind;
   name: string;
+  /** Images: the alt text for the app. */
+  altText: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
   durationSeconds: number | null;
@@ -36,6 +38,13 @@ export interface CreateUploadResult {
   uploadUrl: string;
   /** `form`: one multipart POST with the file (images); `tus`: resumable PATCHes (videos). */
   protocol: 'form' | 'tus';
+}
+
+export interface MediaUsageItem {
+  type: 'exercise' | 'workout' | 'program' | 'skill' | 'skillLevel' | 'collection';
+  id: string;
+  name: string;
+  field: 'video' | 'thumbnail';
 }
 
 export interface MediaListQuery {
@@ -176,6 +185,12 @@ export function mediaApi(http: Http) {
     },
     view(id: string): Promise<MediaAsset> {
       return http.request(`/api/media/${id}`);
+    },
+    update(id: string, input: { name?: string; altText?: string | null }): Promise<MediaAsset> {
+      return http.request(`/api/media/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+    },
+    usage(id: string): Promise<{ items: MediaUsageItem[] }> {
+      return http.request(`/api/media/${id}/usage`);
     },
     remove(id: string): Promise<void> {
       return http.request(`/api/media/${id}`, { method: 'DELETE' });

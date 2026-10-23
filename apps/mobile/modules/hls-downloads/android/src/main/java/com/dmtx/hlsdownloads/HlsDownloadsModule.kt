@@ -1,18 +1,18 @@
 package com.dmtx.hlsdownloads
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.io.File
@@ -21,21 +21,18 @@ import java.net.URI
 import java.net.URL
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Offline HLS on Android: the chosen variant's playlists and segments are
  * copied under filesDir/hls-downloads/<id>/ with their URIs rewritten to
  * local relative names, and ExoPlayer plays the local master playlist from
  * file://. Segments already on disk are skipped, so starting the same
- * download again resumes it.
+ * download again resumes it. The work runs in [HlsDownloadEngine], kept alive
+ * in the background by [HlsDownloadService].
  */
 class HlsDownloadsModule : Module() {
-  private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-  private val jobs = HashMap<String, Job>()
-
-  private val home: File
-    get() = appContext.reactContext?.filesDir ?: throw CodedException("No hay contexto de la app")
+  private val context: Context
+    get() = appContext.reactContext ?: throw CodedException("No hay contexto de la app")
 
   override fun definition() = ModuleDefinition {
     Name("HlsDownloads")
@@ -46,51 +43,55 @@ class HlsDownloadsModule : Module() {
       mapOf("homeDirectory" to (appContext.reactContext?.filesDir?.absolutePath ?: ""))
     }
 
-    AsyncFunction("start") { id: String, url: String, maxHeight: Int, _: String ->
-      synchronized(jobs) {
-        if (jobs[id]?.isActive == true) return@AsyncFunction
-        val dir = File(home, "hls-downloads/$id")
-        jobs[id] = scope.launch {
-          try {
-            val result = HlsFetcher(url, dir, maxHeight) { fraction, bytes ->
-              sendEvent("onProgress", mapOf("id" to id, "fraction" to fraction, "bytes" to bytes))
-            }.run()
-            sendEvent("onComplete", mapOf("id" to id, "location" to "hls-downloads/$id/${result.first}", "bytes" to result.second))
-          } catch (e: CancellationException) {
-            dir.deleteRecursively()
-          } catch (e: Throwable) {
-            sendEvent("onError", mapOf("id" to id, "message" to (e.message ?: "No se pudo descargar el video")))
-          } finally {
-            synchronized(jobs) { jobs.remove(id) }
-          }
+    OnCreate {
+      HlsDownloadEngine.attach(object : HlsDownloadEngine.Listener {
+        override fun onProgress(id: String, fraction: Double, bytes: Long) {
+          sendEvent("onProgress", mapOf("id" to id, "fraction" to fraction, "bytes" to bytes))
         }
-      }
+        override fun onComplete(id: String, location: String, bytes: Long) {
+          sendEvent("onComplete", mapOf("id" to id, "location" to location, "bytes" to bytes))
+        }
+        override fun onError(id: String, message: String) {
+          sendEvent("onError", mapOf("id" to id, "message" to message))
+        }
+      })
+    }
+
+    OnDestroy {
+      HlsDownloadEngine.detach()
+    }
+
+    AsyncFunction("start") { id: String, url: String, maxHeight: Int, title: String ->
+      requestNotificationPermission()
+      HlsDownloadEngine.start(context, id, url, maxHeight, title)
     }
 
     AsyncFunction("cancel") { id: String ->
-      val job = synchronized(jobs) { jobs.remove(id) }
-      if (job != null) job.cancel() else File(home, "hls-downloads/$id").deleteRecursively()
+      HlsDownloadEngine.cancel(context, id)
     }
 
     AsyncFunction("remove") { location: String ->
       // The location points at the master playlist; the whole folder goes.
-      val file = File(home, location)
+      val file = File(context.filesDir, location)
       (if (file.isDirectory) file else file.parentFile)?.deleteRecursively()
     }
 
     AsyncFunction("restore") { promise: Promise ->
-      // Nothing outlives the process here; the JS side starts unfinished downloads again.
-      promise.resolve(emptyList<String>())
+      promise.resolve(HlsDownloadEngine.activeIds())
     }
+  }
 
-    OnDestroy {
-      scope.cancel()
-    }
+  /** Android 13+ shows the progress notification only once the user allows notifications; asked the first time a download starts. */
+  private fun requestNotificationPermission() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val activity = appContext.currentActivity ?: return
+    if (ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+    ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0x4d54)
   }
 }
 
 /** One download: picks the variant, mirrors its playlists and fetches the segments a few at a time. */
-private class HlsFetcher(
+internal class HlsFetcher(
   private val masterUrl: String,
   private val dir: File,
   private val maxHeight: Int,
