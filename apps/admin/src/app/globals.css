@@ -88,3 +88,25 @@ summary {
 .animate-shake {
   animation: dmtx-shake 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
+
+/* Everything clickable shows the hand (Tailwind 4 no longer sets it on buttons);
+   a disabled control shows the default arrow. */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='menuitem']:not(:disabled),
+  [role='checkbox']:not(:disabled),
+  [role='tab'],
+  select:not(:disabled),
+  summary,
+  label[for],
+  input[type='checkbox']:not(:disabled),
+  input[type='radio']:not(:disabled),
+  input[type='file']:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role='menuitem']:disabled {
+    cursor: default;
+  }
+}

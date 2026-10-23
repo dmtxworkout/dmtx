@@ -184,6 +184,38 @@ const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)'
  * as cells — click selects the day the editor shows, drag moves a day within
  * the week. A dot marks a day with content; hatched cells are rest days.
  */
+/** What a section (or a day) holds: a video, or a structured rutina written as text. One icon each. */
+function KindIcon({ kind, className }: { kind: 'video' | 'text'; className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={cn('h-3.5 w-3.5 shrink-0', className)}
+      aria-hidden="true"
+    >
+      {kind === 'video' ? (
+        <>
+          <rect x="3" y="5" width="18" height="14" rx="3" />
+          <path d="m10 9 5 3-5 3z" fill="currentColor" />
+        </>
+      ) : (
+        <>
+          <path d="M9 6h11" />
+          <path d="M9 12h11" />
+          <path d="M9 18h11" />
+          <path d="M4.5 6h.01" />
+          <path d="M4.5 12h.01" />
+          <path d="M4.5 18h.01" />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function WeekStrip({
   days,
   active,
@@ -377,8 +409,8 @@ function WeekStrip({
             title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : dayIsVideo(d) ? 'video' : 'rutina'}`}
             className={cn(
               'flex h-9 w-12 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
-              // The cell names its weekday and says in words what the day holds
-              // (rutina / video); dashed = empty, hatched = rest.
+              // The cell names its weekday and, with an icon, what the day holds
+              // (video / structured rutina); dashed = empty, hatched = rest.
               isActive ? 'border-accent font-semibold text-accent-dark' : d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
               isActive ? (d.isRestDay ? '' : 'bg-accent-tint') : 'hover:border-line-3 hover:text-ink',
               uploadingVideo(d) && 'animate-pulse',
@@ -387,10 +419,11 @@ function WeekStrip({
             style={d.isRestDay ? { background: HATCH } : undefined}
           >
             <span>{WEEKDAY_SHORT[j]}</span>
-            {(has || d.isRestDay) && (
-              <span className={cn('mt-0.5 text-[8.5px]', isActive ? 'text-accent-dark/70' : 'text-muted')}>
-                {d.isRestDay ? 'descanso' : dayIsVideo(d) ? 'video' : 'rutina'}
-              </span>
+            {has && !d.isRestDay && (
+              <KindIcon
+                kind={dayIsVideo(d) ? 'video' : 'text'}
+                className={cn('mt-0.5 h-3 w-3', isActive ? 'text-accent-dark/70' : 'text-muted')}
+              />
             )}
           </button>
         );
@@ -1255,8 +1288,8 @@ export function RutinaForm({
                           : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
                     )}
                   >
+                    {!blockMode && sec !== 'goal' && <KindIcon kind={kinds[sec]} className="opacity-70" />}
                     {blockMode ? 'Bloque' : SECTION_TAB[sec]}
-                    {sec !== 'goal' && kinds[sec] === 'video' && <span className="text-[9px] uppercase tracking-wider text-faint-2">video</span>}
                   </div>
                 );
               })}
@@ -1537,8 +1570,8 @@ export function RutinaForm({
                           : 'text-ink-3 hover:bg-surface-3 hover:text-ink-2',
                     )}
                   >
+                    {!blockMode && sec !== 'goal' && <KindIcon kind={kinds[sec]} className="opacity-70" />}
                     {blockMode ? 'Bloque' : SECTION_TAB[sec]}
-                    {sec !== 'goal' && kinds[sec] === 'video' && <span className="text-[9px] uppercase tracking-wider text-faint-2">video</span>}
                   </div>
                 );
               })}
