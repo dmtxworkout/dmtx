@@ -17,6 +17,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Chip } from '@/components/ui/chip';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
 import {
+  isActiveUpload,
   isUploadDeclined,
   startUpload,
   uploadPct,
@@ -310,10 +311,13 @@ export function MediaBrowser({
         chosen.map((file) =>
           startUpload(file, file.type.startsWith('video/') ? 'video' : 'image', {
             folderId: folder?.id ?? null,
+          }).then(async (id) => {
+            // Each file's row replaces its placeholder as soon as its record exists, not when the whole batch has.
+            await qc.invalidateQueries({ queryKey: ['media'] });
+            return id;
           }),
         ),
       );
-      await qc.invalidateQueries({ queryKey: ['media'] });
       // What was just uploaded is what you came for: mark it.
       onSelectedChange(selectable === 'single' ? ids.slice(0, 1) : [...selected, ...ids]);
     } catch (e) {
@@ -344,6 +348,21 @@ export function MediaBrowser({
       if (replaceRef.current) replaceRef.current.value = '';
     }
   }
+  // Files just dropped here that the list does not have yet: no record (preparing) or one
+  // the list has not refetched. They show as placeholder rows so a drop answers at once.
+  const placeholders = uploads.filter(
+    (u) =>
+      isActiveUpload(u) &&
+      !u.replaceOf &&
+      (u.folderId ?? null) === (folder?.id ?? null) &&
+      !items.some((m) => m.id === u.assetId),
+  );
+  const placeholderLabel = (u: UploadEntry) =>
+    u.cancelling ? 'Cancelando…' : u.status === 'uploading' ? `Subiendo ${uploadPct(u)}%` : u.status === 'processing' ? 'Procesando…' : 'Preparando…';
+  const placeholderType = (u: UploadEntry) => {
+    const ext = u.name.split('.').pop();
+    return ext && ext.length <= 5 && ext !== u.name ? ext.toUpperCase() : u.kind === 'image' ? es.media.image : es.media.video;
+  };
   const pendingLabel = (m: MediaAsset, up: UploadEntry | undefined) =>
     up?.cancelling
       ? 'Cancelando…'
@@ -579,6 +598,31 @@ export function MediaBrowser({
                   </TD>
                 </TR>
               ))}
+              {placeholders.map((u) => (
+                <TR key={u.assetId} className="cursor-default">
+                  <TD>
+                    <span className="block h-4 w-4 rounded border border-line-2 bg-surface-2 opacity-60" aria-hidden />
+                  </TD>
+                  <TD>
+                    <div className="flex items-center gap-3">
+                      <div className="h-11 w-11 shrink-0 rounded-md border border-line-3 bg-surface-2" />
+                      <div className="min-w-0">
+                        <p className="truncate text-[13.5px] font-semibold text-ink" title={u.name}>
+                          {u.name}
+                        </p>
+                        <p className="font-mono text-[11px] text-muted">
+                          {placeholderType(u)} · {placeholderLabel(u)}
+                        </p>
+                      </div>
+                    </div>
+                  </TD>
+                  <TD className="text-faint-2">—</TD>
+                  <TD className="whitespace-nowrap font-mono text-[12px]">{added(new Date().toISOString())}</TD>
+                  <TD className="whitespace-nowrap text-right font-mono text-[12px]">{sizeLabel(u.total)}</TD>
+                  <TD className="text-faint-2">—</TD>
+                  <TD />
+                </TR>
+              ))}
               {items.map((m) => {
                 const on = selected.includes(m.id);
                 const up = uploads.find((u) => u.assetId === m.id);
@@ -696,6 +740,22 @@ export function MediaBrowser({
           </Table>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,9.25rem)] justify-start gap-3">
+            {placeholders.map((u) => (
+              <div key={u.assetId} className="relative rounded-lg border border-line-2 p-2">
+                <div className="relative flex aspect-square w-full flex-col items-center justify-center gap-1.5 overflow-hidden rounded-md border border-line-3 bg-surface-2 px-3 text-center">
+                  <span className="font-mono text-[11px] text-ink-2">{placeholderLabel(u)}</span>
+                  {u.status === 'uploading' && (
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-line-2">
+                      <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${uploadPct(u)}%` }} />
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1.5 truncate text-[12px] font-semibold text-ink" title={u.name}>
+                  {u.name}
+                </p>
+                <p className="font-mono text-[10.5px] text-muted">{placeholderType(u)}</p>
+              </div>
+            ))}
             {items.map((m) => {
               const on = selected.includes(m.id);
               const up = uploads.find((u) => u.assetId === m.id);

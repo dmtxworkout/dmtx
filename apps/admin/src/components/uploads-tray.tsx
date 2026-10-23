@@ -116,13 +116,15 @@ export function UploadsTray() {
                         u.status === 'done' ? 'bg-green-600' : u.cancelling ? 'bg-line-2' : 'bg-accent',
                         u.status === 'processing' && !u.cancelling && 'animate-pulse',
                       )}
-                      style={{ width: `${u.status === 'uploading' ? pct : 100}%` }}
+                      style={{ width: `${u.status === 'preparing' ? 0 : u.status === 'uploading' ? pct : 100}%` }}
                     />
                   </div>
                   <p className="mt-1 font-mono text-[11px] text-muted">
                     {u.cancelling
                       ? 'Cancelando…'
-                      : u.status === 'uploading'
+                      : u.status === 'preparing'
+                        ? 'Preparando…'
+                        : u.status === 'uploading'
                         ? `Subiendo ${pct}% · ${formatBytes(u.loaded)} de ${formatBytes(u.total)}`
                         : u.status === 'processing'
                           ? u.kind === 'video'

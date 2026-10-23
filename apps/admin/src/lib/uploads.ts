@@ -13,7 +13,8 @@ import { api } from '@/lib/api';
 import { prepareImage } from '@/lib/prepare-image';
 import { confirm } from '@/components/ui/confirm';
 
-export type UploadStatus = 'uploading' | 'processing' | 'done' | 'error' | 'cancelled';
+/** `preparing`: the file was chosen and its record does not exist yet (duplicate check, re-encode, record creation). */
+export type UploadStatus = 'preparing' | 'uploading' | 'processing' | 'done' | 'error' | 'cancelled';
 export interface UploadEntry {
   assetId: string;
   name: string;
@@ -28,10 +29,15 @@ export interface UploadEntry {
   asset?: MediaAsset;
   /** The asset this upload replaces once it is ready (same id, references untouched). */
   replaceOf?: string;
+  /** The folder the file goes in (so the library shows it there while it has no record yet). */
+  folderId?: string | null;
 }
 
 let entries: UploadEntry[] = [];
 const controllers = new Map<string, AbortController>();
+// Placeholder ids while a record does not exist yet, and the ones cancelled meanwhile.
+let preparingSeq = 0;
+const abandoned = new Set<string>();
 // Callers waiting for an upload to end (`waitForUpload`).
 const waiters = new Map<string, { resolve: (a: MediaAsset) => void; reject: (e: Error) => void }[]>();
 const settle = (assetId: string, result: { asset: MediaAsset } | { error: Error }) => {
@@ -54,7 +60,8 @@ const dropLater = (assetId: string) =>
     emit();
   }, 4000);
 
-export const isActiveUpload = (e: UploadEntry) => e.status === 'uploading' || e.status === 'processing';
+export const isActiveUpload = (e: UploadEntry) =>
+  e.status === 'preparing' || e.status === 'uploading' || e.status === 'processing';
 
 /** The admin chose not to upload (a duplicate name): not an error to show. */
 export class UploadDeclined extends Error {
@@ -101,26 +108,39 @@ export function startUpload(original: File, kind: 'image' | 'video', opts: { rep
   return new Promise<string>((resolve, reject) => {
     let assetId: string | null = null;
     const controller = new AbortController();
+    // The file shows up at once, as a placeholder, while its record is made.
+    const tempId = `preparing:${++preparingSeq}`;
+    entries = [...entries, { assetId: tempId, name: original.name, kind, loaded: 0, total: original.size, status: 'preparing', replaceOf: opts.replaceOf, folderId: opts.folderId ?? null }];
+    emit();
+    const dropPlaceholder = () => {
+      entries = entries.filter((e) => e.assetId !== tempId);
+      abandoned.delete(tempId);
+      emit();
+    };
     // A duplicate name asks first (not when replacing: the new file is meant to take the old one's place);
     // an image over Cloudflare Images' 10 MB is re-encoded (see prepare-image).
     (opts.replaceOf ? Promise.resolve() : checkDuplicate(original, kind))
       .then(() => (kind === 'image' ? prepareImage(original) : original))
-      .then((file) =>
-        api.media.upload(file, kind, {
+      .then((file) => {
+        if (abandoned.has(tempId)) throw new UploadDeclined();
+        return api.media.upload(file, kind, {
           signal: controller.signal,
           folderId: opts.folderId ?? null,
           onStarted: (asset) => {
             assetId = asset.id;
             controllers.set(asset.id, controller);
-            entries = [...entries, { assetId: asset.id, name: file.name, kind, loaded: 0, total: file.size, status: 'uploading', replaceOf: opts.replaceOf }];
+            // The placeholder becomes the real entry (same position in the tray).
+            entries = entries.map((e) =>
+              e.assetId === tempId ? { ...e, assetId: asset.id, name: file.name, total: file.size, status: 'uploading' as const } : e,
+            );
             emit();
             resolve(asset.id);
           },
           onProgress: (loaded, total) => {
             if (assetId) patch(assetId, loaded >= total ? { loaded: total, total, status: 'processing' } : { loaded, total });
           },
-        }),
-      )
+        });
+      })
       .then(async (asset) => {
         controllers.delete(asset.id);
         // Replacing: the new file moves into the old asset once it is ready.
@@ -133,6 +153,8 @@ export function startUpload(original: File, kind: 'image' | 'video', opts: { rep
       .catch((err: unknown) => {
         const message = err instanceof Error ? err.message : 'No se pudo subir el archivo';
         if (!assetId) {
+          // Nothing was created: the placeholder goes and the caller hears why.
+          dropPlaceholder();
           reject(err instanceof Error ? err : new Error(message));
           return;
         }
@@ -163,6 +185,12 @@ export function waitForUpload(assetId: string): Promise<MediaAsset> {
 
 /** Stop one upload (or a video Stream is encoding): its record and file are deleted. */
 export function cancelUpload(assetId: string) {
+  if (assetId.startsWith('preparing:')) {
+    // No record yet: the upload is dropped before it starts (its placeholder goes then).
+    abandoned.add(assetId);
+    patch(assetId, { cancelling: true });
+    return;
+  }
   const controller = controllers.get(assetId);
   if (!controller) return;
   patch(assetId, { cancelling: true });
