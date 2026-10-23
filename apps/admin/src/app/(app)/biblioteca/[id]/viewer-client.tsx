@@ -142,15 +142,26 @@ export function MediaViewer({ id }: { id: string }) {
           {a.name}
         </h1>
         {a.kind === 'image' && a.status === 'ready' && editor.toolbar}
-        {a.kind === 'image' && a.viewUrl && !editor.dirty && (
-          <a
-            href={a.viewUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[13px] font-medium text-ink-3 hover:text-ink"
-          >
-            Abrir en una pestaña
-          </a>
+        {a.status === 'ready' && !editor.dirty && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(api.media.publicUrl(id)).then(() => toast('Enlace copiado'));
+              }}
+              className="text-[13px] font-medium text-ink-3 hover:text-ink"
+            >
+              Copiar enlace
+            </button>
+            <a
+              href={api.media.publicUrl(id)}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[13px] font-medium text-ink-3 hover:text-ink"
+            >
+              Abrir en una pestaña
+            </a>
+          </>
         )}
         <input
           ref={replaceRef}

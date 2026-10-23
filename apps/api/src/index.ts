@@ -13,6 +13,7 @@ import { skillsRoute } from './routes/skills';
 import { subscriptionsRoute } from './routes/subscriptions';
 import { appRoute } from './routes/app';
 import { webhooksRoute } from './routes/webhooks';
+import { filesRoute } from './routes/files';
 
 const app = createApp();
 // An unexpected error reaches the admin as JSON with its message (the UI shows
@@ -43,6 +44,9 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => createAuth(c.env).handler(c.req.ra
 
 // Inbound webhooks (Cloudflare Stream): verified by signature, no session.
 app.route('/api/webhooks', webhooksRoute);
+
+// Public, permanent links to library files («Copiar enlace»): view only, no session.
+app.route('/archivos', filesRoute);
 
 // Resolve the session for the rest of the API surface.
 app.use('/api/*', withSession);

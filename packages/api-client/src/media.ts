@@ -241,6 +241,10 @@ export function mediaApi(http: Http) {
       return http.request(`/api/media/${id}/usage`);
     },
     /** The image at full size (through the API, so a canvas can read it), for the editor. */
+    /** The public, permanent link to a file (view only): an image as itself, a video on a bare player page. */
+    publicUrl(id: string): string {
+      return `${http.baseUrl}/archivos/${id}`;
+    },
     async original(id: string): Promise<Blob> {
       const res = await fetch(`${http.baseUrl}/api/media/${id}/original`, { credentials: 'include', cache: 'no-store' });
       if (!res.ok) throw new Error('No se pudo cargar la imagen');

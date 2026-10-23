@@ -564,14 +564,12 @@ export function MediaBrowser({
                   <TD onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                       <IconButton
-                        tooltipAlign="end"
                         label="Renombrar carpeta"
                         onClick={() => folder?.onRename(f)}
                       >
                         <PencilIcon className="h-[17px] w-[17px]" />
                       </IconButton>
                       <IconButton
-                        tooltipAlign="end"
                         label="Eliminar carpeta"
                         onClick={() => folder?.onDelete(f)}
                       >
@@ -667,7 +665,6 @@ export function MediaBrowser({
                       <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                         {!pending && !replacingThis && (
                           <IconButton
-                            tooltipAlign="end"
                             label={m.kind === 'video' ? 'Reemplazar video' : 'Reemplazar imagen'}
                             onClick={() => {
                               setReplacing(m);
@@ -678,15 +675,12 @@ export function MediaBrowser({
                             <ReplaceIcon className="h-[17px] w-[17px]" />
                           </IconButton>
                         )}
-                        {!pending && (m.kind === 'image' ? m.viewUrl : m.embedUrl) && (
+                        {!pending && m.status === 'ready' && (
                           <IconButton
-                            tooltipAlign="end"
-                            label={
-                              m.kind === 'video' ? 'Copiar enlace (válido 24 h)' : 'Copiar enlace'
-                            }
+                            label="Copiar enlace"
                             onClick={() => {
                               void navigator.clipboard
-                                .writeText((m.kind === 'image' ? m.viewUrl : m.embedUrl) ?? '')
+                                .writeText(api.media.publicUrl(m.id))
                                 .then(() => toast('Enlace copiado'));
                             }}
                           >
