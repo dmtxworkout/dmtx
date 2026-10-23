@@ -24,6 +24,8 @@ export interface MediaAsset {
   /** Video only: Stream's player, for an iframe. */
   embedUrl: string | null;
   createdAt: string;
+  /** The content that references the asset (present in lists and `view`). */
+  usage?: MediaUsageItem[];
 }
 
 export interface CreateUploadInput {
@@ -191,6 +193,10 @@ export function mediaApi(http: Http) {
     },
     usage(id: string): Promise<{ items: MediaUsageItem[] }> {
       return http.request(`/api/media/${id}/usage`);
+    },
+    /** Move the file of `sourceId` (a finished upload of the same kind) into this asset, keeping its id and references; the old file is deleted. */
+    replace(id: string, sourceId: string): Promise<MediaAsset> {
+      return http.request(`/api/media/${id}/replace`, { method: 'POST', body: JSON.stringify({ sourceId }) });
     },
     /** Rejects with an `ApiError` of status 409 (body `{ error, usage }`) while content still uses the asset. */
     remove(id: string): Promise<void> {

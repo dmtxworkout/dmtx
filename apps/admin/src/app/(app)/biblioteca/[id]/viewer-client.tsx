@@ -3,11 +3,11 @@
 // One file of the library, the way Shopify opens a file: the image or the
 // video big on the left, and on the right its information (name and alt text
 // editable), the details and where it is used, with Eliminar at the top.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MediaAsset, MediaUsageItem } from '@dmtx/api-client';
+import type { MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { Button } from '@/components/ui/button';
@@ -16,24 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
 import { fileType } from '@/components/media-library';
-import { formatBytes } from '@/lib/uploads';
-
-const USAGE_LABEL: Record<MediaUsageItem['type'], string> = {
-  exercise: 'Ejercicio',
-  workout: 'Rutina',
-  program: 'Programa',
-  skill: 'Habilidad',
-  skillLevel: 'Nivel de habilidad',
-  collection: 'Colección',
-};
-const USAGE_PATH: Record<MediaUsageItem['type'], string> = {
-  exercise: '/ejercicios',
-  workout: '/rutinas',
-  program: '/programas',
-  skill: '/habilidades',
-  skillLevel: '/habilidades',
-  collection: '/colecciones',
-};
+import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
+import { formatBytes, isUploadDeclined, startUpload, uploadPct, useUploads } from '@/lib/uploads';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -49,6 +33,25 @@ export function MediaViewer({ id }: { id: string }) {
   const [name, setName] = useState('');
   const [altText, setAltText] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // «Reemplazar»: the chosen file takes this asset's place (same id, references untouched).
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const [replaceError, setReplaceError] = useState<string | null>(null);
+  const replacing = useUploads().find((u) => u.replaceOf === id && (u.status === 'uploading' || u.status === 'processing'));
+  async function replaceWith(file: File) {
+    if (!a) return;
+    if (!file.type.startsWith(`${a.kind}/`)) {
+      setReplaceError(a.kind === 'video' ? 'Un video solo se puede reemplazar por otro video.' : 'Una imagen solo se puede reemplazar por otra imagen.');
+      return;
+    }
+    setReplaceError(null);
+    try {
+      await startUpload(file, a.kind, { replaceOf: id });
+    } catch (e) {
+      if (!isUploadDeclined(e)) setReplaceError(e instanceof Error ? e.message : es.app.error);
+    } finally {
+      if (replaceRef.current) replaceRef.current.value = '';
+    }
+  }
   // The form follows the asset until the admin edits it.
   const a = asset.data;
   useEffect(() => {
@@ -113,6 +116,27 @@ export function MediaViewer({ id }: { id: string }) {
             Abrir en una pestaña
           </a>
         )}
+        <input
+          ref={replaceRef}
+          type="file"
+          accept={`${a.kind}/*`}
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void replaceWith(f);
+          }}
+        />
+        {replaceError && <span className="text-[12px] text-accent-dark">{replaceError}</span>}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!!replacing || a.status !== 'ready'}
+          onClick={() => replaceRef.current?.click()}
+          title={a.kind === 'video' ? 'Subir otro video en su lugar: las rutinas que lo usan verán el nuevo' : 'Subir otra imagen en su lugar: lo que la usa verá la nueva'}
+        >
+          {replacing ? (replacing.status === 'uploading' ? `Reemplazando ${uploadPct(replacing)}%` : 'Reemplazando…') : 'Reemplazar'}
+        </Button>
         <Button type="button" variant="outline" size="sm" onClick={() => setConfirmDelete(true)} disabled={remove.isPending}>
           {es.app.delete}
         </Button>
@@ -194,7 +218,7 @@ export function MediaViewer({ id }: { id: string }) {
                         </Link>
                         <span className="text-muted">
                           {' '}
-                          · {USAGE_LABEL[u.type]} · {u.field === 'video' ? 'video' : 'portada'}
+                          · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
                         </span>
                       </li>
                     ))}
@@ -221,7 +245,7 @@ export function MediaViewer({ id }: { id: string }) {
                     </Link>
                     <span className="text-muted">
                       {' '}
-                      · {USAGE_LABEL[u.type]} · {u.field === 'video' ? 'video' : 'portada'}
+                      · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
                     </span>
                   </li>
                 ))}

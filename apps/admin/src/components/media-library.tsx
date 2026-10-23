@@ -11,9 +11,13 @@ import type { MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Chip } from '@/components/ui/chip';
-import { isUploadDeclined, startUpload, uploadPct, useUploads } from '@/lib/uploads';
+import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
+import { isUploadDeclined, startUpload, uploadPct, useUploads, type UploadEntry } from '@/lib/uploads';
+import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
 
@@ -45,6 +49,7 @@ export function MediaBrowser({
   selected,
   onSelectedChange,
   onOpen,
+  layout = 'grid',
   className,
 }: {
   /** The kinds shown. With `onKindChange`, the chips to switch are shown too. */
@@ -55,10 +60,16 @@ export function MediaBrowser({
   onSelectedChange: (ids: string[]) => void;
   /** With this, clicking a tile opens the file (the checkbox still marks it); without it, clicking marks. */
   onOpen?: (id: string) => void;
+  /** Tiles (the picker) or Shopify-style rows with alt text, date, size, where each file is used and «Reemplazar». */
+  layout?: 'grid' | 'table';
   className?: string;
 }) {
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
+  // «Reemplazar» on a row: the chosen file takes that asset's place (same id).
+  const replaceRef = useRef<HTMLInputElement>(null);
+  const [replacing, setReplacing] = useState<MediaAsset | null>(null);
+  const [usageOpen, setUsageOpen] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +114,40 @@ export function MediaBrowser({
       if (inputRef.current) inputRef.current.value = '';
     }
   }
+  async function replaceWith(file: File) {
+    const target = replacing;
+    setReplacing(null);
+    if (!target) return;
+    if (!file.type.startsWith(`${target.kind}/`)) {
+      setError(target.kind === 'video' ? 'Un video solo se puede reemplazar por otro video.' : 'Una imagen solo se puede reemplazar por otra imagen.');
+      return;
+    }
+    setError(null);
+    try {
+      await startUpload(file, target.kind, { replaceOf: target.id });
+    } catch (e) {
+      if (!isUploadDeclined(e)) setError(e instanceof Error ? e.message : es.app.error);
+    } finally {
+      if (replaceRef.current) replaceRef.current.value = '';
+    }
+  }
+  const pendingLabel = (m: MediaAsset, up: UploadEntry | undefined) =>
+    up?.cancelling
+      ? 'Cancelando…'
+      : up?.status === 'cancelled'
+        ? 'Cancelada'
+        : up?.status === 'uploading'
+          ? `Subiendo ${uploadPct(up)}%`
+          : up?.status === 'error' || m.status === 'failed'
+            ? 'Error'
+            : up || m.status === 'processing'
+              ? 'Procesando…'
+              : 'Interrumpida';
+  const added = (iso: string) => new Date(iso).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+  const sizeLabel = (n: number | null) => (n == null ? '—' : n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const allOn = items.length > 0 && items.every((m) => selected.includes(m.id));
+  const someOn = items.some((m) => selected.includes(m.id));
+
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
     setDragging(0);
@@ -138,6 +183,16 @@ export function MediaBrowser({
           ))}
       </div>
 
+      <input
+        ref={replaceRef}
+        type="file"
+        accept={replacing ? `${replacing.kind}/*` : undefined}
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void replaceWith(f);
+        }}
+      />
       <input
         ref={inputRef}
         type="file"
@@ -183,6 +238,113 @@ export function MediaBrowser({
               Subir
             </Button>
           </div>
+        ) : layout === 'table' ? (
+          <Table>
+            <THead>
+              <TR className="hover:bg-transparent">
+                <TH className="w-10">
+                  <Checkbox
+                    checked={allOn}
+                    indeterminate={!allOn && someOn}
+                    onChange={(v) => onSelectedChange(v ? items.map((m) => m.id) : [])}
+                    label={allOn ? 'Desmarcar todos' : 'Marcar todos'}
+                  />
+                </TH>
+                <TH>Archivo</TH>
+                <TH>Texto alternativo</TH>
+                <TH>Añadido</TH>
+                <TH className="text-right">Peso</TH>
+                <TH>Usos</TH>
+                <TH className="w-12" />
+              </TR>
+            </THead>
+            <TBody>
+              {items.map((m) => {
+                const on = selected.includes(m.id);
+                const up = uploads.find((u) => u.assetId === m.id);
+                const replacingThis = uploads.find((u) => u.replaceOf === m.id && (u.status === 'uploading' || u.status === 'processing'));
+                const pending = m.status !== 'ready' || (up && up.status !== 'done');
+                const usage = m.usage ?? [];
+                return (
+                  <TR key={m.id} className={cn('cursor-pointer', on && 'bg-accent-tint/30 hover:bg-accent-tint/30')} onClick={() => (onOpen ? onOpen(m.id) : toggle(m.id))}>
+                    <TD onClick={(e) => e.stopPropagation()}>
+                      <Checkbox checked={on} onChange={() => toggle(m.id)} label={on ? 'Desmarcar' : 'Marcar'} />
+                    </TD>
+                    <TD>
+                      <div className="flex items-center gap-3">
+                        <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-line-3 bg-surface-2">
+                          {!pending && m.thumbnailUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={m.thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                          ) : null}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-[13.5px] font-semibold text-ink" title={m.name}>
+                            {m.name}
+                          </p>
+                          <p className="font-mono text-[11px] text-muted">
+                            {fileType(m)}
+                            {pending ? ` · ${pendingLabel(m, up)}` : replacingThis ? ` · reemplazando ${replacingThis.status === 'uploading' ? `${uploadPct(replacingThis)}%` : '…'}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </TD>
+                    <TD className="max-w-[260px] truncate text-[13px]">{m.kind === 'image' ? (m.altText ?? <span className="text-faint-2">—</span>) : <span className="text-faint-2">—</span>}</TD>
+                    <TD className="whitespace-nowrap font-mono text-[12px]">{added(m.createdAt)}</TD>
+                    <TD className="whitespace-nowrap text-right font-mono text-[12px]">{sizeLabel(m.sizeBytes)}</TD>
+                    <TD onClick={(e) => e.stopPropagation()}>
+                      {usage.length ? (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setUsageOpen((o) => (o === m.id ? null : m.id))}
+                            className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12.5px] font-medium text-ink hover:bg-surface-3"
+                          >
+                            {usage.length} {usage.length === 1 ? 'uso' : 'usos'} ▾
+                          </button>
+                          {usageOpen === m.id && (
+                            <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-line-2 bg-surface p-2 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+                              <ul className="flex flex-col gap-1">
+                                {usage.map((u) => (
+                                  <li key={`${u.type}-${u.id}-${u.field}`} className="text-[12.5px]">
+                                    <Link href={`${USAGE_PATH[u.type]}/${u.id}`} className="font-medium text-accent hover:text-accent-dark">
+                                      {u.name}
+                                    </Link>
+                                    <span className="text-muted">
+                                      {' '}
+                                      · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-faint-2">—</span>
+                      )}
+                    </TD>
+                    <TD onClick={(e) => e.stopPropagation()}>
+                      {!pending && !replacingThis && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplacing(m);
+                            // The input's accept follows `replacing`; open it on the next tick.
+                            setTimeout(() => replaceRef.current?.click(), 0);
+                          }}
+                          className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink"
+                          title={m.kind === 'video' ? 'Subir otro video en su lugar (las rutinas que lo usan lo verán)' : 'Subir otra imagen en su lugar (lo que la usa la verá)'}
+                        >
+                          Reemplazar
+                        </button>
+                      )}
+                    </TD>
+                  </TR>
+                );
+              })}
+            </TBody>
+          </Table>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,9.25rem)] justify-start gap-3">
             {items.map((m) => {
@@ -202,19 +364,7 @@ export function MediaBrowser({
                   >
                     {pending ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
-                        <span className="font-mono text-[11px] text-ink-2">
-                          {up?.cancelling
-                            ? 'Cancelando…'
-                            : up?.status === 'cancelled'
-                              ? 'Cancelada'
-                              : up?.status === 'uploading'
-                                ? `Subiendo ${uploadPct(up)}%`
-                                : up?.status === 'error' || m.status === 'failed'
-                                  ? 'Error'
-                                  : up || m.status === 'processing'
-                                    ? 'Procesando…'
-                                    : 'Interrumpida'}
-                        </span>
+                        <span className="font-mono text-[11px] text-ink-2">{pendingLabel(m, up)}</span>
                         {up?.status === 'uploading' && (
                           <div className="h-1 w-full overflow-hidden rounded-full bg-line-2">
                             <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${uploadPct(up)}%` }} />

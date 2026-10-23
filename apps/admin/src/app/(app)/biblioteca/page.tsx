@@ -72,6 +72,7 @@ export default function BibliotecaPage() {
         selected={selected}
         onSelectedChange={setSelected}
         onOpen={(id) => router.push(`/biblioteca/${id}`)}
+        layout="table"
         className="min-h-0 flex-1 px-8 pt-[22px]"
       />
       {selected.length > 0 && (

@@ -26,6 +26,8 @@ export interface UploadEntry {
   error?: string;
   /** The ready asset, once done. */
   asset?: MediaAsset;
+  /** The asset this upload replaces once it is ready (same id, references untouched). */
+  replaceOf?: string;
 }
 
 let entries: UploadEntry[] = [];
@@ -85,12 +87,13 @@ async function checkDuplicate(file: File, kind: 'image' | 'video') {
  * declined a duplicate: `isUploadDeclined`). Progress and the outcome are read
  * through `useUploads`.
  */
-export function startUpload(original: File, kind: 'image' | 'video'): Promise<string> {
+export function startUpload(original: File, kind: 'image' | 'video', opts: { replaceOf?: string } = {}): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let assetId: string | null = null;
     const controller = new AbortController();
-    // A duplicate name asks first; an image over Cloudflare Images' 10 MB is re-encoded (see prepare-image).
-    checkDuplicate(original, kind)
+    // A duplicate name asks first (not when replacing: the new file is meant to take the old one's place);
+    // an image over Cloudflare Images' 10 MB is re-encoded (see prepare-image).
+    (opts.replaceOf ? Promise.resolve() : checkDuplicate(original, kind))
       .then(() => (kind === 'image' ? prepareImage(original) : original))
       .then((file) =>
         api.media.upload(file, kind, {
@@ -98,7 +101,7 @@ export function startUpload(original: File, kind: 'image' | 'video'): Promise<st
           onStarted: (asset) => {
             assetId = asset.id;
             controllers.set(asset.id, controller);
-            entries = [...entries, { assetId: asset.id, name: file.name, kind, loaded: 0, total: file.size, status: 'uploading' }];
+            entries = [...entries, { assetId: asset.id, name: file.name, kind, loaded: 0, total: file.size, status: 'uploading', replaceOf: opts.replaceOf }];
             emit();
             resolve(asset.id);
           },
@@ -107,8 +110,10 @@ export function startUpload(original: File, kind: 'image' | 'video'): Promise<st
           },
         }),
       )
-      .then((asset) => {
+      .then(async (asset) => {
         controllers.delete(asset.id);
+        // Replacing: the new file moves into the old asset once it is ready.
+        if (opts.replaceOf) await api.media.replace(opts.replaceOf, asset.id);
         patch(asset.id, { status: 'done', loaded: asset.sizeBytes ?? original.size, total: asset.sizeBytes ?? original.size, asset });
         // Finished uploads leave the tray after a moment.
         dropLater(asset.id);

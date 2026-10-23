@@ -341,8 +341,10 @@ workoutsRoute.openapi(
     if (input.blocks !== undefined || input.videoAssetId !== undefined || input.warmupVideoAssetId !== undefined || input.cooldownVideoAssetId !== undefined) {
       const [current] = await db.select().from(workouts).where(eq(workouts.id, id)).limit(1);
       if (!current) return c.json({ error: 'No encontrado' }, 404);
+      // Without blocks in the request, the stored ones stay (and still count for the estimate).
+      const existing = input.blocks === undefined ? (await loadFull(db, current)).blocks : undefined;
       const sections = await sectionValues(db, {
-        blocks: input.blocks ?? [],
+        blocks: input.blocks ?? (existing as unknown as WorkoutBlockInput[]),
         format: input.format !== undefined ? input.format : current.format,
         videoAssetId: input.videoAssetId !== undefined ? input.videoAssetId : current.videoAssetId,
         warmupVideoAssetId: input.warmupVideoAssetId !== undefined ? input.warmupVideoAssetId : current.warmupVideoAssetId,
@@ -354,7 +356,7 @@ workoutsRoute.openapi(
       set.warmupVideoAssetId = sections.warmupVideoAssetId;
       set.cooldownVideoAssetId = sections.cooldownVideoAssetId;
       set.estimatedDurationSeconds = sections.estimatedDurationSeconds;
-      blocks = sections.blocks;
+      if (input.blocks !== undefined) blocks = sections.blocks;
     } else if (input.format !== undefined) set.format = input.format ?? null;
     if (input.scoringGoal !== undefined) set.scoringGoal = input.scoringGoal ?? null;
     if (input.sourceText !== undefined) set.sourceText = input.sourceText ?? null;

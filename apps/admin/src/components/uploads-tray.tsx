@@ -32,7 +32,8 @@ export function UploadsTray() {
   useEffect(() => {
     if (!settledKey) return;
     qc.invalidateQueries({ queryKey: ['media'] });
-    for (const id of settledKey.split(',')) qc.invalidateQueries({ queryKey: ['media-view', id] });
+    qc.invalidateQueries({ queryKey: ['media-view'] });
+    qc.invalidateQueries({ queryKey: ['media-usage'] });
   }, [settledKey, qc]);
   if (!uploads.length) return null;
   // Overall progress of what is still being sent, for the header.
@@ -127,7 +128,7 @@ export function UploadsTray() {
                           ? u.kind === 'video'
                             ? 'Subido · Cloudflare está procesando el video…'
                             : 'Procesando…'
-                          : `Listo · ${formatBytes(u.total)}`}
+                          : `${u.replaceOf ? 'Reemplazado' : 'Listo'} · ${formatBytes(u.total)}`}
                   </p>
                 </>
               )}

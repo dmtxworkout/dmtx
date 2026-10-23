@@ -10,6 +10,13 @@ import { refreshVideo, serializeAsset } from '../lib/media';
 import { requireAdmin } from '../middleware/auth';
 
 const kindEnum = z.enum(['video', 'image']);
+const usageItem = z.object({
+  /** What references the asset, and the field it is used as. */
+  type: z.enum(['exercise', 'workout', 'program', 'skill', 'skillLevel', 'collection']),
+  id: z.uuid(),
+  name: z.string(),
+  field: z.enum(['video', 'thumbnail']),
+});
 const statusEnum = z.enum(MEDIA_PROCESSING_STATUS);
 const assetSchema = z.object({
   id: z.uuid(),
@@ -30,6 +37,8 @@ const assetSchema = z.object({
   /** Video only: Stream's player, for an iframe. */
   embedUrl: z.string().nullable(),
   createdAt: z.iso.datetime(),
+  /** The content that references the asset (lists and GET carry it). */
+  usage: z.array(usageItem).optional(),
 });
 const createUploadRequest = z.object({
   filename: z.string().min(1),
@@ -48,13 +57,7 @@ const updateRequest = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   altText: z.string().trim().max(500).nullable().optional(),
 });
-const usageItem = z.object({
-  /** What references the asset, and the field it is used as. */
-  type: z.enum(['exercise', 'workout', 'program', 'skill', 'skillLevel', 'collection']),
-  id: z.uuid(),
-  name: z.string(),
-  field: z.enum(['video', 'thumbnail']),
-});
+
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
@@ -75,48 +78,72 @@ async function deleteRemote(env: Env, kind: 'video' | 'image', externalId: strin
 }
 
 type UsageItem = z.infer<typeof usageItem>;
-/** Every piece of content that references the asset (the admin sees it before deleting; deleting is refused while any exists). */
-async function usageOf(db: Database, id: string): Promise<UsageItem[]> {
-    const [ex, wo, pr, sk, lv, co] = await Promise.all([
-      db
-        .select({ id: exercises.id, name: exercises.name, video: exercises.demoVideoAssetId, thumb: exercises.thumbnailAssetId })
-        .from(exercises)
-        .where(and(isNull(exercises.deletedAt), or(eq(exercises.demoVideoAssetId, id), eq(exercises.thumbnailAssetId, id)))),
-      db
-        .select({
-          id: workouts.id,
-          name: workouts.name,
-          video: workouts.videoAssetId,
-          thumb: workouts.thumbnailAssetId,
-          ownerProgramId: workouts.ownerProgramId,
-          ownerSkillId: workouts.ownerSkillId,
-        })
-        .from(workouts)
-        .where(and(isNull(workouts.deletedAt), or(eq(workouts.videoAssetId, id), eq(workouts.thumbnailAssetId, id)))),
-      db.select({ id: programs.id, name: programs.name }).from(programs).where(and(isNull(programs.deletedAt), eq(programs.thumbnailAssetId, id))),
-      db.select({ id: skills.id, name: skills.name }).from(skills).where(and(isNull(skills.deletedAt), eq(skills.thumbnailAssetId, id))),
-      db
-        .select({ id: skillLevels.skillId, name: skillLevels.name })
-        .from(skillLevels)
-        .where(eq(skillLevels.thumbnailAssetId, id)),
-      db.select({ id: collections.id, name: collections.name }).from(collections).where(and(isNull(collections.deletedAt), eq(collections.thumbnailAssetId, id))),
-    ]);
-    const items: UsageItem[] = [
-      ...ex.map((r) => ({ type: 'exercise' as const, id: r.id, name: r.name, field: r.video === id ? ('video' as const) : ('thumbnail' as const) })),
-      // A rutina owned by a program or a skill is edited from its owner's page.
-      ...wo.map((r) => ({
-        type: r.ownerProgramId ? ('program' as const) : r.ownerSkillId ? ('skill' as const) : ('workout' as const),
-        id: r.ownerProgramId ?? r.ownerSkillId ?? r.id,
-        name: r.name,
-        field: r.video === id ? ('video' as const) : ('thumbnail' as const),
-      })),
-      ...pr.map((r) => ({ type: 'program' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-      ...sk.map((r) => ({ type: 'skill' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-      ...lv.map((r) => ({ type: 'skillLevel' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-      ...co.map((r) => ({ type: 'collection' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-    ];
-    return items;
+/** Every piece of content that references each asset (shown before deleting; deleting is refused while any exists). */
+async function usageForMany(db: Database, ids: string[]): Promise<Map<string, UsageItem[]>> {
+  const map = new Map<string, UsageItem[]>();
+  if (!ids.length) return map;
+  const add = (assetId: string | null, item: UsageItem) => {
+    if (!assetId || !ids.includes(assetId)) return;
+    const list = map.get(assetId) ?? [];
+    // The same rutina using one video in two sections is one use.
+    if (!list.some((x) => x.type === item.type && x.id === item.id && x.field === item.field)) list.push(item);
+    map.set(assetId, list);
+  };
+  const [ex, wo, pr, sk, lv, co] = await Promise.all([
+    db
+      .select({ id: exercises.id, name: exercises.name, video: exercises.demoVideoAssetId, thumb: exercises.thumbnailAssetId })
+      .from(exercises)
+      .where(and(isNull(exercises.deletedAt), or(inArray(exercises.demoVideoAssetId, ids), inArray(exercises.thumbnailAssetId, ids)))),
+    db
+      .select({
+        id: workouts.id,
+        name: workouts.name,
+        video: workouts.videoAssetId,
+        warmupVideo: workouts.warmupVideoAssetId,
+        cooldownVideo: workouts.cooldownVideoAssetId,
+        thumb: workouts.thumbnailAssetId,
+        ownerProgramId: workouts.ownerProgramId,
+        ownerSkillId: workouts.ownerSkillId,
+        variantLabel: workouts.variantLabel,
+        variantOfId: workouts.variantOfId,
+      })
+      .from(workouts)
+      .where(
+        and(
+          isNull(workouts.deletedAt),
+          or(
+            inArray(workouts.videoAssetId, ids),
+            inArray(workouts.warmupVideoAssetId, ids),
+            inArray(workouts.cooldownVideoAssetId, ids),
+            inArray(workouts.thumbnailAssetId, ids),
+          ),
+        ),
+      ),
+    db.select({ id: programs.id, name: programs.name, thumb: programs.thumbnailAssetId }).from(programs).where(and(isNull(programs.deletedAt), inArray(programs.thumbnailAssetId, ids))),
+    db.select({ id: skills.id, name: skills.name, thumb: skills.thumbnailAssetId }).from(skills).where(and(isNull(skills.deletedAt), inArray(skills.thumbnailAssetId, ids))),
+    db.select({ id: skillLevels.skillId, name: skillLevels.name, thumb: skillLevels.thumbnailAssetId }).from(skillLevels).where(inArray(skillLevels.thumbnailAssetId, ids)),
+    db.select({ id: collections.id, name: collections.name, thumb: collections.thumbnailAssetId }).from(collections).where(and(isNull(collections.deletedAt), inArray(collections.thumbnailAssetId, ids))),
+  ]);
+  for (const r of ex) {
+    add(r.video, { type: 'exercise', id: r.id, name: r.name, field: 'video' });
+    add(r.thumb, { type: 'exercise', id: r.id, name: r.name, field: 'thumbnail' });
+  }
+  for (const r of wo) {
+    // A rutina owned by a program or a skill is edited from its owner's page.
+    const type = r.ownerProgramId ? ('program' as const) : r.ownerSkillId ? ('skill' as const) : ('workout' as const);
+    // A variant is edited from its base rutina's page, under its label.
+    const id = r.ownerProgramId ?? r.ownerSkillId ?? r.variantOfId ?? r.id;
+    const name = r.variantOfId && r.variantLabel ? `${r.name} · ${r.variantLabel}` : r.name;
+    for (const v of [r.video, r.warmupVideo, r.cooldownVideo]) add(v, { type, id, name, field: 'video' });
+    add(r.thumb, { type, id, name, field: 'thumbnail' });
+  }
+  for (const r of pr) add(r.thumb, { type: 'program', id: r.id, name: r.name, field: 'thumbnail' });
+  for (const r of sk) add(r.thumb, { type: 'skill', id: r.id, name: r.name, field: 'thumbnail' });
+  for (const r of lv) add(r.thumb, { type: 'skillLevel', id: r.id, name: r.name, field: 'thumbnail' });
+  for (const r of co) add(r.thumb, { type: 'collection', id: r.id, name: r.name, field: 'thumbnail' });
+  return map;
 }
+const usageOf = async (db: Database, id: string) => (await usageForMany(db, [id])).get(id) ?? [];
 
 export const mediaRoute = createApp();
 mediaRoute.use('*', requireAdmin);
@@ -158,7 +185,8 @@ mediaRoute.openapi(
     const fresh = await Promise.all(
       rows.map((r) => (r.kind === 'video' && r.processingStatus === 'processing' && polls++ < 5 ? refreshVideo(db, c.env, r).catch(() => r) : r)),
     );
-    const data = await Promise.all(fresh.map((r) => serializeAsset(c.env, r)));
+    const usage = await usageForMany(db, fresh.map((r) => r.id));
+    const data = await Promise.all(fresh.map(async (r) => ({ ...(await serializeAsset(c.env, r)), usage: usage.get(r.id) ?? [] })));
     return c.json({ data, total: totals?.value ?? 0, page, pageSize }, 200);
   },
 );
@@ -284,7 +312,7 @@ mediaRoute.openapi(
       .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
-    return c.json(await serializeAsset(c.env, await refreshVideo(db, c.env, row)), 200);
+    return c.json({ ...(await serializeAsset(c.env, await refreshVideo(db, c.env, row))), usage: await usageOf(db, id) }, 200);
   },
 );
 
@@ -328,6 +356,56 @@ mediaRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     return c.json({ items: await usageOf(c.get('db'), id) }, 200);
+  },
+);
+
+// --- Replace: a newly uploaded file takes the place of this one ---------------
+// The admin uploads the correction as a new asset; this moves its file into
+// the existing row (same id, so every reference keeps pointing here), deletes
+// the old file at Cloudflare and drops the temporary row.
+mediaRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/{id}/replace',
+    tags: ['media'],
+    request: { params: idParam, body: { content: { 'application/json': { schema: z.object({ sourceId: z.uuid() }) } } } },
+    responses: {
+      200: { description: 'Reemplazado', content: { 'application/json': { schema: assetSchema } } },
+      400: { description: 'El archivo nuevo no sirve', content: { 'application/json': { schema: errorSchema } } },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const { sourceId } = c.req.valid('json');
+    const db = c.get('db');
+    const [target] = await db.select().from(mediaAssets).where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt))).limit(1);
+    const [source] = await db.select().from(mediaAssets).where(and(eq(mediaAssets.id, sourceId), isNull(mediaAssets.deletedAt))).limit(1);
+    if (!target || !source) return c.json({ error: 'No encontrado' }, 404);
+    if (source.id === target.id) return c.json({ error: 'Es el mismo archivo' }, 400);
+    if (source.kind !== target.kind) return c.json({ error: target.kind === 'video' ? 'Un video solo se puede reemplazar por otro video' : 'Una imagen solo se puede reemplazar por otra imagen' }, 400);
+    if (source.processingStatus === 'uploading' || source.processingStatus === 'failed') return c.json({ error: 'El archivo nuevo no terminó de subir' }, 400);
+    // external_id is unique: the temporary row lets go of it first, and the old
+    // file is deleted only once the row points at the new one.
+    await db.update(mediaAssets).set({ externalId: `replaced:${source.id}` }).where(eq(mediaAssets.id, sourceId));
+    const [row] = await db
+      .update(mediaAssets)
+      .set({
+        externalId: source.externalId,
+        mimeType: source.mimeType,
+        sizeBytes: source.sizeBytes,
+        durationSeconds: source.durationSeconds,
+        width: source.width,
+        height: source.height,
+        processingStatus: source.processingStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(mediaAssets.id, id))
+      .returning();
+    // The temporary row goes without touching the file, which now belongs to the target.
+    await db.delete(mediaAssets).where(eq(mediaAssets.id, sourceId));
+    await deleteRemote(c.env, target.kind, target.externalId);
+    return c.json({ ...(await serializeAsset(c.env, row!)), usage: await usageOf(db, id) }, 200);
   },
 );
 
