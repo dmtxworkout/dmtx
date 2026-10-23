@@ -102,6 +102,43 @@ export function MediaViewer({ id }: { id: string }) {
     },
   });
 
+  const anyDirty = dirty || editor.dirty;
+  const savingAll = save.isPending || editor.savingLabel !== null;
+  // Guardar takes everything that changed: the image first (a replace), then the name / alt text.
+  async function saveAll() {
+    try {
+      if (editor.dirty) await editor.save();
+    } catch {
+      return;
+    }
+    if (dirty) save.mutate();
+  }
+  // A new file beside this one, with the edits and the name / alt text as typed; the original keeps what it had.
+  async function saveAsNew() {
+    if (!a) return;
+    const typed = name.trim();
+    const dot = a.name.lastIndexOf('.');
+    const suggested = dot > 0 ? `${a.name.slice(0, dot)} (editada)${a.name.slice(dot)}` : `${a.name} (editada)`;
+    const newName = typed && typed !== a.name ? typed : suggested;
+    try {
+      const newId = await editor.saveAsNew(newName, altText.trim() || null);
+      qc.invalidateQueries({ queryKey: ['media'] });
+      toast('Imagen guardada como nueva');
+      setName(a.name);
+      setAltText(a.altText ?? '');
+      router.push(`/biblioteca/${newId}`);
+    } catch {
+      // Already shown by the editor (or the admin declined a duplicate name).
+    }
+  }
+  function discardAll() {
+    if (editor.dirty) editor.discard();
+    if (a) {
+      setName(a.name);
+      setAltText(a.altText ?? '');
+    }
+  }
+
   if (asset.isLoading) return <p className="p-8 text-sm text-muted">{es.app.loading}</p>;
   if (!a) return <p className="p-8 text-sm text-muted">{es.app.error}</p>;
 
@@ -143,7 +180,7 @@ export function MediaViewer({ id }: { id: string }) {
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink" title={a.name}>
           {a.name}
         </h1>
-        {a.kind === 'image' && a.status === 'ready' && editor.toolbar}
+        {a.kind === 'image' && a.status === 'ready' && editor.undoRedo}
         <input
           ref={replaceRef}
           type="file"
@@ -155,13 +192,30 @@ export function MediaViewer({ id }: { id: string }) {
           }}
         />
         {replaceError && <span className="text-[12px] text-accent-dark">{replaceError}</span>}
-        {replacing && !editor.dirty && (
+        {replacing && !anyDirty && (
           <span className="font-mono text-[11.5px] text-muted">
             {replacing.status === 'uploading' ? `Reemplazando ${uploadPct(replacing)}%` : 'Reemplazando…'}
           </span>
         )}
-        {/* Everything but undo/redo (and Descartar/Guardar while editing) lives in one menu. */}
-        {!editor.dirty && (
+        {/* Any change — name, alt text or an image edit — puts Descartar / Guardar here (Shopify); otherwise the actions menu. */}
+        {anyDirty ? (
+          <>
+            <Button type="button" variant="outline" size="sm" onClick={discardAll} disabled={savingAll}>
+              Descartar
+            </Button>
+            <Button type="button" size="sm" onClick={() => void saveAll()} disabled={savingAll || !name.trim()}>
+              {editor.savingLabel ?? (savingAll ? es.app.saving : es.app.save)}
+            </Button>
+            {a.kind === 'image' && a.status === 'ready' && (
+              <ActionsMenu
+                label=""
+                size="sm"
+                ariaLabel="Más opciones para guardar"
+                items={[{ label: 'Guardar como nueva imagen', disabled: savingAll, onSelect: () => void saveAsNew() }]}
+              />
+            )}
+          </>
+        ) : (
           <ActionsMenu
             size="sm"
             items={[
@@ -247,29 +301,6 @@ export function MediaViewer({ id }: { id: string }) {
                     onChange={(e) => setAltText(e.target.value)}
                     placeholder="Describe la imagen"
                   />
-                </div>
-              )}
-              {dirty && (
-                <div className="flex justify-end gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setName(a.name);
-                      setAltText(a.altText ?? '');
-                    }}
-                  >
-                    {es.app.cancel}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={save.isPending || !name.trim()}
-                    onClick={() => save.mutate()}
-                  >
-                    {save.isPending ? es.app.saving : es.app.save}
-                  </Button>
                 </div>
               )}
               <div>

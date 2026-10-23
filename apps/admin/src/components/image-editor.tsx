@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { IconButton } from '@/components/ui/icon-button';
 import { toast } from '@/components/ui/toast';
-import { startUpload, uploadPct, useUploads, waitForUpload } from '@/lib/uploads';
+import { isUploadDeclined, startUpload, uploadPct, useUploads, waitForUpload } from '@/lib/uploads';
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Aspect = { id: string; label: string; ratio: number | null };
@@ -269,26 +269,50 @@ export function useImageEditor({
     drag.current = null;
   };
 
+  /** The current bitmap as a file: PNG and WebP stay what they were, anything else becomes a JPEG. */
+  async function encode(name: string): Promise<File> {
+    if (!current || !asset) throw new Error('No hay imagen');
+    const mime =
+      asset.mimeType === 'image/png' || asset.mimeType === 'image/webp'
+        ? asset.mimeType
+        : 'image/jpeg';
+    const c = draw(current.width, current.height, (ctx) => ctx.drawImage(current, 0, 0));
+    const blob = await new Promise<Blob | null>((r) => c.toBlob(r, mime, 0.92));
+    if (!blob) throw new Error('No se pudo generar la imagen');
+    return new File([blob], name, { type: mime });
+  }
+
   async function save() {
     if (!current || !asset) return;
     setSaving(true);
     try {
-      const mime =
-        asset.mimeType === 'image/png' || asset.mimeType === 'image/webp'
-          ? asset.mimeType
-          : 'image/jpeg';
-      const c = draw(current.width, current.height, (ctx) => ctx.drawImage(current, 0, 0));
-      const blob = await new Promise<Blob | null>((r) => c.toBlob(r, mime, 0.92));
-      if (!blob) throw new Error('No se pudo generar la imagen');
-      const uploadId = await startUpload(new File([blob], asset.name, { type: mime }), 'image', {
-        replaceOf: asset.id,
-      });
+      const uploadId = await startUpload(await encode(asset.name), 'image', { replaceOf: asset.id });
       await waitForUpload(uploadId);
       setHistory([]);
       setFuture([]);
       onSaved();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'No se pudo guardar la imagen', 'error');
+      throw e;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Upload the edited image as a new file next to this one (same folder); the original stays as it was. Resolves with the new id. */
+  async function saveAsNew(name: string, altText: string | null): Promise<string> {
+    if (!current || !asset) throw new Error('No hay imagen');
+    setSaving(true);
+    try {
+      const uploadId = await startUpload(await encode(name), 'image', { folderId: asset.folderId ?? null });
+      const saved = await waitForUpload(uploadId);
+      if (altText !== null) await api.media.update(saved.id, { altText });
+      setHistory([]);
+      setFuture([]);
+      return saved.id;
+    } catch (e) {
+      if (!isUploadDeclined(e)) toast(e instanceof Error ? e.message : 'No se pudo guardar la imagen', 'error');
+      throw e;
     } finally {
       setSaving(false);
     }
@@ -316,8 +340,8 @@ export function useImageEditor({
     section: tool,
     /** The header of a side section: click opens it and closes the one that was open. */
     sectionBtn,
-    /** The top bar's extras: undo/redo and, once something changed, Descartar + Guardar. */
-    toolbar: (
+    /** Undo / redo for the header. */
+    undoRedo: (
       <div className="flex items-center gap-1.5">
         <IconButton label="Deshacer" onClick={undo} disabled={!history.length}>
           <svg
@@ -349,29 +373,24 @@ export function useImageEditor({
             <path d="M3 17a9 9 0 0 1 15-6.7L21 13" />
           </svg>
         </IconButton>
-        {dirty && (
-          <>
-            <Button type="button" variant="outline" size="sm" onClick={discard} disabled={saving}>
-              Descartar
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => void save()}
-              disabled={saving || !!replacing}
-            >
-              {replacing
-                ? replacing.status === 'uploading'
-                  ? `Guardando ${uploadPct(replacing)}%`
-                  : 'Guardando…'
-                : saving
-                  ? 'Guardando…'
-                  : 'Guardar'}
-            </Button>
-          </>
-        )}
       </div>
     ),
+    /** Pending edits exist (the viewer shows one Descartar / Guardar pair for them and the form). */
+    dirty,
+    /** Encode and replace the file; resolves when the swap is done. Throws (and toasts) on failure. */
+    save,
+    /** Drop every pending edit. */
+    discard,
+    /** «Guardar como nueva imagen»: a new file in the same folder, the original untouched. */
+    saveAsNew,
+    /** What the Guardar button should read while the image is being saved, or null. */
+    savingLabel: replacing
+      ? replacing.status === 'uploading'
+        ? `Guardando ${uploadPct(replacing)}%`
+        : 'Guardando…'
+      : saving
+        ? 'Guardando…'
+        : null,
     /** The canvas with the crop box over it. */
     stage: (
       <div
@@ -746,6 +765,5 @@ export function useImageEditor({
         </section>
       </>
     ),
-    dirty,
   };
 }
