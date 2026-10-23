@@ -16,7 +16,13 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Chip } from '@/components/ui/chip';
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table';
-import { isUploadDeclined, startUpload, uploadPct, useUploads, type UploadEntry } from '@/lib/uploads';
+import {
+  isUploadDeclined,
+  startUpload,
+  uploadPct,
+  useUploads,
+  type UploadEntry,
+} from '@/lib/uploads';
 import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
@@ -29,13 +35,31 @@ export function fileType(m: MediaAsset): string {
 }
 
 const SearchIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
     <circle cx="11" cy="11" r="7" />
     <path d="m20 20-3.5-3.5" />
   </svg>
 );
 const UploadIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
     <path d="M17 8l-5-5-5 5" />
     <path d="M12 3v12" />
@@ -79,9 +103,15 @@ export function MediaBrowser({
 
   const { data, isLoading } = useQuery({
     queryKey: ['media', kind, search],
-    queryFn: () => api.media.list({ kind: kind === 'all' ? undefined : kind, search: search || undefined, pageSize: 200 }),
+    queryFn: () =>
+      api.media.list({
+        kind: kind === 'all' ? undefined : kind,
+        search: search || undefined,
+        pageSize: 200,
+      }),
     // While Stream encodes a video, the list asks again until it is ready.
-    refetchInterval: (q) => (q.state.data?.data.some((m) => m.status === 'processing') ? 5000 : false),
+    refetchInterval: (q) =>
+      q.state.data?.data.some((m) => m.status === 'processing') ? 5000 : false,
   });
   const items = data?.data ?? [];
 
@@ -91,19 +121,29 @@ export function MediaBrowser({
   };
 
   const accepted = (f: File) =>
-    kind === 'all' ? f.type.startsWith('image/') || f.type.startsWith('video/') : f.type.startsWith(`${kind}/`);
+    kind === 'all'
+      ? f.type.startsWith('image/') || f.type.startsWith('video/')
+      : f.type.startsWith(`${kind}/`);
 
   async function upload(files: File[]) {
     const chosen = files.filter(accepted);
     if (!chosen.length) {
-      setError(kind === 'video' ? 'Solo se pueden subir videos aquí.' : kind === 'image' ? 'Solo se pueden subir imágenes aquí.' : 'Solo imágenes o videos.');
+      setError(
+        kind === 'video'
+          ? 'Solo se pueden subir videos aquí.'
+          : kind === 'image'
+            ? 'Solo se pueden subir imágenes aquí.'
+            : 'Solo imágenes o videos.',
+      );
       return;
     }
     setUploading(true);
     setError(null);
     try {
       // The records exist right away; the bytes go on in the background (see the tray).
-      const ids = await Promise.all(chosen.map((file) => startUpload(file, file.type.startsWith('video/') ? 'video' : 'image')));
+      const ids = await Promise.all(
+        chosen.map((file) => startUpload(file, file.type.startsWith('video/') ? 'video' : 'image')),
+      );
       await qc.invalidateQueries({ queryKey: ['media'] });
       // What was just uploaded is what you came for: mark it.
       onSelectedChange(selectable === 'single' ? ids.slice(0, 1) : [...selected, ...ids]);
@@ -119,7 +159,11 @@ export function MediaBrowser({
     setReplacing(null);
     if (!target) return;
     if (!file.type.startsWith(`${target.kind}/`)) {
-      setError(target.kind === 'video' ? 'Un video solo se puede reemplazar por otro video.' : 'Una imagen solo se puede reemplazar por otra imagen.');
+      setError(
+        target.kind === 'video'
+          ? 'Un video solo se puede reemplazar por otro video.'
+          : 'Una imagen solo se puede reemplazar por otra imagen.',
+      );
       return;
     }
     setError(null);
@@ -143,8 +187,16 @@ export function MediaBrowser({
             : up || m.status === 'processing'
               ? 'Procesando…'
               : 'Interrumpida';
-  const added = (iso: string) => new Date(iso).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
-  const sizeLabel = (n: number | null) => (n == null ? '—' : n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+  const added = (iso: string) =>
+    new Date(iso).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+  const sizeLabel = (n: number | null) =>
+    n == null
+      ? '—'
+      : n >= 1073741824
+        ? `${(n / 1073741824).toFixed(2)} GB`
+        : n >= 1048576
+          ? `${(n / 1048576).toFixed(1)} MB`
+          : `${Math.max(1, Math.round(n / 1024))} KB`;
   const allOn = items.length > 0 && items.every((m) => selected.includes(m.id));
   const someOn = items.some((m) => selected.includes(m.id));
 
@@ -156,7 +208,7 @@ export function MediaBrowser({
 
   return (
     <div
-      className={cn('flex min-h-0 flex-col', className)}
+      className={cn('relative flex min-h-0 flex-col', className)}
       onDragEnter={(e) => {
         e.preventDefault();
         setDragging((n) => n + 1);
@@ -181,7 +233,29 @@ export function MediaBrowser({
               {es.media[k]}
             </Chip>
           ))}
+        {layout === 'table' && (
+          <>
+            {error && <p className="text-xs text-accent-dark">{error}</p>}
+            <Button
+              type="button"
+              size="sm"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              <UploadIcon className="mr-1.5 h-4 w-4" />
+              {uploading ? es.app.uploading : 'Subir'}
+            </Button>
+          </>
+        )}
       </div>
+      {/* The table has no drop zone of its own: the whole list takes a drop, like Shopify. */}
+      {layout === 'table' && dragging > 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent-tint/70">
+          <p className="rounded-lg bg-surface px-4 py-2 text-sm font-semibold text-ink shadow">
+            Suelta los archivos para subirlos
+          </p>
+        </div>
+      )}
 
       <input
         ref={replaceRef}
@@ -201,27 +275,35 @@ export function MediaBrowser({
         className="hidden"
         onChange={(e) => void upload(Array.from(e.target.files ?? []))}
       />
-      <div
-        className={cn(
-          'mb-3 flex flex-none flex-col items-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors',
-          dragging > 0 ? 'border-accent bg-accent-tint/40' : 'border-line-2',
-        )}
-      >
-        <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
-          <UploadIcon className="mr-1.5 h-4 w-4" />
-          {uploading ? es.app.uploading : 'Subir'}
-        </Button>
-        <p className="text-xs text-muted">
-          {dragging > 0
-            ? 'Suelta los archivos aquí'
-            : kind === 'video'
-              ? 'O arrastra videos de tu computadora'
-              : kind === 'image'
-                ? 'O arrastra imágenes de tu computadora'
-                : 'O arrastra imágenes o videos de tu computadora'}
-        </p>
-        {error && <p className="text-xs text-accent-dark">{error}</p>}
-      </div>
+      {layout === 'grid' && (
+        <div
+          className={cn(
+            'mb-3 flex flex-none flex-col items-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors',
+            dragging > 0 ? 'border-accent bg-accent-tint/40' : 'border-line-2',
+          )}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            <UploadIcon className="mr-1.5 h-4 w-4" />
+            {uploading ? es.app.uploading : 'Subir'}
+          </Button>
+          <p className="text-xs text-muted">
+            {dragging > 0
+              ? 'Suelta los archivos aquí'
+              : kind === 'video'
+                ? 'O arrastra videos de tu computadora'
+                : kind === 'image'
+                  ? 'O arrastra imágenes de tu computadora'
+                  : 'O arrastra imágenes o videos de tu computadora'}
+          </p>
+          {error && <p className="text-xs text-accent-dark">{error}</p>}
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {isLoading ? (
@@ -229,11 +311,20 @@ export function MediaBrowser({
         ) : items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <SearchIcon className="h-10 w-10 text-faint-2" />
-            <p className="mt-2 text-lg font-semibold">{search ? 'Sin resultados' : 'La biblioteca está vacía'}</p>
-            <p className="text-sm text-muted">
-              {search ? 'Prueba con otro nombre, o sube un archivo nuevo.' : 'Sube el primer archivo.'}
+            <p className="mt-2 text-lg font-semibold">
+              {search ? 'Sin resultados' : 'La biblioteca está vacía'}
             </p>
-            <Button type="button" className="mt-2" disabled={uploading} onClick={() => inputRef.current?.click()}>
+            <p className="text-sm text-muted">
+              {search
+                ? 'Prueba con otro nombre, o sube un archivo nuevo.'
+                : 'Sube el primer archivo.'}
+            </p>
+            <Button
+              type="button"
+              className="mt-2"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
               <UploadIcon className="mr-2 h-4 w-4" />
               Subir
             </Button>
@@ -262,36 +353,71 @@ export function MediaBrowser({
               {items.map((m) => {
                 const on = selected.includes(m.id);
                 const up = uploads.find((u) => u.assetId === m.id);
-                const replacingThis = uploads.find((u) => u.replaceOf === m.id && (u.status === 'uploading' || u.status === 'processing'));
+                const replacingThis = uploads.find(
+                  (u) =>
+                    u.replaceOf === m.id && (u.status === 'uploading' || u.status === 'processing'),
+                );
                 const pending = m.status !== 'ready' || (up && up.status !== 'done');
                 const usage = m.usage ?? [];
                 return (
-                  <TR key={m.id} className={cn('cursor-pointer', on && 'bg-accent-tint/30 hover:bg-accent-tint/30')} onClick={() => (onOpen ? onOpen(m.id) : toggle(m.id))}>
+                  <TR
+                    key={m.id}
+                    className={cn(
+                      'cursor-pointer',
+                      on && 'bg-accent-tint/30 hover:bg-accent-tint/30',
+                    )}
+                    onClick={() => (onOpen ? onOpen(m.id) : toggle(m.id))}
+                  >
                     <TD onClick={(e) => e.stopPropagation()}>
-                      <Checkbox checked={on} onChange={() => toggle(m.id)} label={on ? 'Desmarcar' : 'Marcar'} />
+                      <Checkbox
+                        checked={on}
+                        onChange={() => toggle(m.id)}
+                        label={on ? 'Desmarcar' : 'Marcar'}
+                      />
                     </TD>
                     <TD>
                       <div className="flex items-center gap-3">
                         <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md border border-line-3 bg-surface-2">
                           {!pending && m.thumbnailUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img src={m.thumbnailUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                            <img
+                              src={m.thumbnailUrl}
+                              alt=""
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
                           ) : null}
                         </div>
                         <div className="min-w-0">
-                          <p className="truncate text-[13.5px] font-semibold text-ink" title={m.name}>
+                          <p
+                            className="truncate text-[13.5px] font-semibold text-ink"
+                            title={m.name}
+                          >
                             {m.name}
                           </p>
                           <p className="font-mono text-[11px] text-muted">
                             {fileType(m)}
-                            {pending ? ` · ${pendingLabel(m, up)}` : replacingThis ? ` · reemplazando ${replacingThis.status === 'uploading' ? `${uploadPct(replacingThis)}%` : '…'}` : ''}
+                            {pending
+                              ? ` · ${pendingLabel(m, up)}`
+                              : replacingThis
+                                ? ` · reemplazando ${replacingThis.status === 'uploading' ? `${uploadPct(replacingThis)}%` : '…'}`
+                                : ''}
                           </p>
                         </div>
                       </div>
                     </TD>
-                    <TD className="max-w-[260px] truncate text-[13px]">{m.kind === 'image' ? (m.altText ?? <span className="text-faint-2">—</span>) : <span className="text-faint-2">—</span>}</TD>
-                    <TD className="whitespace-nowrap font-mono text-[12px]">{added(m.createdAt)}</TD>
-                    <TD className="whitespace-nowrap text-right font-mono text-[12px]">{sizeLabel(m.sizeBytes)}</TD>
+                    <TD className="max-w-[260px] truncate text-[13px]">
+                      {m.kind === 'image' ? (
+                        (m.altText ?? <span className="text-faint-2">—</span>)
+                      ) : (
+                        <span className="text-faint-2">—</span>
+                      )}
+                    </TD>
+                    <TD className="whitespace-nowrap font-mono text-[12px]">
+                      {added(m.createdAt)}
+                    </TD>
+                    <TD className="whitespace-nowrap text-right font-mono text-[12px]">
+                      {sizeLabel(m.sizeBytes)}
+                    </TD>
                     <TD onClick={(e) => e.stopPropagation()}>
                       {usage.length ? (
                         <div className="relative">
@@ -306,8 +432,14 @@ export function MediaBrowser({
                             <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-line-2 bg-surface p-2 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
                               <ul className="flex flex-col gap-1">
                                 {usage.map((u) => (
-                                  <li key={`${u.type}-${u.id}-${u.field}`} className="text-[12.5px]">
-                                    <Link href={`${USAGE_PATH[u.type]}/${u.id}`} className="font-medium text-accent hover:text-accent-dark">
+                                  <li
+                                    key={`${u.type}-${u.id}-${u.field}`}
+                                    className="text-[12.5px]"
+                                  >
+                                    <Link
+                                      href={`${USAGE_PATH[u.type]}/${u.id}`}
+                                      className="font-medium text-accent hover:text-accent-dark"
+                                    >
                                       {u.name}
                                     </Link>
                                     <span className="text-muted">
@@ -334,7 +466,11 @@ export function MediaBrowser({
                             setTimeout(() => replaceRef.current?.click(), 0);
                           }}
                           className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink"
-                          title={m.kind === 'video' ? 'Subir otro video en su lugar (las rutinas que lo usan lo verán)' : 'Subir otra imagen en su lugar (lo que la usa la verá)'}
+                          title={
+                            m.kind === 'video'
+                              ? 'Subir otro video en su lugar (las rutinas que lo usan lo verán)'
+                              : 'Subir otra imagen en su lugar (lo que la usa la verá)'
+                          }
                         >
                           Reemplazar
                         </button>
@@ -354,7 +490,10 @@ export function MediaBrowser({
               return (
                 <div
                   key={m.id}
-                  className={cn('relative rounded-lg border p-2 transition-colors', on ? 'border-accent bg-accent-tint/30' : 'border-line-2')}
+                  className={cn(
+                    'relative rounded-lg border p-2 transition-colors',
+                    on ? 'border-accent bg-accent-tint/30' : 'border-line-2',
+                  )}
                 >
                   <button
                     type="button"
@@ -364,20 +503,35 @@ export function MediaBrowser({
                   >
                     {pending ? (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
-                        <span className="font-mono text-[11px] text-ink-2">{pendingLabel(m, up)}</span>
+                        <span className="font-mono text-[11px] text-ink-2">
+                          {pendingLabel(m, up)}
+                        </span>
                         {up?.status === 'uploading' && (
                           <div className="h-1 w-full overflow-hidden rounded-full bg-line-2">
-                            <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${uploadPct(up)}%` }} />
+                            <div
+                              className="h-full rounded-full bg-accent transition-[width]"
+                              style={{ width: `${uploadPct(up)}%` }}
+                            />
                           </div>
                         )}
                       </div>
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={m.thumbnailUrl ?? undefined} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                      <img
+                        src={m.thumbnailUrl ?? undefined}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
                     )}
                   </button>
                   <label className="absolute left-3.5 top-3.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-line-2 bg-surface shadow-sm">
-                    <input type="checkbox" checked={on} onChange={() => toggle(m.id)} className="h-3.5 w-3.5 accent-[var(--color-accent)]" aria-label={on ? 'Desmarcar' : 'Marcar'} />
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      onChange={() => toggle(m.id)}
+                      className="h-3.5 w-3.5 accent-[var(--color-accent)]"
+                      aria-label={on ? 'Desmarcar' : 'Marcar'}
+                    />
                   </label>
                   <p className="mt-1.5 truncate text-center text-xs font-medium" title={m.name}>
                     {m.name}
