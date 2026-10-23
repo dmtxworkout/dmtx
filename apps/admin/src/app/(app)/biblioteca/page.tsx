@@ -8,6 +8,7 @@ import type { MediaFolder, MediaUsageItem } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { PageHeader } from '@/components/ui/page-header';
+import { ActionsMenu } from '@/components/ui/actions-menu';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { MediaBrowser } from '@/components/media-library';
@@ -101,10 +102,6 @@ function Biblioteca() {
     onError: (e) => toast(e instanceof Error ? e.message : es.app.error, 'error'),
   });
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const { data } = useQuery({
-    queryKey: ['media', 'count'],
-    queryFn: () => api.media.list({ pageSize: 1 }),
-  });
 
   // Before deleting, where each marked file is used: those are kept and listed.
   const [usage, setUsage] = useState<
@@ -153,7 +150,29 @@ function Biblioteca() {
       <PageHeader
         title={
           path.length ? (
-            <span className="flex items-baseline gap-1.5">
+            <span className="flex items-center gap-1.5">
+              <Link
+                href={
+                  path.length > 1
+                    ? `/biblioteca?carpeta=${path[path.length - 2]!.id}`
+                    : '/biblioteca'
+                }
+                className="mr-1 flex h-7 w-7 items-center justify-center rounded-md border border-line-2 text-ink-3 hover:bg-surface-2 hover:text-ink"
+                aria-label="Volver a la carpeta de arriba"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-3.5 w-3.5"
+                  aria-hidden="true"
+                >
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </Link>
               <Link href="/biblioteca" className="text-ink-3 hover:text-ink">
                 {es.media.title}
               </Link>
@@ -177,11 +196,32 @@ function Biblioteca() {
             es.media.title
           )
         }
-        subtitle={
-          data && !path.length ? `${data.total} archivo${data.total === 1 ? '' : 's'}` : undefined
-        }
         actions={
           <>
+            {path.length > 0 && (
+              <ActionsMenu
+                label="···"
+                chevron={false}
+                size="sm"
+                ariaLabel="Acciones de la carpeta"
+                items={[
+                  {
+                    label: 'Renombrar carpeta',
+                    onSelect: () =>
+                      setFolderDialog({
+                        mode: 'rename',
+                        folder: path[path.length - 1]!,
+                        name: path[path.length - 1]!.name,
+                      }),
+                  },
+                  {
+                    label: 'Eliminar carpeta',
+                    danger: true,
+                    onSelect: () => setFolderToDelete(path[path.length - 1]!),
+                  },
+                ]}
+              />
+            )}
             <Button
               type="button"
               variant="outline"
