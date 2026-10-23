@@ -80,19 +80,26 @@ export function MediaField({
       window.clearTimeout(timer);
     };
   }, [value, inQueue]);
+  // The callbacks are read through refs: callers pass fresh arrow functions
+  // on every render, and an effect keyed on them would fire (and set state)
+  // without end.
+  const onChangeRef = useRef(onChange);
+  const onDurationRef = useRef(onDuration);
+  onChangeRef.current = onChange;
+  onDurationRef.current = onDuration;
   // The duration comes from Stream once the video is ready.
   const duration = kind === 'video' && info?.status === 'ready' ? info.durationSeconds : undefined;
   useEffect(() => {
-    if (duration !== undefined) onDuration?.(duration);
-  }, [duration, onDuration]);
+    if (duration !== undefined) onDurationRef.current?.(duration);
+  }, [duration]);
   // A failed or cancelled upload took its record with it: the field lets go of the id.
   const gone = entry?.status === 'error' ? (entry.error ?? es.app.error) : entry?.status === 'cancelled' ? '' : null;
   useEffect(() => {
     if (gone === null) return;
-    onChange(null);
-    onDuration?.(null);
+    onChangeRef.current(null);
+    onDurationRef.current?.(null);
     setError(gone || null);
-  }, [gone, onChange, onDuration]);
+  }, [gone]);
 
   async function upload(file: File) {
     const expected = kind === 'image' ? 'image/' : 'video/';
