@@ -10,6 +10,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
+import { cn } from '@/lib/utils';
+import { ActionsMenu } from '@/components/ui/actions-menu';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -142,27 +144,6 @@ export function MediaViewer({ id }: { id: string }) {
           {a.name}
         </h1>
         {a.kind === 'image' && a.status === 'ready' && editor.toolbar}
-        {a.status === 'ready' && !editor.dirty && (
-          <>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(api.media.publicUrl(id)).then(() => toast('Enlace copiado'));
-              }}
-              className="text-[13px] font-medium text-ink-3 hover:text-ink"
-            >
-              Copiar enlace
-            </button>
-            <a
-              href={api.media.publicUrl(id)}
-              target="_blank"
-              rel="noreferrer"
-              className="text-[13px] font-medium text-ink-3 hover:text-ink"
-            >
-              Abrir en una pestaña
-            </a>
-          </>
-        )}
         <input
           ref={replaceRef}
           type="file"
@@ -174,36 +155,40 @@ export function MediaViewer({ id }: { id: string }) {
           }}
         />
         {replaceError && <span className="text-[12px] text-accent-dark">{replaceError}</span>}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!!replacing || a.status !== 'ready'}
-          onClick={() => replaceRef.current?.click()}
-          title={
-            a.kind === 'video'
-              ? 'Subir otro video en su lugar: las rutinas que lo usan verán el nuevo'
-              : 'Subir otra imagen en su lugar: lo que la usa verá la nueva'
-          }
-        >
-          {replacing
-            ? replacing.status === 'uploading'
-              ? `Reemplazando ${uploadPct(replacing)}%`
-              : 'Reemplazando…'
-            : 'Reemplazar'}
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setConfirmDelete(true)}
-          disabled={remove.isPending}
-        >
-          {es.app.delete}
-        </Button>
+        {replacing && !editor.dirty && (
+          <span className="font-mono text-[11.5px] text-muted">
+            {replacing.status === 'uploading' ? `Reemplazando ${uploadPct(replacing)}%` : 'Reemplazando…'}
+          </span>
+        )}
+        {/* Everything but undo/redo (and Descartar/Guardar while editing) lives in one menu. */}
+        {!editor.dirty && (
+          <ActionsMenu
+            size="sm"
+            items={[
+              {
+                label: 'Copiar enlace',
+                disabled: a.status !== 'ready',
+                onSelect: () => {
+                  void navigator.clipboard.writeText(api.media.publicUrl(id)).then(() => toast('Enlace copiado'));
+                },
+              },
+              {
+                label: 'Abrir en una pestaña',
+                disabled: a.status !== 'ready',
+                onSelect: () => window.open(api.media.publicUrl(id), '_blank', 'noopener'),
+              },
+              {
+                label: a.kind === 'video' ? 'Reemplazar video' : 'Reemplazar imagen',
+                disabled: !!replacing || a.status !== 'ready',
+                onSelect: () => replaceRef.current?.click(),
+              },
+              { label: es.app.delete, danger: true, disabled: remove.isPending, onSelect: () => setConfirmDelete(true) },
+            ]}
+          />
+        )}
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-5 overflow-y-auto bg-surface-3 p-6">
+      <div className="flex min-h-0 flex-1 gap-5 overflow-hidden bg-surface-3 p-6">
         {a.status === 'ready' && a.kind === 'image' ? (
           editor.stage
         ) : (
@@ -228,10 +213,27 @@ export function MediaViewer({ id }: { id: string }) {
           </div>
         )}
 
-        <aside className="flex w-[340px] flex-none flex-col gap-4">
-          <section className="rounded-xl border border-line-2 bg-surface p-4">
-            <h2 className="mb-3 text-[13px] font-semibold text-ink">Información</h2>
-            <div className="flex flex-col gap-3">
+        <aside className="flex min-h-0 w-[340px] flex-none flex-col gap-4 overflow-y-auto">
+          <section className="rounded-xl border border-line-2 bg-surface">
+            {editor.sectionBtn(
+              'info',
+              'Información',
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.75}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 text-ink-3"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 16v-4" />
+                <path d="M12 8h.01" />
+              </svg>,
+            )}
+            <div className={cn('flex flex-col gap-3 p-4', editor.section !== 'info' && 'hidden')}>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="media-name">Nombre</Label>
                 <Input id="media-name" value={name} onChange={(e) => setName(e.target.value)} />

@@ -169,11 +169,14 @@ export function useImageEditor({
   };
 
   // The crop box follows the preset while the tool is open.
+  // Orientation turns a preset on its side (Original included; Cuadrado and Libre have none to turn).
   const ratio = useMemo(() => {
     const a = ASPECTS.find((x) => x.id === aspectId)!;
-    if (a.ratio === null) return current ? current.width / current.height : null;
     if (a.ratio === 0) return 0;
-    return portrait ? 1 / a.ratio : a.ratio;
+    const base = a.ratio === null ? (current ? current.width / current.height : null) : a.ratio;
+    if (base === null) return null;
+    const landscape = Math.max(base, 1 / base);
+    return portrait ? 1 / landscape : landscape;
   }, [aspectId, portrait, current]);
   useEffect(() => {
     if (tool === 'crop' && current) setCrop(fitRect(current.width, current.height, ratio || null));
@@ -195,9 +198,16 @@ export function useImageEditor({
       const maxW = el.clientWidth - 32;
       const maxH = el.clientHeight - 32;
       const s = Math.min(1, maxW / current.width, maxH / current.height);
-      c.width = Math.round(current.width * s);
-      c.height = Math.round(current.height * s);
-      c.getContext('2d')!.drawImage(current, 0, 0, c.width, c.height);
+      // Device pixels in the canvas (a Retina screen has two per CSS pixel), or the preview blurs.
+      const dpr = window.devicePixelRatio || 1;
+      c.width = Math.round(current.width * s * dpr);
+      c.height = Math.round(current.height * s * dpr);
+      c.style.width = `${Math.round(current.width * s)}px`;
+      c.style.height = `${Math.round(current.height * s)}px`;
+      const ctx = c.getContext('2d')!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(current, 0, 0, c.width, c.height);
       setScale(s);
     };
     fit();
@@ -289,7 +299,7 @@ export function useImageEditor({
   const sectionBtn = (id: 'info' | 'crop' | 'resize', label: string, icon: ReactNode) => (
     <button
       type="button"
-      onClick={() => setTool(tool === id ? 'info' : id)}
+      onClick={() => setTool(id)}
       className={cn(
         'flex w-full items-center gap-2.5 px-4 py-3 text-left text-[13.5px] font-semibold text-ink',
         tool === id && 'border-b border-line-2',
@@ -302,6 +312,10 @@ export function useImageEditor({
   );
 
   return {
+    /** Which side section is open (one at a time: Información, crop or resize). */
+    section: tool,
+    /** The header of a side section: click opens it and closes the one that was open. */
+    sectionBtn,
     /** The top bar's extras: undo/redo and, once something changed, Descartar + Guardar. */
     toolbar: (
       <div className="flex items-center gap-1.5">
@@ -465,28 +479,30 @@ export function useImageEditor({
               <div>
                 <p className="mb-1.5 text-[12px] font-semibold text-ink-2">Orientación</p>
                 <div className="flex rounded-md border border-line-2 bg-surface-2 p-0.5">
-                  {(['landscape', 'portrait'] as const).map((o) => (
-                    <button
-                      key={o}
-                      type="button"
-                      onClick={() => setPortrait(o === 'portrait')}
-                      disabled={
-                        aspectId === 'original' || aspectId === 'square' || aspectId === 'free'
-                      }
-                      className={cn(
-                        'flex flex-1 items-center justify-center rounded py-1.5 disabled:opacity-40',
-                        (o === 'portrait') === portrait && 'bg-surface shadow-sm',
-                      )}
-                      aria-label={o === 'landscape' ? 'Horizontal' : 'Vertical'}
-                    >
-                      <span
+                  {(['landscape', 'portrait'] as const).map((o) => {
+                    const on = (o === 'portrait') === portrait;
+                    return (
+                      <button
+                        key={o}
+                        type="button"
+                        onClick={() => setPortrait(o === 'portrait')}
                         className={cn(
-                          'block rounded-sm border-2 border-ink-3',
-                          o === 'landscape' ? 'h-3 w-5' : 'h-5 w-3',
+                          'flex flex-1 items-center justify-center gap-2 rounded py-1.5 text-[12.5px] font-medium transition-colors',
+                          on ? 'bg-surface text-ink shadow-sm' : 'text-ink-3 hover:text-ink',
                         )}
-                      />
-                    </button>
-                  ))}
+                        aria-pressed={on}
+                      >
+                        <span
+                          className={cn(
+                            'block rounded-[3px] border-2',
+                            on ? 'border-ink' : 'border-ink-3',
+                            o === 'landscape' ? 'h-3 w-[18px]' : 'h-[18px] w-3',
+                          )}
+                        />
+                        {o === 'landscape' ? 'Horizontal' : 'Vertical'}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               <ul className="flex flex-col">
