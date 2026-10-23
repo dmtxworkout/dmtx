@@ -73,12 +73,17 @@ export function MediaViewer({ id }: { id: string }) {
       qc.invalidateQueries({ queryKey: ['media'] });
       router.push('/biblioteca');
     },
-    onError: () => toast(es.app.error, 'error'),
+    onError: (e) => {
+      // Someone attached it since the page loaded: show where.
+      qc.invalidateQueries({ queryKey: ['media-usage', id] });
+      toast(e instanceof Error ? e.message : es.app.error, 'error');
+    },
   });
 
   if (asset.isLoading) return <p className="p-8 text-sm text-muted">{es.app.loading}</p>;
   if (!a) return <p className="p-8 text-sm text-muted">{es.app.error}</p>;
 
+  const used = usage.data?.items ?? [];
   const details = [
     fileType(a),
     a.width && a.height ? `${a.width} × ${a.height}` : null,
@@ -201,22 +206,45 @@ export function MediaViewer({ id }: { id: string }) {
         </aside>
       </div>
 
-      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Eliminar archivo" className="max-w-sm">
+      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title={used.length ? 'No se puede eliminar' : 'Eliminar archivo'} className="max-w-sm">
         <div className="flex flex-col gap-4 p-5">
-          <p className="text-[14px] leading-relaxed text-ink-2">
-            ¿Eliminar «{a.name}»?{' '}
-            {usage.data?.items.length
-              ? `Lo usan ${usage.data.items.length} ${usage.data.items.length === 1 ? 'contenido, que dejará' : 'contenidos, que dejarán'} de mostrarlo.`
-              : 'El archivo se borra también de Cloudflare.'}
-          </p>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
-              {es.app.cancel}
-            </Button>
-            <Button type="button" disabled={remove.isPending} onClick={() => remove.mutate()}>
-              {remove.isPending ? es.app.saving : es.app.delete}
-            </Button>
-          </div>
+          {used.length ? (
+            <>
+              <p className="text-[14px] leading-relaxed text-ink-2">
+                «{a.name}» se usa en {used.length === 1 ? 'este contenido' : `estos ${used.length} contenidos`}. Quítalo de ahí (o cámbialo por otro archivo) y vuelve a intentarlo.
+              </p>
+              <ul className="flex flex-col gap-1">
+                {used.map((u) => (
+                  <li key={`${u.type}-${u.id}-${u.field}`} className="text-[13px]">
+                    <Link href={`${USAGE_PATH[u.type]}/${u.id}`} className="font-medium text-accent hover:text-accent-dark">
+                      {u.name}
+                    </Link>
+                    <span className="text-muted">
+                      {' '}
+                      · {USAGE_LABEL[u.type]} · {u.field === 'video' ? 'video' : 'portada'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
+                  Entendido
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[14px] leading-relaxed text-ink-2">¿Eliminar «{a.name}»? Ningún contenido lo usa. El archivo se borra también de Cloudflare.</p>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
+                  {es.app.cancel}
+                </Button>
+                <Button type="button" disabled={remove.isPending || usage.isLoading} onClick={() => remove.mutate()}>
+                  {remove.isPending ? es.app.saving : es.app.delete}
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </Dialog>
     </div>

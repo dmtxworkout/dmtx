@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type ReactNode, useState } from 'react';
+import { ConfirmHost } from '@/components/ui/confirm';
 import { Toaster } from '@/components/ui/toast';
 import { UploadsTray } from '@/components/uploads-tray';
 
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       {children}
       <Toaster />
+      <ConfirmHost />
       <UploadsTray />
     </QueryClientProvider>
   );

@@ -192,6 +192,7 @@ export function mediaApi(http: Http) {
     usage(id: string): Promise<{ items: MediaUsageItem[] }> {
       return http.request(`/api/media/${id}/usage`);
     },
+    /** Rejects with an `ApiError` of status 409 (body `{ error, usage }`) while content still uses the asset. */
     remove(id: string): Promise<void> {
       return http.request(`/api/media/${id}`, { method: 'DELETE' });
     },

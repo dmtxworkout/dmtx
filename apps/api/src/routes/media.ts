@@ -74,6 +74,50 @@ async function deleteRemote(env: Env, kind: 'video' | 'image', externalId: strin
   else await streamDelete(env, externalId);
 }
 
+type UsageItem = z.infer<typeof usageItem>;
+/** Every piece of content that references the asset (the admin sees it before deleting; deleting is refused while any exists). */
+async function usageOf(db: Database, id: string): Promise<UsageItem[]> {
+    const [ex, wo, pr, sk, lv, co] = await Promise.all([
+      db
+        .select({ id: exercises.id, name: exercises.name, video: exercises.demoVideoAssetId, thumb: exercises.thumbnailAssetId })
+        .from(exercises)
+        .where(and(isNull(exercises.deletedAt), or(eq(exercises.demoVideoAssetId, id), eq(exercises.thumbnailAssetId, id)))),
+      db
+        .select({
+          id: workouts.id,
+          name: workouts.name,
+          video: workouts.videoAssetId,
+          thumb: workouts.thumbnailAssetId,
+          ownerProgramId: workouts.ownerProgramId,
+          ownerSkillId: workouts.ownerSkillId,
+        })
+        .from(workouts)
+        .where(and(isNull(workouts.deletedAt), or(eq(workouts.videoAssetId, id), eq(workouts.thumbnailAssetId, id)))),
+      db.select({ id: programs.id, name: programs.name }).from(programs).where(and(isNull(programs.deletedAt), eq(programs.thumbnailAssetId, id))),
+      db.select({ id: skills.id, name: skills.name }).from(skills).where(and(isNull(skills.deletedAt), eq(skills.thumbnailAssetId, id))),
+      db
+        .select({ id: skillLevels.skillId, name: skillLevels.name })
+        .from(skillLevels)
+        .where(eq(skillLevels.thumbnailAssetId, id)),
+      db.select({ id: collections.id, name: collections.name }).from(collections).where(and(isNull(collections.deletedAt), eq(collections.thumbnailAssetId, id))),
+    ]);
+    const items: UsageItem[] = [
+      ...ex.map((r) => ({ type: 'exercise' as const, id: r.id, name: r.name, field: r.video === id ? ('video' as const) : ('thumbnail' as const) })),
+      // A rutina owned by a program or a skill is edited from its owner's page.
+      ...wo.map((r) => ({
+        type: r.ownerProgramId ? ('program' as const) : r.ownerSkillId ? ('skill' as const) : ('workout' as const),
+        id: r.ownerProgramId ?? r.ownerSkillId ?? r.id,
+        name: r.name,
+        field: r.video === id ? ('video' as const) : ('thumbnail' as const),
+      })),
+      ...pr.map((r) => ({ type: 'program' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+      ...sk.map((r) => ({ type: 'skill' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+      ...lv.map((r) => ({ type: 'skillLevel' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+      ...co.map((r) => ({ type: 'collection' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
+    ];
+    return items;
+}
+
 export const mediaRoute = createApp();
 mediaRoute.use('*', requireAdmin);
 
@@ -283,47 +327,7 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const db = c.get('db');
-    type Item = z.infer<typeof usageItem>;
-    const [ex, wo, pr, sk, lv, co] = await Promise.all([
-      db
-        .select({ id: exercises.id, name: exercises.name, video: exercises.demoVideoAssetId, thumb: exercises.thumbnailAssetId })
-        .from(exercises)
-        .where(and(isNull(exercises.deletedAt), or(eq(exercises.demoVideoAssetId, id), eq(exercises.thumbnailAssetId, id)))),
-      db
-        .select({
-          id: workouts.id,
-          name: workouts.name,
-          video: workouts.videoAssetId,
-          thumb: workouts.thumbnailAssetId,
-          ownerProgramId: workouts.ownerProgramId,
-          ownerSkillId: workouts.ownerSkillId,
-        })
-        .from(workouts)
-        .where(and(isNull(workouts.deletedAt), or(eq(workouts.videoAssetId, id), eq(workouts.thumbnailAssetId, id)))),
-      db.select({ id: programs.id, name: programs.name }).from(programs).where(and(isNull(programs.deletedAt), eq(programs.thumbnailAssetId, id))),
-      db.select({ id: skills.id, name: skills.name }).from(skills).where(and(isNull(skills.deletedAt), eq(skills.thumbnailAssetId, id))),
-      db
-        .select({ id: skillLevels.skillId, name: skillLevels.name })
-        .from(skillLevels)
-        .where(eq(skillLevels.thumbnailAssetId, id)),
-      db.select({ id: collections.id, name: collections.name }).from(collections).where(and(isNull(collections.deletedAt), eq(collections.thumbnailAssetId, id))),
-    ]);
-    const items: Item[] = [
-      ...ex.map((r) => ({ type: 'exercise' as const, id: r.id, name: r.name, field: r.video === id ? ('video' as const) : ('thumbnail' as const) })),
-      // A rutina owned by a program or a skill is edited from its owner's page.
-      ...wo.map((r) => ({
-        type: r.ownerProgramId ? ('program' as const) : r.ownerSkillId ? ('skill' as const) : ('workout' as const),
-        id: r.ownerProgramId ?? r.ownerSkillId ?? r.id,
-        name: r.name,
-        field: r.video === id ? ('video' as const) : ('thumbnail' as const),
-      })),
-      ...pr.map((r) => ({ type: 'program' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-      ...sk.map((r) => ({ type: 'skill' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-      ...lv.map((r) => ({ type: 'skillLevel' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-      ...co.map((r) => ({ type: 'collection' as const, id: r.id, name: r.name, field: 'thumbnail' as const })),
-    ];
-    return c.json({ items }, 200);
+    return c.json({ items: await usageOf(c.get('db'), id) }, 200);
   },
 );
 
@@ -337,11 +341,19 @@ mediaRoute.openapi(
     responses: {
       204: { description: 'Eliminado' },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+      409: {
+        description: 'En uso: el contenido que lo referencia debe soltarlo antes',
+        content: { 'application/json': { schema: z.object({ error: z.string(), usage: z.array(usageItem) }) } },
+      },
     },
   }),
   async (c) => {
     const { id } = c.req.valid('param');
     const db = c.get('db');
+    const usage = await usageOf(db, id);
+    if (usage.length) {
+      return c.json({ error: `El archivo se usa en ${usage.length === 1 ? '1 contenido' : `${usage.length} contenidos`}; quítalo de ahí antes de eliminarlo.`, usage }, 409);
+    }
     const [row] = await db
       .update(mediaAssets)
       .set({ deletedAt: new Date() })

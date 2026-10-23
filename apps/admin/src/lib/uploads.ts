@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { isUploadCancelled, type MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { prepareImage } from '@/lib/prepare-image';
+import { confirm } from '@/components/ui/confirm';
 
 export type UploadStatus = 'uploading' | 'processing' | 'done' | 'error' | 'cancelled';
 export interface UploadEntry {
@@ -43,17 +44,49 @@ const dropLater = (assetId: string) =>
 
 export const isActiveUpload = (e: UploadEntry) => e.status === 'uploading' || e.status === 'processing';
 
+/** The admin chose not to upload (a duplicate name): not an error to show. */
+export class UploadDeclined extends Error {
+  constructor() {
+    super('Subida cancelada');
+    this.name = 'UploadDeclined';
+  }
+}
+export const isUploadDeclined = (err: unknown) => err instanceof UploadDeclined;
+
+/**
+ * A file with the same name is probably the same file uploaded twice (each
+ * copy is billed): say so and let the admin decide before any byte moves.
+ */
+async function checkDuplicate(file: File, kind: 'image' | 'video') {
+  const name = file.name.trim().toLowerCase();
+  const found = await api.media
+    .list({ search: file.name, kind, pageSize: 50 })
+    .then((r) => r.data.find((m) => m.name.trim().toLowerCase() === name))
+    .catch(() => undefined);
+  if (!found) return;
+  const when = new Date(found.createdAt).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+  const ok = await confirm({
+    title: 'Ya existe un archivo con ese nombre',
+    message: `«${found.name}» ya está en la biblioteca (subido el ${when}). Si es el mismo archivo, elígelo de la biblioteca en vez de subirlo otra vez: cada copia ocupa espacio y se cobra.`,
+    confirmLabel: 'Subir de todos modos',
+    cancelLabel: 'No subir',
+  });
+  if (!ok) throw new UploadDeclined();
+}
+
 /**
  * Upload `file` in the background. Resolves with the asset id once the record
- * exists; rejects only if the upload could not even start. Progress and the
- * outcome are read through `useUploads`.
+ * exists; rejects only if the upload could not even start (or the admin
+ * declined a duplicate: `isUploadDeclined`). Progress and the outcome are read
+ * through `useUploads`.
  */
 export function startUpload(original: File, kind: 'image' | 'video'): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let assetId: string | null = null;
     const controller = new AbortController();
-    // An image over Cloudflare Images' 10 MB is re-encoded first (see prepare-image).
-    (kind === 'image' ? prepareImage(original) : Promise.resolve(original))
+    // A duplicate name asks first; an image over Cloudflare Images' 10 MB is re-encoded (see prepare-image).
+    checkDuplicate(original, kind)
+      .then(() => (kind === 'image' ? prepareImage(original) : original))
       .then((file) =>
         api.media.upload(file, kind, {
           signal: controller.signal,

@@ -13,7 +13,7 @@ import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
-import { startUpload, uploadPct, useUploads } from '@/lib/uploads';
+import { isUploadDeclined, startUpload, uploadPct, useUploads } from '@/lib/uploads';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
 
@@ -97,7 +97,7 @@ export function MediaBrowser({
       // What was just uploaded is what you came for: mark it.
       onSelectedChange(selectable === 'single' ? ids.slice(0, 1) : [...selected, ...ids]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : es.app.error);
+      if (!isUploadDeclined(e)) setError(e instanceof Error ? e.message : es.app.error);
     } finally {
       setUploading(false);
       if (inputRef.current) inputRef.current.value = '';

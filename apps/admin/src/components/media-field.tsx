@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { MediaPicker } from '@/components/media-picker';
-import { cancelUpload, formatBytes, startUpload, uploadPct, useUpload } from '@/lib/uploads';
+import { cancelUpload, formatBytes, isUploadDeclined, startUpload, uploadPct, useUpload } from '@/lib/uploads';
 
 interface Info {
   name: string;
@@ -107,7 +107,7 @@ export function MediaField({
       onChange(await startUpload(file, kind));
       onDuration?.(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : es.app.error);
+      if (!isUploadDeclined(err)) setError(err instanceof Error ? err.message : es.app.error);
     } finally {
       setStarting(false);
     }
