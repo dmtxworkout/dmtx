@@ -25,8 +25,95 @@ import {
 } from '@/lib/uploads';
 import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
 import { FolderIcon } from '@/components/folder-picker';
+import { IconButton } from '@/components/ui/icon-button';
+import { Popover } from '@/components/ui/popover';
+import { toast } from '@/components/ui/toast';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
+
+const ReplaceIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M4 7h11l-3-3" />
+    <path d="M20 17H9l3 3" />
+    <rect x="4" y="11" width="6" height="9" rx="1" />
+    <rect x="14" y="4" width="6" height="9" rx="1" />
+  </svg>
+);
+const LinkIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+    <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.5-1.5" />
+  </svg>
+);
+
+/** «N usos ▾» with the list in a popover at the document root (a scrolling table cannot clip it). */
+function UsageCell({
+  id,
+  usage,
+  open,
+  onToggle,
+  onClose,
+}: {
+  id: string;
+  usage: NonNullable<MediaAsset['usage']>;
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        onClick={onToggle}
+        className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12.5px] font-medium text-ink hover:bg-surface-3"
+        aria-expanded={open}
+        aria-controls={`usage-${id}`}
+      >
+        {usage.length} {usage.length === 1 ? 'uso' : 'usos'} ▾
+      </button>
+      {open && (
+        <Popover anchor={ref} onClose={onClose}>
+          <ul id={`usage-${id}`} className="flex flex-col gap-1">
+            {usage.map((u) => (
+              <li key={`${u.type}-${u.id}-${u.field}`} className="text-[12.5px]">
+                <Link
+                  href={`${USAGE_PATH[u.type]}/${u.id}`}
+                  className="font-medium text-accent hover:text-accent-dark"
+                >
+                  {u.name}
+                </Link>
+                <span className="text-muted">
+                  {' '}
+                  · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Popover>
+      )}
+    </>
+  );
+}
 
 /** "JPG", "MP4": from the file's extension; else its kind. */
 export function fileType(m: MediaAsset): string {
@@ -367,7 +454,7 @@ export function MediaBrowser({
                 <TH>Añadido</TH>
                 <TH className="text-right">Peso</TH>
                 <TH>Usos</TH>
-                <TH className="w-12" />
+                <TH className="w-24" />
               </TR>
             </THead>
             <TBody>
@@ -423,7 +510,7 @@ export function MediaBrowser({
                   <TR
                     key={m.id}
                     className={cn(
-                      'cursor-pointer',
+                      'group cursor-pointer',
                       on && 'bg-accent-tint/30 hover:bg-accent-tint/30',
                     )}
                     onClick={() => (onOpen ? onOpen(m.id) : toggle(m.id))}
@@ -480,61 +567,49 @@ export function MediaBrowser({
                     </TD>
                     <TD onClick={(e) => e.stopPropagation()}>
                       {usage.length ? (
-                        <div className="relative">
-                          <button
-                            type="button"
-                            onClick={() => setUsageOpen((o) => (o === m.id ? null : m.id))}
-                            className="whitespace-nowrap rounded-md px-1.5 py-0.5 text-[12.5px] font-medium text-ink hover:bg-surface-3"
-                          >
-                            {usage.length} {usage.length === 1 ? 'uso' : 'usos'} ▾
-                          </button>
-                          {usageOpen === m.id && (
-                            <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded-xl border border-line-2 bg-surface p-2 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
-                              <ul className="flex flex-col gap-1">
-                                {usage.map((u) => (
-                                  <li
-                                    key={`${u.type}-${u.id}-${u.field}`}
-                                    className="text-[12.5px]"
-                                  >
-                                    <Link
-                                      href={`${USAGE_PATH[u.type]}/${u.id}`}
-                                      className="font-medium text-accent hover:text-accent-dark"
-                                    >
-                                      {u.name}
-                                    </Link>
-                                    <span className="text-muted">
-                                      {' '}
-                                      · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-                        </div>
+                        <UsageCell
+                          id={m.id}
+                          usage={usage}
+                          open={usageOpen === m.id}
+                          onToggle={() => setUsageOpen((o) => (o === m.id ? null : m.id))}
+                          onClose={() => setUsageOpen(null)}
+                        />
                       ) : (
                         <span className="text-faint-2">—</span>
                       )}
                     </TD>
                     <TD onClick={(e) => e.stopPropagation()}>
-                      {!pending && !replacingThis && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReplacing(m);
-                            // The input's accept follows `replacing`; open it on the next tick.
-                            setTimeout(() => replaceRef.current?.click(), 0);
-                          }}
-                          className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink"
-                          title={
-                            m.kind === 'video'
-                              ? 'Subir otro video en su lugar (las rutinas que lo usan lo verán)'
-                              : 'Subir otra imagen en su lugar (lo que la usa la verá)'
-                          }
-                        >
-                          Reemplazar
-                        </button>
-                      )}
+                      {/* Row actions: icons that name themselves on hover, shown when the row is hovered. */}
+                      <div className="flex justify-end gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                        {!pending && !replacingThis && (
+                          <IconButton
+                            tooltipAlign="end"
+                            label={m.kind === 'video' ? 'Reemplazar video' : 'Reemplazar imagen'}
+                            onClick={() => {
+                              setReplacing(m);
+                              // The input's accept follows `replacing`; open it on the next tick.
+                              setTimeout(() => replaceRef.current?.click(), 0);
+                            }}
+                          >
+                            <ReplaceIcon className="h-4 w-4" />
+                          </IconButton>
+                        )}
+                        {!pending && (m.kind === 'image' ? m.viewUrl : m.embedUrl) && (
+                          <IconButton
+                            tooltipAlign="end"
+                            label={
+                              m.kind === 'video' ? 'Copiar enlace (válido 24 h)' : 'Copiar enlace'
+                            }
+                            onClick={() => {
+                              void navigator.clipboard
+                                .writeText((m.kind === 'image' ? m.viewUrl : m.embedUrl) ?? '')
+                                .then(() => toast('Enlace copiado'));
+                            }}
+                          >
+                            <LinkIcon className="h-4 w-4" />
+                          </IconButton>
+                        )}
+                      </div>
                     </TD>
                   </TR>
                 );
