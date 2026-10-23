@@ -87,7 +87,7 @@ async function checkDuplicate(file: File, kind: 'image' | 'video') {
  * declined a duplicate: `isUploadDeclined`). Progress and the outcome are read
  * through `useUploads`.
  */
-export function startUpload(original: File, kind: 'image' | 'video', opts: { replaceOf?: string } = {}): Promise<string> {
+export function startUpload(original: File, kind: 'image' | 'video', opts: { replaceOf?: string; folderId?: string | null } = {}): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     let assetId: string | null = null;
     const controller = new AbortController();
@@ -98,6 +98,7 @@ export function startUpload(original: File, kind: 'image' | 'video', opts: { rep
       .then((file) =>
         api.media.upload(file, kind, {
           signal: controller.signal,
+          folderId: opts.folderId ?? null,
           onStarted: (asset) => {
             assetId = asset.id;
             controllers.set(asset.id, controller);

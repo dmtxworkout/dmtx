@@ -10,6 +10,8 @@ export interface MediaAsset {
   name: string;
   /** Images: the alt text for the app. */
   altText: string | null;
+  /** The folder it is filed under; null = the library's root. */
+  folderId: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
   durationSeconds: number | null;
@@ -33,6 +35,15 @@ export interface CreateUploadInput {
   contentType: string;
   kind: MediaKind;
   sizeBytes: number;
+  /** Filed under this folder from the start. */
+  folderId?: string | null;
+}
+
+export interface MediaFolder {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
 }
 
 export interface CreateUploadResult {
@@ -54,6 +65,8 @@ export interface MediaListQuery {
   pageSize?: number;
   search?: string;
   kind?: MediaKind;
+  /** A folder id, or `root` for the files in none. Ignored while searching. */
+  folder?: string;
 }
 
 export interface UploadHooks {
@@ -62,6 +75,8 @@ export interface UploadHooks {
   onProgress?: (loaded: number, total: number) => void;
   /** The bytes are in; Stream is encoding (videos only). */
   onProcessing?: (asset: MediaAsset) => void;
+  /** File the upload under this folder. */
+  folderId?: string | null;
   /** Abort it: the transfer stops (or the encoding is dropped) and the file is deleted at Cloudflare. Rejects with an `AbortError`. */
   signal?: AbortSignal;
 }
@@ -173,6 +188,7 @@ export function mediaApi(http: Http) {
       if (query?.pageSize) params.set('pageSize', String(query.pageSize));
       if (query?.search) params.set('search', query.search);
       if (query?.kind) params.set('kind', query.kind);
+      if (query?.folder) params.set('folder', query.folder);
       const qs = params.toString();
       return http.request(`/api/media${qs ? `?${qs}` : ''}`);
     },
@@ -188,7 +204,24 @@ export function mediaApi(http: Http) {
     view(id: string): Promise<MediaAsset> {
       return http.request(`/api/media/${id}`);
     },
-    update(id: string, input: { name?: string; altText?: string | null }): Promise<MediaAsset> {
+    folders(): Promise<{ items: MediaFolder[] }> {
+      return http.request('/api/media/folders');
+    },
+    createFolder(input: { name: string; parentId?: string | null }): Promise<MediaFolder> {
+      return http.request('/api/media/folders', { method: 'POST', body: JSON.stringify(input) });
+    },
+    updateFolder(id: string, input: { name?: string; parentId?: string | null }): Promise<MediaFolder> {
+      return http.request(`/api/media/folders/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
+    },
+    /** Deletes the folder; its files and subfolders move up to its parent. */
+    removeFolder(id: string): Promise<void> {
+      return http.request(`/api/media/folders/${id}`, { method: 'DELETE' });
+    },
+    /** File several assets under a folder (null = the root). */
+    move(ids: string[], folderId: string | null): Promise<{ moved: number }> {
+      return http.request('/api/media/move', { method: 'POST', body: JSON.stringify({ ids, folderId }) });
+    },
+    update(id: string, input: { name?: string; altText?: string | null; folderId?: string | null }): Promise<MediaAsset> {
       return http.request(`/api/media/${id}`, { method: 'PATCH', body: JSON.stringify(input) });
     },
     usage(id: string): Promise<{ items: MediaUsageItem[] }> {
@@ -213,7 +246,7 @@ export function mediaApi(http: Http) {
      */
     async upload(file: File, kind: MediaKind, hooks: UploadHooks = {}): Promise<MediaAsset> {
       const contentType = file.type || 'application/octet-stream';
-      const { asset, uploadUrl, protocol } = await this.createUpload({ filename: file.name, contentType, kind, sizeBytes: file.size });
+      const { asset, uploadUrl, protocol } = await this.createUpload({ filename: file.name, contentType, kind, sizeBytes: file.size, folderId: hooks.folderId ?? null });
       hooks.onStarted?.(asset);
       const { signal } = hooks;
       try {

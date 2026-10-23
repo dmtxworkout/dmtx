@@ -26,6 +26,7 @@ export async function serializeAsset(env: Env, r: MediaRow) {
     kind: r.kind,
     name: r.name,
     altText: r.altText,
+    folderId: r.folderId,
     mimeType: r.mimeType,
     sizeBytes: r.sizeBytes,
     durationSeconds: r.durationSeconds,

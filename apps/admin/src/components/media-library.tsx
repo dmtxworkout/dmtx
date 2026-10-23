@@ -7,7 +7,7 @@
 // (single select, Listo).
 import { type DragEvent, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { MediaAsset } from '@dmtx/api-client';
+import type { MediaAsset, MediaFolder } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ import {
   type UploadEntry,
 } from '@/lib/uploads';
 import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
+import { FolderIcon } from '@/components/folder-picker';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
 
@@ -74,6 +75,7 @@ export function MediaBrowser({
   onSelectedChange,
   onOpen,
   layout = 'grid',
+  folder,
   className,
 }: {
   /** The kinds shown. With `onKindChange`, the chips to switch are shown too. */
@@ -86,6 +88,14 @@ export function MediaBrowser({
   onOpen?: (id: string) => void;
   /** Tiles (the picker) or Shopify-style rows with alt text, date, size, where each file is used and «Reemplazar». */
   layout?: 'grid' | 'table';
+  /** Browsing by folder (table only): the open folder, every folder (for its subfolders), and what to do with them. */
+  folder?: {
+    id: string | null;
+    all: MediaFolder[];
+    onOpen: (id: string) => void;
+    onRename: (f: MediaFolder) => void;
+    onDelete: (f: MediaFolder) => void;
+  };
   className?: string;
 }) {
   const qc = useQueryClient();
@@ -101,12 +111,15 @@ export function MediaBrowser({
   /** dragenter minus dragleave: children fire their own pairs. */
   const [dragging, setDragging] = useState(0);
 
+  // Inside a folder the list is that folder's; a search spans the whole library.
+  const folderKey = folder ? (folder.id ?? 'root') : undefined;
   const { data, isLoading } = useQuery({
-    queryKey: ['media', kind, search],
+    queryKey: ['media', kind, search, folderKey ?? 'all'],
     queryFn: () =>
       api.media.list({
         kind: kind === 'all' ? undefined : kind,
         search: search || undefined,
+        folder: search ? undefined : folderKey,
         pageSize: 200,
       }),
     // While Stream encodes a video, the list asks again until it is ready.
@@ -142,7 +155,7 @@ export function MediaBrowser({
     try {
       // The records exist right away; the bytes go on in the background (see the tray).
       const ids = await Promise.all(
-        chosen.map((file) => startUpload(file, file.type.startsWith('video/') ? 'video' : 'image')),
+        chosen.map((file) => startUpload(file, file.type.startsWith('video/') ? 'video' : 'image', { folderId: folder?.id ?? null })),
       );
       await qc.invalidateQueries({ queryKey: ['media'] });
       // What was just uploaded is what you came for: mark it.
@@ -199,6 +212,9 @@ export function MediaBrowser({
           : `${Math.max(1, Math.round(n / 1024))} KB`;
   const allOn = items.length > 0 && items.every((m) => selected.includes(m.id));
   const someOn = items.some((m) => selected.includes(m.id));
+  // Subfolders of the open folder (not while searching: a search is about files).
+  const subfolders =
+    folder && !search ? folder.all.filter((f) => f.parentId === (folder.id ?? null)).sort((a, b) => a.name.localeCompare(b.name, 'es')) : [];
 
   const onDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -308,16 +324,18 @@ export function MediaBrowser({
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {isLoading ? (
           <p className="py-10 text-center text-sm text-muted">{es.app.loading}</p>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && subfolders.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
             <SearchIcon className="h-10 w-10 text-faint-2" />
             <p className="mt-2 text-lg font-semibold">
-              {search ? 'Sin resultados' : 'La biblioteca está vacía'}
+              {search ? 'Sin resultados' : folder?.id ? 'Esta carpeta está vacía' : 'La biblioteca está vacía'}
             </p>
             <p className="text-sm text-muted">
               {search
                 ? 'Prueba con otro nombre, o sube un archivo nuevo.'
-                : 'Sube el primer archivo.'}
+                : folder?.id
+                  ? 'Arrastra archivos aquí o súbelos; también puedes mover otros a esta carpeta.'
+                  : 'Sube el primer archivo.'}
             </p>
             <Button
               type="button"
@@ -341,7 +359,7 @@ export function MediaBrowser({
                     label={allOn ? 'Desmarcar todos' : 'Marcar todos'}
                   />
                 </TH>
-                <TH>Archivo</TH>
+                <TH>{search && folder ? 'Archivo · en toda la biblioteca' : 'Archivo'}</TH>
                 <TH>Texto alternativo</TH>
                 <TH>Añadido</TH>
                 <TH className="text-right">Peso</TH>
@@ -350,6 +368,33 @@ export function MediaBrowser({
               </TR>
             </THead>
             <TBody>
+              {subfolders.map((f) => (
+                <TR key={`folder-${f.id}`} className="cursor-pointer" onClick={() => folder?.onOpen(f.id)}>
+                  <TD />
+                  <TD>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-accent-tint/60">
+                        <FolderIcon className="h-5 w-5 text-accent-dark" />
+                      </div>
+                      <p className="truncate text-[13.5px] font-semibold text-ink">{f.name}</p>
+                    </div>
+                  </TD>
+                  <TD className="text-faint-2">—</TD>
+                  <TD className="whitespace-nowrap font-mono text-[12px]">{added(f.createdAt)}</TD>
+                  <TD className="text-right text-faint-2">—</TD>
+                  <TD className="text-faint-2">—</TD>
+                  <TD onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-1">
+                      <button type="button" onClick={() => folder?.onRename(f)} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-ink">
+                        Renombrar
+                      </button>
+                      <button type="button" onClick={() => folder?.onDelete(f)} className="rounded-md px-2 py-1 text-[12px] font-medium text-ink-3 hover:bg-surface-3 hover:text-accent-dark">
+                        Eliminar
+                      </button>
+                    </div>
+                  </TD>
+                </TR>
+              ))}
               {items.map((m) => {
                 const on = selected.includes(m.id);
                 const up = uploads.find((u) => u.assetId === m.id);

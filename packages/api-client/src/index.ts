@@ -41,6 +41,7 @@ export type {
   CreateUploadInput,
   CreateUploadResult,
   MediaAsset,
+  MediaFolder,
   MediaKind,
   MediaStatus,
   MediaListQuery,

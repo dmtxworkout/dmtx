@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
-import { and, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
-import { collections, exercises, mediaAssets, programs, skillLevels, skills, workouts } from '@dmtx/db';
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { collections, exercises, mediaAssets, mediaFolders, programs, skillLevels, skills, workouts } from '@dmtx/db';
 import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx/schemas';
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
@@ -23,6 +23,8 @@ const assetSchema = z.object({
   kind: kindEnum,
   name: z.string(),
   altText: z.string().nullable(),
+  /** The folder it is filed under; null = the library's root. */
+  folderId: z.uuid().nullable(),
   mimeType: z.string().nullable(),
   sizeBytes: z.number().nullable(),
   durationSeconds: z.number().nullable(),
@@ -45,27 +47,45 @@ const createUploadRequest = z.object({
   contentType: z.string().min(1),
   kind: kindEnum,
   sizeBytes: z.number().int().positive(),
+  /** Filed under this folder from the start (the folder the admin had open). */
+  folderId: z.uuid().nullish(),
 });
+const folderSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  parentId: z.uuid().nullable(),
+  createdAt: z.iso.datetime(),
+});
+const folderInput = z.object({
+  name: z.string().trim().min(1).max(200),
+  parentId: z.uuid().nullish(),
+});
+const serializeFolder = (f: typeof mediaFolders.$inferSelect) => ({ id: f.id, name: f.name, parentId: f.parentId, createdAt: f.createdAt.toISOString() });
 const createUploadResponse = z.object({
   asset: assetSchema,
   uploadUrl: z.string(),
   /** `form`: one multipart POST with the file (images); `tus`: resumable PATCHes (videos). */
   protocol: z.enum(['form', 'tus']),
 });
-const listQuery = paginationQuerySchema.extend({ kind: kindEnum.optional() });
+const listQuery = paginationQuerySchema.extend({
+  kind: kindEnum.optional(),
+  /** Only the files in this folder (`root` for the ones in none). Ignored while searching: a search spans the library. */
+  folder: z.string().optional(),
+});
 const updateRequest = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   altText: z.string().trim().max(500).nullable().optional(),
+  folderId: z.uuid().nullable().optional(),
 });
 
 const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
 /** The media record exists from the moment an upload starts, as `uploading`, so the admin can keep working. */
-async function createUploading(db: Database, externalId: string, name: string, kind: 'video' | 'image', contentType: string, sizeBytes: number) {
+async function createUploading(db: Database, externalId: string, name: string, kind: 'video' | 'image', contentType: string, sizeBytes: number, folderId: string | null) {
   const [row] = await db
     .insert(mediaAssets)
-    .values({ externalId, name, kind, mimeType: contentType, sizeBytes, processingStatus: 'uploading' })
+    .values({ externalId, name, kind, mimeType: contentType, sizeBytes, processingStatus: 'uploading', folderId })
     .returning();
   if (!row) throw new Error('No se pudo crear el asset de medios');
   return row;
@@ -164,11 +184,13 @@ mediaRoute.openapi(
   }),
   async (c) => {
     const db = c.get('db');
-    const { page, pageSize, search, kind } = c.req.valid('query');
+    const { page, pageSize, search, kind, folder } = c.req.valid('query');
     const where = and(
       isNull(mediaAssets.deletedAt),
       kind ? eq(mediaAssets.kind, kind) : undefined,
       search ? ilike(mediaAssets.name, `%${search}%`) : undefined,
+      // A search spans every folder; browsing shows one folder at a time.
+      !search && folder ? (folder === 'root' ? isNull(mediaAssets.folderId) : eq(mediaAssets.folderId, folder)) : undefined,
     );
     const [rows, [totals]] = await Promise.all([
       db
@@ -191,6 +213,114 @@ mediaRoute.openapi(
   },
 );
 
+// --- Folders ------------------------------------------------------------------
+// Nested folders the admin sorts the library into. Deleting one moves what it
+// holds (files and subfolders) up to its parent, so nothing is lost.
+mediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/folders',
+    tags: ['media'],
+    responses: { 200: { description: 'Todas las carpetas', content: { 'application/json': { schema: z.object({ items: z.array(folderSchema) }) } } } },
+  }),
+  async (c) => {
+    const rows = await c.get('db').select().from(mediaFolders).orderBy(asc(mediaFolders.name));
+    return c.json({ items: rows.map(serializeFolder) }, 200);
+  },
+);
+mediaRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/folders',
+    tags: ['media'],
+    request: { body: { content: { 'application/json': { schema: folderInput } } } },
+    responses: { 201: { description: 'Carpeta creada', content: { 'application/json': { schema: folderSchema } } } },
+  }),
+  async (c) => {
+    const { name, parentId } = c.req.valid('json');
+    const [row] = await c.get('db').insert(mediaFolders).values({ name, parentId: parentId ?? null }).returning();
+    if (!row) throw new Error('No se pudo crear la carpeta');
+    return c.json(serializeFolder(row), 201);
+  },
+);
+mediaRoute.openapi(
+  createRoute({
+    method: 'patch',
+    path: '/folders/{id}',
+    tags: ['media'],
+    request: { params: idParam, body: { content: { 'application/json': { schema: folderInput.partial() } } } },
+    responses: {
+      200: { description: 'Carpeta actualizada', content: { 'application/json': { schema: folderSchema } } },
+      400: { description: 'Movimiento imposible', content: { 'application/json': { schema: errorSchema } } },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const body = c.req.valid('json');
+    const db = c.get('db');
+    if (body.parentId !== undefined && body.parentId !== null) {
+      // A folder cannot go inside itself or one of its own subfolders.
+      const all = await db.select({ id: mediaFolders.id, parentId: mediaFolders.parentId }).from(mediaFolders);
+      let cursor: string | null = body.parentId;
+      while (cursor) {
+        if (cursor === id) return c.json({ error: 'Una carpeta no puede ir dentro de sí misma' }, 400);
+        cursor = all.find((f) => f.id === cursor)?.parentId ?? null;
+      }
+    }
+    const [row] = await db
+      .update(mediaFolders)
+      .set({ ...(body.name !== undefined ? { name: body.name } : {}), ...(body.parentId !== undefined ? { parentId: body.parentId ?? null } : {}), updatedAt: new Date() })
+      .where(eq(mediaFolders.id, id))
+      .returning();
+    if (!row) return c.json({ error: 'No encontrado' }, 404);
+    return c.json(serializeFolder(row), 200);
+  },
+);
+mediaRoute.openapi(
+  createRoute({
+    method: 'delete',
+    path: '/folders/{id}',
+    tags: ['media'],
+    request: { params: idParam },
+    responses: {
+      204: { description: 'Carpeta eliminada; su contenido pasa a la carpeta de arriba' },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const db = c.get('db');
+    const [folder] = await db.select().from(mediaFolders).where(eq(mediaFolders.id, id)).limit(1);
+    if (!folder) return c.json({ error: 'No encontrado' }, 404);
+    await db.update(mediaAssets).set({ folderId: folder.parentId }).where(eq(mediaAssets.folderId, id));
+    await db.update(mediaFolders).set({ parentId: folder.parentId }).where(eq(mediaFolders.parentId, id));
+    await db.delete(mediaFolders).where(eq(mediaFolders.id, id));
+    return c.body(null, 204);
+  },
+);
+
+// --- Move files into a folder (or to the root) -------------------------------
+mediaRoute.openapi(
+  createRoute({
+    method: 'post',
+    path: '/move',
+    tags: ['media'],
+    request: { body: { content: { 'application/json': { schema: z.object({ ids: z.array(z.uuid()).min(1), folderId: z.uuid().nullable() }) } } } },
+    responses: { 200: { description: 'Movidos', content: { 'application/json': { schema: z.object({ moved: z.number() }) } } } },
+  }),
+  async (c) => {
+    const { ids, folderId } = c.req.valid('json');
+    const rows = await c
+      .get('db')
+      .update(mediaAssets)
+      .set({ folderId, updatedAt: new Date() })
+      .where(and(inArray(mediaAssets.id, ids), isNull(mediaAssets.deletedAt)))
+      .returning({ id: mediaAssets.id });
+    return c.json({ moved: rows.length }, 200);
+  },
+);
+
 // --- Start an upload: the record is created right away -----------------------
 // Images: a one-time URL the browser POSTs the file to. Videos: a resumable
 // tus upload the browser drives in chunks. In both cases the bytes go straight
@@ -206,15 +336,15 @@ mediaRoute.openapi(
     },
   }),
   async (c) => {
-    const { filename, contentType, kind, sizeBytes } = c.req.valid('json');
+    const { filename, contentType, kind, sizeBytes, folderId } = c.req.valid('json');
     const db = c.get('db');
     if (kind === 'image') {
       const { id, uploadURL } = await imagesDirectUpload(c.env, filename);
-      const row = await createUploading(db, id, filename, kind, contentType, sizeBytes);
+      const row = await createUploading(db, id, filename, kind, contentType, sizeBytes, folderId ?? null);
       return c.json({ asset: await serializeAsset(c.env, row), uploadUrl: uploadURL, protocol: 'form' as const }, 200);
     }
     const { uid, uploadUrl } = await streamCreateUpload(c.env, filename, sizeBytes);
-    const row = await createUploading(db, uid, filename, kind, contentType, sizeBytes);
+    const row = await createUploading(db, uid, filename, kind, contentType, sizeBytes, folderId ?? null);
     return c.json({ asset: await serializeAsset(c.env, row), uploadUrl, protocol: 'tus' as const }, 200);
   },
 );
@@ -334,7 +464,12 @@ mediaRoute.openapi(
     const db = c.get('db');
     const [row] = await db
       .update(mediaAssets)
-      .set({ ...(body.name !== undefined ? { name: body.name } : {}), ...(body.altText !== undefined ? { altText: body.altText || null } : {}), updatedAt: new Date() })
+      .set({
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.altText !== undefined ? { altText: body.altText || null } : {}),
+        ...(body.folderId !== undefined ? { folderId: body.folderId } : {}),
+        updatedAt: new Date(),
+      })
       .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
