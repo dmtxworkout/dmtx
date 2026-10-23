@@ -5,7 +5,7 @@ import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
-import { imagesDelete, imagesDirectUpload, imagesGet, streamCreateUpload, streamDelete } from '../lib/cloudflare';
+import { imageUrl, imagesDelete, imagesDirectUpload, imagesGet, streamCreateUpload, streamDelete } from '../lib/cloudflare';
 import { refreshVideo, serializeAsset } from '../lib/media';
 import { requireAdmin } from '../middleware/auth';
 
@@ -357,7 +357,14 @@ mediaRoute.openapi(
     method: 'post',
     path: '/{id}/complete',
     tags: ['media'],
-    request: { params: idParam },
+    request: {
+      params: idParam,
+      // The browser knows an image's pixel size (Cloudflare Images does not report it).
+      body: {
+        required: false,
+        content: { 'application/json': { schema: z.object({ width: z.number().int().positive().optional(), height: z.number().int().positive().optional() }) } },
+      },
+    },
     responses: {
       200: { description: 'Asset listo o en proceso', content: { 'application/json': { schema: assetSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
@@ -376,9 +383,14 @@ mediaRoute.openapi(
     if (row.kind === 'image') {
       const info = await imagesGet(c.env, row.externalId);
       if (info.draft) throw new Error('Cloudflare Images no recibió el archivo');
+      const dims = (await c.req.json().catch(() => null)) as { width?: number; height?: number } | null;
       const [done] = await db
         .update(mediaAssets)
-        .set({ processingStatus: 'ready', updatedAt: new Date() })
+        .set({
+          processingStatus: 'ready',
+          updatedAt: new Date(),
+          ...(dims?.width && dims?.height ? { width: dims.width, height: dims.height } : {}),
+        })
         .where(eq(mediaAssets.id, id))
         .returning();
       return c.json(await serializeAsset(c.env, done!), 200);
@@ -491,6 +503,35 @@ mediaRoute.openapi(
   async (c) => {
     const { id } = c.req.valid('param');
     return c.json({ items: await usageOf(c.get('db'), id) }, 200);
+  },
+);
+
+// --- The image at full size, for the editor's canvas ---------------------------
+// Served through the API so the admin's fetch is same-policy (credentials +
+// CORS) and the pixels can be read back out of a canvas.
+mediaRoute.openapi(
+  createRoute({
+    method: 'get',
+    path: '/{id}/original',
+    tags: ['media'],
+    request: { params: idParam },
+    responses: {
+      200: { description: 'La imagen a su tamaño', content: { 'image/*': { schema: z.string() } } },
+      404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+    },
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const [row] = await c.get('db').select().from(mediaAssets).where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt))).limit(1);
+    if (!row || row.kind !== 'image' || row.processingStatus !== 'ready') return c.json({ error: 'No encontrado' }, 404);
+    // Flexible variants: ask for the stored width (the largest Images keeps) at top quality.
+    const upstream = await fetch(imageUrl(c.env, row.externalId, { w: row.width ?? 4000, fit: 'scale-down', q: 95 }));
+    if (!upstream.ok) return c.json({ error: 'Cloudflare no devolvió la imagen' }, 404);
+    return new Response(upstream.body, {
+      status: 200,
+      // Never cached: the URL stays the same when the file is replaced (the editor's own save does that).
+      headers: { 'content-type': upstream.headers.get('content-type') ?? 'image/jpeg', 'cache-control': 'no-store' },
+    });
   },
 );
 

@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
 import { fileType } from '@/components/media-library';
+import { useImageEditor } from '@/components/image-editor';
 import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
 import { formatBytes, isUploadDeclined, startUpload, uploadPct, useUploads } from '@/lib/uploads';
 
@@ -36,11 +37,17 @@ export function MediaViewer({ id }: { id: string }) {
   // «Reemplazar»: the chosen file takes this asset's place (same id, references untouched).
   const replaceRef = useRef<HTMLInputElement>(null);
   const [replaceError, setReplaceError] = useState<string | null>(null);
-  const replacing = useUploads().find((u) => u.replaceOf === id && (u.status === 'uploading' || u.status === 'processing'));
+  const replacing = useUploads().find(
+    (u) => u.replaceOf === id && (u.status === 'uploading' || u.status === 'processing'),
+  );
   async function replaceWith(file: File) {
     if (!a) return;
     if (!file.type.startsWith(`${a.kind}/`)) {
-      setReplaceError(a.kind === 'video' ? 'Un video solo se puede reemplazar por otro video.' : 'Una imagen solo se puede reemplazar por otra imagen.');
+      setReplaceError(
+        a.kind === 'video'
+          ? 'Un video solo se puede reemplazar por otro video.'
+          : 'Una imagen solo se puede reemplazar por otra imagen.',
+      );
       return;
     }
     setReplaceError(null);
@@ -83,6 +90,16 @@ export function MediaViewer({ id }: { id: string }) {
     },
   });
 
+  // Images are edited in place (crop, flip, rotate, resize); saving replaces the file, same id.
+  const editor = useImageEditor({
+    asset: a && a.kind === 'image' && a.status === 'ready' ? a : null,
+    onSaved: () => {
+      qc.invalidateQueries({ queryKey: ['media-view', id] });
+      qc.invalidateQueries({ queryKey: ['media'] });
+      toast('Imagen guardada');
+    },
+  });
+
   if (asset.isLoading) return <p className="p-8 text-sm text-muted">{es.app.loading}</p>;
   if (!a) return <p className="p-8 text-sm text-muted">{es.app.error}</p>;
 
@@ -93,7 +110,11 @@ export function MediaViewer({ id }: { id: string }) {
     a.sizeBytes ? formatBytes(a.sizeBytes) : null,
     a.durationSeconds ? mmss(a.durationSeconds) : null,
   ].filter(Boolean);
-  const added = new Date(a.createdAt).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' });
+  const added = new Date(a.createdAt).toLocaleDateString('es', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -103,7 +124,16 @@ export function MediaViewer({ id }: { id: string }) {
           className="flex h-8 w-8 items-center justify-center rounded-md text-ink-3 hover:bg-surface-2 hover:text-ink"
           aria-label="Volver a la biblioteca"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5" aria-hidden="true">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.75}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4.5 w-4.5"
+            aria-hidden="true"
+          >
             <path d="M19 12H5" />
             <path d="m12 19-7-7 7-7" />
           </svg>
@@ -111,8 +141,14 @@ export function MediaViewer({ id }: { id: string }) {
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-semibold text-ink" title={a.name}>
           {a.name}
         </h1>
-        {a.kind === 'image' && a.viewUrl && (
-          <a href={a.viewUrl} target="_blank" rel="noreferrer" className="text-[13px] font-medium text-ink-3 hover:text-ink">
+        {a.kind === 'image' && a.status === 'ready' && editor.toolbar}
+        {a.kind === 'image' && a.viewUrl && !editor.dirty && (
+          <a
+            href={a.viewUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[13px] font-medium text-ink-3 hover:text-ink"
+          >
             Abrir en una pestaña
           </a>
         )}
@@ -133,38 +169,53 @@ export function MediaViewer({ id }: { id: string }) {
           size="sm"
           disabled={!!replacing || a.status !== 'ready'}
           onClick={() => replaceRef.current?.click()}
-          title={a.kind === 'video' ? 'Subir otro video en su lugar: las rutinas que lo usan verán el nuevo' : 'Subir otra imagen en su lugar: lo que la usa verá la nueva'}
+          title={
+            a.kind === 'video'
+              ? 'Subir otro video en su lugar: las rutinas que lo usan verán el nuevo'
+              : 'Subir otra imagen en su lugar: lo que la usa verá la nueva'
+          }
         >
-          {replacing ? (replacing.status === 'uploading' ? `Reemplazando ${uploadPct(replacing)}%` : 'Reemplazando…') : 'Reemplazar'}
+          {replacing
+            ? replacing.status === 'uploading'
+              ? `Reemplazando ${uploadPct(replacing)}%`
+              : 'Reemplazando…'
+            : 'Reemplazar'}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => setConfirmDelete(true)} disabled={remove.isPending}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setConfirmDelete(true)}
+          disabled={remove.isPending}
+        >
           {es.app.delete}
         </Button>
       </header>
 
       <div className="flex min-h-0 flex-1 gap-5 overflow-y-auto bg-surface-3 p-6">
-        <div className="flex min-h-[420px] min-w-0 flex-1 items-center justify-center rounded-xl bg-[#1c1c21] p-4">
-          {a.status === 'ready' && a.kind === 'image' && a.viewUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={a.viewUrl} alt={a.altText ?? ''} className="max-h-[calc(100vh-200px)] max-w-full rounded-md object-contain" />
-          ) : a.status === 'ready' && a.embedUrl ? (
-            <iframe
-              src={a.embedUrl}
-              title={a.name}
-              allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-              allowFullScreen
-              className="aspect-video w-full max-w-[1100px] rounded-md border-0"
-            />
-          ) : (
-            <p className="px-6 text-center text-sm text-ink-3">
-              {a.status === 'processing'
-                ? 'Cloudflare está procesando el video… estará listo en unos minutos.'
-                : a.status === 'failed'
-                  ? 'Cloudflare no pudo procesar este video.'
-                  : 'La subida no terminó.'}
-            </p>
-          )}
-        </div>
+        {a.status === 'ready' && a.kind === 'image' ? (
+          editor.stage
+        ) : (
+          <div className="flex min-h-[420px] min-w-0 flex-1 items-center justify-center rounded-xl bg-[#1c1c21] p-4">
+            {a.status === 'ready' && a.embedUrl ? (
+              <iframe
+                src={a.embedUrl}
+                title={a.name}
+                allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                allowFullScreen
+                className="aspect-video w-full max-w-[1100px] rounded-md border-0"
+              />
+            ) : (
+              <p className="px-6 text-center text-sm text-ink-3">
+                {a.status === 'processing'
+                  ? 'Cloudflare está procesando el video… estará listo en unos minutos.'
+                  : a.status === 'failed'
+                    ? 'Cloudflare no pudo procesar este video.'
+                    : 'La subida no terminó.'}
+              </p>
+            )}
+          </div>
+        )}
 
         <aside className="flex w-[340px] flex-none flex-col gap-4">
           <section className="rounded-xl border border-line-2 bg-surface p-4">
@@ -177,7 +228,12 @@ export function MediaViewer({ id }: { id: string }) {
               {a.kind === 'image' && (
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="media-alt">Texto alternativo</Label>
-                  <Input id="media-alt" value={altText} onChange={(e) => setAltText(e.target.value)} placeholder="Describe la imagen" />
+                  <Input
+                    id="media-alt"
+                    value={altText}
+                    onChange={(e) => setAltText(e.target.value)}
+                    placeholder="Describe la imagen"
+                  />
                 </div>
               )}
               {dirty && (
@@ -193,7 +249,12 @@ export function MediaViewer({ id }: { id: string }) {
                   >
                     {es.app.cancel}
                   </Button>
-                  <Button type="button" size="sm" disabled={save.isPending || !name.trim()} onClick={() => save.mutate()}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={save.isPending || !name.trim()}
+                    onClick={() => save.mutate()}
+                  >
                     {save.isPending ? es.app.saving : es.app.save}
                   </Button>
                 </div>
@@ -213,7 +274,10 @@ export function MediaViewer({ id }: { id: string }) {
                   <ul className="mt-1 flex flex-col gap-1">
                     {usage.data.items.map((u) => (
                       <li key={`${u.type}-${u.id}-${u.field}`} className="text-[12.5px]">
-                        <Link href={`${USAGE_PATH[u.type]}/${u.id}`} className="font-medium text-accent hover:text-accent-dark">
+                        <Link
+                          href={`${USAGE_PATH[u.type]}/${u.id}`}
+                          className="font-medium text-accent hover:text-accent-dark"
+                        >
                           {u.name}
                         </Link>
                         <span className="text-muted">
@@ -227,20 +291,31 @@ export function MediaViewer({ id }: { id: string }) {
               </div>
             </div>
           </section>
+          {a.kind === 'image' && a.status === 'ready' && editor.tools}
         </aside>
       </div>
 
-      <Dialog open={confirmDelete} onClose={() => setConfirmDelete(false)} title={used.length ? 'No se puede eliminar' : 'Eliminar archivo'} className="max-w-sm">
+      <Dialog
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title={used.length ? 'No se puede eliminar' : 'Eliminar archivo'}
+        className="max-w-sm"
+      >
         <div className="flex flex-col gap-4 p-5">
           {used.length ? (
             <>
               <p className="text-[14px] leading-relaxed text-ink-2">
-                <strong className="font-semibold text-ink">{a.name}</strong> se usa en {used.length === 1 ? 'este contenido' : `estos ${used.length} contenidos`}. Quítalo de ahí (o cámbialo por otro archivo) y vuelve a intentarlo.
+                <strong className="font-semibold text-ink">{a.name}</strong> se usa en{' '}
+                {used.length === 1 ? 'este contenido' : `estos ${used.length} contenidos`}. Quítalo
+                de ahí (o cámbialo por otro archivo) y vuelve a intentarlo.
               </p>
               <ul className="flex flex-col gap-1">
                 {used.map((u) => (
                   <li key={`${u.type}-${u.id}-${u.field}`} className="text-[13px]">
-                    <Link href={`${USAGE_PATH[u.type]}/${u.id}`} className="font-medium text-accent hover:text-accent-dark">
+                    <Link
+                      href={`${USAGE_PATH[u.type]}/${u.id}`}
+                      className="font-medium text-accent hover:text-accent-dark"
+                    >
                       {u.name}
                     </Link>
                     <span className="text-muted">
@@ -259,13 +334,18 @@ export function MediaViewer({ id }: { id: string }) {
           ) : (
             <>
               <p className="text-[14px] leading-relaxed text-ink-2">
-                ¿Eliminar <strong className="font-semibold text-ink">{a.name}</strong>? Ningún contenido lo usa. El archivo se borra también de Cloudflare.
+                ¿Eliminar <strong className="font-semibold text-ink">{a.name}</strong>? Ningún
+                contenido lo usa. El archivo se borra también de Cloudflare.
               </p>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>
                   {es.app.cancel}
                 </Button>
-                <Button type="button" disabled={remove.isPending || usage.isLoading} onClick={() => remove.mutate()}>
+                <Button
+                  type="button"
+                  disabled={remove.isPending || usage.isLoading}
+                  onClick={() => remove.mutate()}
+                >
                   {remove.isPending ? es.app.saving : es.app.delete}
                 </Button>
               </div>

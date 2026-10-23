@@ -106,6 +106,19 @@ const TUS_ATTEMPTS = 5;
 const POLL_MS = 3000;
 const POLL_LIMIT_MS = 2 * 3600 * 1000;
 
+/** An image's pixel size, read in the browser (Cloudflare Images does not report it). */
+async function imageDims(file: File): Promise<{ width: number; height: number } | undefined> {
+  if (typeof createImageBitmap !== 'function') return undefined;
+  try {
+    const bmp = await createImageBitmap(file);
+    const dims = { width: bmp.width, height: bmp.height };
+    bmp.close();
+    return dims;
+  } catch {
+    return undefined;
+  }
+}
+
 /** One XHR with upload progress (fetch has none). Resolves with the response. */
 function xhr(
   method: string,
@@ -195,8 +208,8 @@ export function mediaApi(http: Http) {
     createUpload(input: CreateUploadInput): Promise<CreateUploadResult> {
       return http.request('/api/media/uploads', { method: 'POST', body: JSON.stringify(input) });
     },
-    complete(id: string): Promise<MediaAsset> {
-      return http.request(`/api/media/${id}/complete`, { method: 'POST' });
+    complete(id: string, dims?: { width: number; height: number }): Promise<MediaAsset> {
+      return http.request(`/api/media/${id}/complete`, { method: 'POST', body: JSON.stringify(dims ?? {}) });
     },
     abort(id: string): Promise<void> {
       return http.request(`/api/media/${id}/abort`, { method: 'POST' });
@@ -226,6 +239,12 @@ export function mediaApi(http: Http) {
     },
     usage(id: string): Promise<{ items: MediaUsageItem[] }> {
       return http.request(`/api/media/${id}/usage`);
+    },
+    /** The image at full size (through the API, so a canvas can read it), for the editor. */
+    async original(id: string): Promise<Blob> {
+      const res = await fetch(`${http.baseUrl}/api/media/${id}/original`, { credentials: 'include', cache: 'no-store' });
+      if (!res.ok) throw new Error('No se pudo cargar la imagen');
+      return res.blob();
     },
     /** Move the file of `sourceId` (a finished upload of the same kind) into this asset, keeping its id and references; the old file is deleted. */
     replace(id: string, sourceId: string): Promise<MediaAsset> {
@@ -259,7 +278,7 @@ export function mediaApi(http: Http) {
         }
         hooks.onProgress?.(file.size, file.size);
         if (signal?.aborted) throw cancelled();
-        let current = await this.complete(asset.id);
+        let current = await this.complete(asset.id, kind === 'image' ? await imageDims(file) : undefined);
         if (current.status === 'processing') hooks.onProcessing?.(current);
         const until = Date.now() + POLL_LIMIT_MS;
         while (current.status === 'processing' && Date.now() < until) {

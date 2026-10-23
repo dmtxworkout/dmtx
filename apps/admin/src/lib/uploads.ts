@@ -32,6 +32,16 @@ export interface UploadEntry {
 
 let entries: UploadEntry[] = [];
 const controllers = new Map<string, AbortController>();
+// Callers waiting for an upload to end (`waitForUpload`).
+const waiters = new Map<string, { resolve: (a: MediaAsset) => void; reject: (e: Error) => void }[]>();
+const settle = (assetId: string, result: { asset: MediaAsset } | { error: Error }) => {
+  const list = waiters.get(assetId) ?? [];
+  waiters.delete(assetId);
+  for (const w of list) {
+    if ('asset' in result) w.resolve(result.asset);
+    else w.reject(result.error);
+  }
+};
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 const patch = (assetId: string, p: Partial<UploadEntry>) => {
@@ -116,6 +126,7 @@ export function startUpload(original: File, kind: 'image' | 'video', opts: { rep
         // Replacing: the new file moves into the old asset once it is ready.
         if (opts.replaceOf) await api.media.replace(opts.replaceOf, asset.id);
         patch(asset.id, { status: 'done', loaded: asset.sizeBytes ?? original.size, total: asset.sizeBytes ?? original.size, asset });
+        settle(asset.id, { asset });
         // Finished uploads leave the tray after a moment.
         dropLater(asset.id);
       })
@@ -129,11 +140,24 @@ export function startUpload(original: File, kind: 'image' | 'video', opts: { rep
         if (isUploadCancelled(err)) {
           // The record and the file are gone by now (the client waited for it).
           patch(assetId, { status: 'cancelled', cancelling: false });
+          settle(assetId, { error: new Error('Subida cancelada') });
           dropLater(assetId);
           return;
         }
         patch(assetId, { status: 'error', error: message });
+        settle(assetId, { error: err instanceof Error ? err : new Error(message) });
       });
+  });
+}
+
+/** Resolves once the upload `startUpload` returned has finished (and, when replacing, the swap is done); rejects if it failed or was cancelled. */
+export function waitForUpload(assetId: string): Promise<MediaAsset> {
+  const entry = entries.find((e) => e.assetId === assetId);
+  if (entry?.status === 'done' && entry.asset) return Promise.resolve(entry.asset);
+  if (entry?.status === 'error') return Promise.reject(new Error(entry.error ?? 'No se pudo subir el archivo'));
+  if (entry?.status === 'cancelled' || !entry) return Promise.reject(new Error('Subida cancelada'));
+  return new Promise((resolve, reject) => {
+    waiters.set(assetId, [...(waiters.get(assetId) ?? []), { resolve, reject }]);
   });
 }
 
