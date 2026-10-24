@@ -13,6 +13,8 @@ import {
   type ParsedRutina,
 } from '@dmtx/core';
 import type { SkillGoal } from '@dmtx/schemas';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 // A read-only, athlete-facing rendering of the whole rutina, driven live by the
 // builder state (plus the fetched warmup/cooldown rutinas). Plain text — each
@@ -46,7 +48,14 @@ export type PvBlock = {
 };
 export type PvSection = { name: string | null; formatLabel?: string | null; blocks: PvBlock[] };
 /** A section that is a video: its length, or `missing` while no file is chosen. */
-export type PvVideo = { seconds: number | null; missing: boolean; /** What the class does, as the admin described it. */ notes?: string };
+export type PvVideo = {
+  seconds: number | null;
+  missing: boolean;
+  /** The media asset, for its poster frame. */
+  assetId?: string | null;
+  /** What the class does, as the admin described it. */
+  notes?: string;
+};
 export type PvModel = {
   /** The sections that are videos instead of text. */
   videos: Partial<Record<'warmup' | 'main' | 'cooldown', PvVideo>>;
@@ -141,21 +150,57 @@ function Blocks({ blocks }: { blocks: PvBlock[] }) {
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
+/** The video as the athlete meets it: its poster frame (Stream's thumbnail) with a play button and the length. */
+function VideoPoster({ assetId, seconds }: { assetId: string | null | undefined; seconds: number | null }) {
+  const { data, isError } = useQuery({
+    queryKey: ['media-view', assetId],
+    queryFn: () => api.media.view(assetId!),
+    enabled: !!assetId,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: (q) => (q.state.data?.status === 'processing' ? 5000 : false),
+  });
+  const poster = data?.status === 'ready' ? data.thumbnailUrl : null;
+  const length = seconds ?? data?.durationSeconds ?? null;
+  return (
+    <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#1c1c21]">
+      {poster && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      <div className="absolute inset-0 bg-black/15" />
+      <span className="absolute left-1/2 top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 shadow-md">
+        <svg viewBox="0 0 24 24" className="ml-0.5 h-4 w-4 text-ink" fill="currentColor" aria-hidden="true">
+          <path d="M8 5.5v13l11-6.5z" />
+        </svg>
+      </span>
+      {(isError || (data && data.status !== 'ready')) && (
+        <span className="absolute left-2 top-2 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] text-white">
+          {isError ? 'El video ya no está en la biblioteca' : data?.status === 'failed' ? 'Error al procesar' : 'Procesando…'}
+        </span>
+      )}
+      {length ? (
+        <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 font-mono text-[10.5px] text-white">
+          {mmss(length)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 /** A section the athlete plays as a video. */
 function VideoSection({ label, video }: { label: string; video: PvVideo }) {
   return (
     <section>
       <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">{label}</div>
       {video.missing ? (
-        <div className="text-[13px] text-muted">Sube un video para esta sección</div>
-      ) : (
-        <div className="flex items-center gap-2 text-[14px] text-ink">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ink text-[10px] text-white">▶</span>
-          <span className="font-medium">Clase en video</span>
-          {video.seconds ? <span className="font-mono text-[12px] text-muted">{mmss(video.seconds)}</span> : null}
+        <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed border-line-2 text-[13px] text-muted">
+          Sube un video para esta sección
         </div>
+      ) : (
+        <VideoPoster assetId={video.assetId} seconds={video.seconds} />
       )}
-      {video.notes && <p className="mt-2 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-2">{video.notes}</p>}
+      {video.notes && <p className="mt-2.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-2">{video.notes}</p>}
     </section>
   );
 }
@@ -342,7 +387,12 @@ export function previewFrom(
   const videos: PvModel['videos'] = {};
   for (const sec of ['warmup', 'main', 'cooldown'] as const) {
     if (sections.kinds[sec] === 'video')
-      videos[sec] = { seconds: sections.durations[sec], missing: !sections.videos[sec], notes: sections.notes?.[sec]?.trim() || undefined };
+      videos[sec] = {
+        seconds: sections.durations[sec],
+        missing: !sections.videos[sec],
+        assetId: sections.videos[sec],
+        notes: sections.notes?.[sec]?.trim() || undefined,
+      };
   }
   // Parts carry the format headers inside the list, so the section labels are plain.
   const section = (s: 'warmup' | 'cooldown'): PvSection | null => {
