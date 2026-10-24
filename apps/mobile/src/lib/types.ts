@@ -66,7 +66,9 @@ export interface WorkoutSummary {
   id: string;
   slug: string;
   name: string;
-  type: 'structured' | 'video';
+  /** The main section has a video class / a written rutina the app guides. Both can be true. */
+  hasVideo: boolean;
+  isGuided: boolean;
   format: WorkoutFormat | null;
   difficulty: Difficulty | null;
   durationSeconds: number | null;
@@ -131,7 +133,9 @@ export interface WorkoutDetail {
   slug: string;
   name: string;
   description: string | null;
-  type: 'structured' | 'video';
+  /** The main section has a video class / a written rutina the app guides. Both can be true. */
+  hasVideo: boolean;
+  isGuided: boolean;
   format: WorkoutFormat | null;
   difficulty: Difficulty | null;
   estimatedDurationSeconds: number | null;

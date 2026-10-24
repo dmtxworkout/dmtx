@@ -3,7 +3,7 @@ import { flattenBlocks } from '../../../lib/blocks';
 import { Pressable, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { CreateWorkoutLogInput, SetResultInput } from '@dmtx/schemas';
+import type { CreateWorkoutLogInput, SetResultInput, TrainingMode } from '@dmtx/schemas';
 import { Loading } from '../../../components/ui';
 import {
   DistanceScreen,
@@ -19,6 +19,7 @@ import { AmrapPlayer } from '../../../components/player-amrap';
 import { EmomPlayer } from '../../../components/player-emom';
 import { CooldownFlow, SectionIntro, SegmentPlayer } from '../../../components/player-guided';
 import { VideoPhase } from '../../../components/video-phase';
+import { ModeChoice } from '../../../components/mode-choice';
 import { localVideoUri, useDownload } from '../../../lib/downloads';
 import type { WorkoutDetail } from '../../../lib/types';
 import { api } from '../../../lib/api';
@@ -154,18 +155,35 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     () => ({ ...workout, blocks: workout.blocks.filter((b) => b.section === 'cooldown') }),
     [workout],
   );
-  // Each section may be a video instead of exercises: the warm-up and the
-  // stretch play before/after the tracked work; a video class replaces it.
+  // Each section may be written, a video, or both. With both somewhere, the
+  // user chooses once: follow the class (each section's video where it has
+  // one) or be guided (each section's exercises where it has them). A section
+  // with only one of the two plays that one either way.
   const download = useDownload(workout.id);
-  const warmupVideo = workout.warmupVideoUrl ? (localVideoUri(download, 'warmup') ?? workout.warmupVideoUrl) : null;
+  const warmupUrl = workout.warmupVideoUrl ? (localVideoUri(download, 'warmup') ?? workout.warmupVideoUrl) : null;
   const mainVideo = workout.videoUrl ? (localVideoUri(download, 'main') ?? workout.videoUrl) : null;
-  const cooldownVideo = workout.cooldownVideoUrl ? (localVideoUri(download, 'cooldown') ?? workout.cooldownVideoUrl) : null;
-  const mainIsVideo = !!mainVideo || workout.type === 'video';
-  const hasWarmup = warmupParts.length > 0;
-  const hasCooldown = cooldownParts.length > 0 || !!cooldownVideo;
+  const cooldownUrl = workout.cooldownVideoUrl ? (localVideoUri(download, 'cooldown') ?? workout.cooldownVideoUrl) : null;
+  const mainGuided = workout.isGuided && mainParts.length > 0;
+  const canChoose =
+    (!!warmupUrl && warmupParts.length > 0) || (workout.hasVideo && mainGuided) || (!!cooldownUrl && cooldownParts.length > 0);
+  const [mode, setMode] = useState<TrainingMode | null>(null);
+  const classMode = mode === 'class';
+  const warmupVideo = warmupUrl && (classMode || warmupParts.length === 0) ? warmupUrl : null;
+  const warmupGuidedParts = warmupVideo ? [] : warmupParts;
+  const cooldownVideo = cooldownUrl && (classMode || cooldownParts.length === 0) ? cooldownUrl : null;
+  const cooldownGuidedParts = cooldownVideo ? [] : cooldownParts;
+  // The video class replaces the tracked work (a pending video still counts: it shows «se está preparando»).
+  const mainIsVideo = workout.hasVideo && (classMode || !mainGuided);
+  const hasWarmup = warmupGuidedParts.length > 0;
+  const hasCooldown = cooldownGuidedParts.length > 0 || !!cooldownVideo;
+  // What gets recorded: how the main work was done, whether or not there was a choice.
+  const loggedMode: TrainingMode = mainIsVideo ? 'class' : 'guided';
 
-  type Phase = 'warmup-video' | 'warmup-intro' | 'warmup' | 'warmup-done' | 'main-video' | 'main' | 'cooldown' | 'summary' | 'finished';
-  const [phase, setPhase] = useState<Phase>(warmupVideo ? 'warmup-video' : hasWarmup ? 'warmup-intro' : mainIsVideo ? 'main-video' : 'main');
+  type Phase = 'choose' | 'warmup-video' | 'warmup-intro' | 'warmup' | 'warmup-done' | 'main-video' | 'main' | 'cooldown' | 'summary' | 'finished';
+  const firstPhase = (wv: boolean, hw: boolean, mv: boolean): Phase => (wv ? 'warmup-video' : hw ? 'warmup-intro' : mv ? 'main-video' : 'main');
+  const [phase, setPhase] = useState<Phase>(() =>
+    canChoose ? 'choose' : firstPhase(!!warmupVideo, hasWarmup, mainIsVideo),
+  );
   const goMain = () => setPhase(mainIsVideo ? 'main-video' : 'main');
   const [warmupIdx, setWarmupIdx] = useState(0);
   const [mainIdx, setMainIdx] = useState(0);
@@ -182,6 +200,41 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     onSuccess: exit,
     onError: (e) => setSaveError(e instanceof Error ? e.message : 'No se pudo guardar'),
   });
+  // A class has no marks, but finishing it is still a session: logged as soon as the finish screen shows.
+  const classLog = useMutation({ mutationFn: (payload: CreateWorkoutLogInput) => api.saveLog(payload) });
+  const classLogged = useRef(false);
+  useEffect(() => {
+    if (phase !== 'finished' || classLogged.current) return;
+    classLogged.current = true;
+    classLog.mutate({
+      workoutId: workout.id,
+      workoutName: workout.name,
+      format: null,
+      mode: loggedMode,
+      startedAt: new Date(startRef.current).toISOString(),
+      completedAt: new Date().toISOString(),
+      durationSeconds: Math.round((Date.now() - startRef.current) / 1000),
+      results: [],
+    });
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (phase === 'choose') {
+    return (
+      <ModeChoice
+        name={workout.name}
+        videoSeconds={workout.videoDurationSeconds}
+        onChoose={(m) => {
+          setMode(m);
+          const cls = m === 'class';
+          const wv = !!warmupUrl && (cls || warmupParts.length === 0);
+          const hw = !wv && warmupParts.length > 0;
+          const mv = workout.hasVideo && (cls || !mainGuided);
+          setPhase(firstPhase(wv, hw, mv));
+        }}
+        onExit={exit}
+      />
+    );
+  }
 
   if (phase === 'warmup-video' && warmupVideo) {
     return (
@@ -214,13 +267,13 @@ function Session({ workout }: { workout: WorkoutDetail }) {
     );
   }
   if (phase === 'warmup') {
-    const part = warmupParts[warmupIdx]!;
+    const part = warmupGuidedParts[warmupIdx]!;
     return (
       <SegmentPlayer
         key={`w${warmupIdx}`}
         workout={part}
         onComplete={() => {
-          if (warmupIdx + 1 < warmupParts.length) setWarmupIdx(warmupIdx + 1);
+          if (warmupIdx + 1 < warmupGuidedParts.length) setWarmupIdx(warmupIdx + 1);
           else setPhase('warmup-done');
         }}
         onExit={exit}
@@ -246,7 +299,7 @@ function Session({ workout }: { workout: WorkoutDetail }) {
         <CooldownSequence
           workout={workout}
           view={cooldownView}
-          parts={cooldownParts}
+          parts={cooldownGuidedParts}
           videoUri={cooldownVideo}
           offline={!!localVideoUri(download, 'cooldown')}
           onDone={onDone}
@@ -338,6 +391,7 @@ function Session({ workout }: { workout: WorkoutDetail }) {
       workoutId: workout.id,
       workoutName: workout.name,
       format: mainParts[0]?.format ?? workout.format,
+      mode: 'guided',
       startedAt: new Date(startRef.current).toISOString(),
       completedAt: new Date().toISOString(),
       durationSeconds: elapsed,
@@ -587,6 +641,7 @@ function Player({
         workoutId: session.workoutId,
         workoutName: session.name,
         format: session.format,
+        mode: 'guided',
         startedAt: startRef.current ? new Date(startRef.current).toISOString() : null,
         completedAt: new Date().toISOString(),
         durationSeconds: elapsed,

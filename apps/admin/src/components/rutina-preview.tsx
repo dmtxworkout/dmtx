@@ -188,8 +188,11 @@ function VideoPoster({ assetId, seconds }: { assetId: string | null | undefined;
   );
 }
 
-/** A section the athlete plays as a video. */
-function VideoSection({ label, video }: { label: string; video: PvVideo }) {
+/** A section with a video; with a written rutina too, the athlete chooses: follow the class or be guided. */
+function VideoSection({ label, video, blocks }: { label: string; video: PvVideo; blocks?: PvBlock[] }) {
+  const written = !!blocks?.some(function has(b): boolean {
+    return b.items.length > 0 || (b.blocks ?? []).some(has);
+  });
   return (
     <section>
       <div className="mb-2 border-b border-line-2 pb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-2">{label}</div>
@@ -200,7 +203,14 @@ function VideoSection({ label, video }: { label: string; video: PvVideo }) {
       ) : (
         <VideoPoster assetId={video.assetId} seconds={video.seconds} />
       )}
-      {video.notes && <p className="mt-2.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-2">{video.notes}</p>}
+      {written ? (
+        <div className="mt-3">
+          <div className="mb-1.5 font-mono text-[10px] text-muted">o guiada, ejercicio por ejercicio</div>
+          <Blocks blocks={blocks!} />
+        </div>
+      ) : (
+        video.notes && <p className="mt-2.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-2">{video.notes}</p>
+      )}
     </section>
   );
 }
@@ -270,7 +280,7 @@ export function RutinaPreview({
         ) : (
           <div className="flex flex-col gap-6">
             {model.videos.warmup ? (
-              <VideoSection label="Calentamiento" video={model.videos.warmup} />
+              <VideoSection label="Calentamiento" video={model.videos.warmup} blocks={model.warmup?.blocks} />
             ) : (
               model.warmup && (
                 <Section
@@ -279,9 +289,9 @@ export function RutinaPreview({
                 />
               )
             )}
-            {model.videos.main ? <VideoSection label={model.formatLabel || 'Rutina'} video={model.videos.main} /> : <Section label={mainLabel} blocks={model.main} />}
+            {model.videos.main ? <VideoSection label={mainHasContent ? mainLabel : 'Rutina'} video={model.videos.main} blocks={model.main} /> : <Section label={mainLabel} blocks={model.main} />}
             {model.videos.cooldown ? (
-              <VideoSection label="Estiramiento" video={model.videos.cooldown} />
+              <VideoSection label="Estiramiento" video={model.videos.cooldown} blocks={model.cooldown?.blocks} />
             ) : (
               model.cooldown && (
                 <Section
@@ -365,15 +375,13 @@ const pvBlock = (b: ParsedBlock): PvBlock => ({
 });
 const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
 
-/** Which sections are videos, with their files and lengths as the editor knows them. */
+/** The sections' videos (a section may also be written), with their lengths as the editor knows them. */
 export type PvSections = {
-  kinds: Record<'warmup' | 'main' | 'cooldown', 'text' | 'video'>;
   videos: Record<'warmup' | 'main' | 'cooldown', string | null>;
   durations: Record<'warmup' | 'main' | 'cooldown', number | null>;
   notes?: Record<'warmup' | 'main' | 'cooldown', string>;
 };
 const ALL_TEXT: PvSections = {
-  kinds: { warmup: 'text', main: 'text', cooldown: 'text' },
   videos: { warmup: null, main: null, cooldown: null },
   durations: { warmup: null, main: null, cooldown: null },
 };
@@ -386,7 +394,7 @@ export function previewFrom(
 ): PvModel {
   const videos: PvModel['videos'] = {};
   for (const sec of ['warmup', 'main', 'cooldown'] as const) {
-    if (sections.kinds[sec] === 'video')
+    if (sections.videos[sec])
       videos[sec] = {
         seconds: sections.durations[sec],
         missing: !sections.videos[sec],

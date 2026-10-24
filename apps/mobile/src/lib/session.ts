@@ -181,8 +181,8 @@ export function buildSession(workout: WorkoutDetail): Session {
     format: workout.format,
   };
 
-  // Video-only rutina → no steps.
-  if (workout.type === 'video') {
+  // Nothing written (a video-only rutina) → no steps.
+  if (!workout.blocks.length) {
     return { ...base, mode: 'sequential', capSeconds: null, circuitLength: 0, steps: [] };
   }
 

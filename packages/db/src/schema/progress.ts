@@ -1,5 +1,5 @@
 import { doublePrecision, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { measurementTypeEnum, primaryId, timestamps, workoutFormatEnum } from './_shared';
+import { measurementTypeEnum, primaryId, timestamps, trainingModeEnum, workoutFormatEnum } from './_shared';
 import { user } from './auth';
 import { workouts } from './workouts';
 import { exercises } from './exercises';
@@ -19,6 +19,8 @@ export const workoutLogs = pgTable(
     workoutId: uuid().references(() => workouts.id, { onDelete: 'set null' }),
     workoutName: text().notNull(),
     format: workoutFormatEnum(),
+    // Followed the video class or guided exercise by exercise (null: logged before modes existed).
+    mode: trainingModeEnum(),
     startedAt: timestamp({ withTimezone: true }),
     completedAt: timestamp({ withTimezone: true }),
     durationSeconds: integer(),

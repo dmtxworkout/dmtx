@@ -267,6 +267,20 @@
       "when": 1792846435228,
       "tag": "0037_workouts_video_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1792848214633,
+      "tag": "0038_rutina_video_and_guided",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1792848222235,
+      "tag": "0039_workouts_drop_type",
+      "breakpoints": true
     }
   ]
 }

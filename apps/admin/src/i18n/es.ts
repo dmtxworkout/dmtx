@@ -129,8 +129,6 @@ export const es = {
     new: 'Nueva rutina',
     edit: 'Editar rutina',
     empty: 'Aún no hay rutinas. Crea la primera.',
-    type: 'Tipo',
-    types: { structured: 'Estructurada', video: 'Video' },
     format: 'Formato',
     config: 'Configuración',
     duration: 'Duración estimada (min)',

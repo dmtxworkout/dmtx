@@ -13,7 +13,6 @@ import {
   softDelete,
   timestamps,
   workoutFormatEnum,
-  workoutTypeEnum,
 } from './_shared';
 import { mediaAssets } from './media';
 import { exercises } from './exercises';
@@ -21,18 +20,22 @@ import { skills } from './skills';
 import { programs } from './programs';
 
 /**
- * A workout (rutina) in three sections (warm-up, main, stretch), each either
- * text (blocks with that `section`) or a video (`warmupVideoAssetId`,
- * `videoAssetId`, `cooldownVideoAssetId`). `type` says what the main section
- * is (`video` when `videoAssetId` is set), for lists and filters; `format` is
- * the main section's first part's. Video durations come from media_assets.
+ * A workout (rutina) in three sections (warm-up, main, stretch), each written
+ * (blocks with that `section`), a video (`warmupVideoAssetId`, `videoAssetId`,
+ * `cooldownVideoAssetId`) or both — the app then lets the user follow the
+ * class or be guided. `hasVideo` / `isGuided` say what the main section has,
+ * for lists, filters and analytics; `format` is the main section's first
+ * part's. Video durations come from media_assets.
  */
 export const workouts = pgTable('workouts', {
   id: primaryId(),
   slug: text().notNull().unique(),
   name: text().notNull(),
   description: text(),
-  type: workoutTypeEnum().notNull(),
+  // Derived on save from the main section, for lists, filters and analytics:
+  // it has a video class / it has a written rutina the app guides. Both can be true.
+  hasVideo: boolean().notNull().default(false),
+  isGuided: boolean().notNull().default(false),
   format: workoutFormatEnum(),
   difficulty: difficultyEnum().notNull(),
   estimatedDurationSeconds: integer(),

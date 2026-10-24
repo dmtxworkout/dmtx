@@ -26,9 +26,11 @@ export type MeasurementType = z.infer<typeof measurementTypeSchema>;
 
 
 // --- Workouts (rutinas) ------------------------------------------------------
-export const WORKOUT_TYPE = ['structured', 'video'] as const;
-export const workoutTypeSchema = enumOf(WORKOUT_TYPE);
-export type WorkoutType = z.infer<typeof workoutTypeSchema>;
+// How a user did a rutina: following the video class, or guided exercise by
+// exercise. Recorded on each workout log (preferences, recommendations).
+export const TRAINING_MODE = ['class', 'guided'] as const;
+export const trainingModeSchema = enumOf(TRAINING_MODE);
+export type TrainingMode = z.infer<typeof trainingModeSchema>;
 
 // A rutina is trackable content; a segment is a reusable warmup/cooldown piece
 // (untracked, no nested warmup/cooldown, kept out of the main catalog).

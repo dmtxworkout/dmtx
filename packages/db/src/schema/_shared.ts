@@ -17,14 +17,14 @@ import {
   PAYMENT_STATUS,
   SUBSCRIPTION_STATUS,
   WORKOUT_FORMAT,
-  WORKOUT_TYPE,
+  TRAINING_MODE,
 } from '@dmtx/schemas';
 
 // --- Postgres enums (values sourced from @dmtx/schemas, the single truth) ----
 export const contentStatusEnum = pgEnum('content_status', CONTENT_STATUS);
 export const difficultyEnum = pgEnum('difficulty', DIFFICULTY);
 export const measurementTypeEnum = pgEnum('measurement_type', MEASUREMENT_TYPE);
-export const workoutTypeEnum = pgEnum('workout_type', WORKOUT_TYPE);
+export const trainingModeEnum = pgEnum('training_mode', TRAINING_MODE);
 export const workoutFormatEnum = pgEnum('workout_format', WORKOUT_FORMAT);
 export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
 export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);

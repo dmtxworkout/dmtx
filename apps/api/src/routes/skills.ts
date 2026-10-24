@@ -84,7 +84,9 @@ async function syncLevels(db: Database, skill: SkillRow, levels: SkillLevelInput
     const workoutValues = {
       name: `${skill.name} · ${l.name}`,
       description: l.description ?? null,
-      type: 'structured' as const,
+      // A level is always a written rutina (no video), the app guides it.
+      hasVideo: false,
+      isGuided: l.blocks.some((b) => b.section === 'main'),
       format: l.format ?? null,
       difficulty: skill.difficulty ?? 'beginner',
       estimatedDurationSeconds: estimateDurationSeconds(l.blocks),

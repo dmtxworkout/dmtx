@@ -29,19 +29,26 @@ export default function Explorar() {
   // Tag filters only apply to rutinas; picking one narrows the results to them.
   const [muscle, setMuscle] = useState<string | null>(null);
   const [equipment, setEquipment] = useState<string | null>(null);
+  // How the rutina is done: a video class, guided exercise by exercise (a rutina may be both).
+  const [video, setVideo] = useState(false);
+  const [guided, setGuided] = useState(false);
   const showTags = type === 'all' || type === 'workout';
   const filters = useQuery({ queryKey: ['browse-filters'], queryFn: api.filters, enabled: showTags });
   const browse = useQuery({
-    queryKey: ['browse', q, type, showTags ? muscle : null, showTags ? equipment : null],
+    queryKey: ['browse', q, type, showTags ? muscle : null, showTags ? equipment : null, showTags && video, showTags && guided],
     queryFn: () =>
       api.browse({
         q,
         type,
         muscle: showTags ? (muscle ?? undefined) : undefined,
         equipment: showTags ? (equipment ?? undefined) : undefined,
+        video: showTags && video,
+        guided: showTags && guided,
       }),
   });
   const tagChips = [
+    { key: 'k:video', label: '▶ Con video', active: video, onPress: () => setVideo(!video) },
+    { key: 'k:guided', label: '☰ Guiada', active: guided, onPress: () => setGuided(!guided) },
     ...(filters.data?.muscles ?? []).map((m) => ({
       key: `m:${m.slug}`,
       label: m.name,

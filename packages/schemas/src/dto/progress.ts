@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { measurementTypeSchema, workoutFormatSchema } from '../enums';
+import { measurementTypeSchema, trainingModeSchema, workoutFormatSchema } from '../enums';
 
 /** One logged mark within a session (per exercise instance/round/set). */
 export const setResultInputSchema = z.object({
@@ -21,6 +21,8 @@ export const createWorkoutLogSchema = z.object({
   workoutId: z.uuid(),
   workoutName: z.string(),
   format: workoutFormatSchema.nullish(),
+  /** Followed the video class or guided exercise by exercise. */
+  mode: trainingModeSchema.nullish(),
   startedAt: z.iso.datetime().nullish(),
   completedAt: z.iso.datetime().nullish(),
   durationSeconds: z.number().int().nonnegative().nullish(),

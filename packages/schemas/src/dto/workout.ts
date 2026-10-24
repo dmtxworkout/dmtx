@@ -8,7 +8,6 @@ import {
   itemKindSchema,
   measurementTypeSchema,
   workoutFormatSchema,
-  workoutTypeSchema,
 } from '../enums';
 import { formatConfigSchema } from '../format-config';
 import { goalSchema } from '../goal';
@@ -57,7 +56,8 @@ export const workoutBlockInputSchema: z.ZodType<WorkoutBlockInput, WorkoutBlockI
 /**
  * What a video section's class does, written by the admin as free text
  * («3 rondas: 10 sentadillas, 10 flexiones…»): the app shows it beside the
- * video. One entry per section; only sections that are a video keep theirs.
+ * video. One entry per section; only sections that are only a video (no
+ * written rutina, which already says it) keep theirs.
  */
 export const videoNotesSchema = z.object({
   warmup: z.string().max(5000).nullish(),
@@ -70,14 +70,13 @@ export const createWorkoutSchema = z.object({
   name: z.string().min(1).max(200),
   slug: slugSchema.optional(),
   description: z.string().max(5000).nullish(),
-  /** Derived by the API from the main section: `video` when `videoAssetId` is set. */
-  type: workoutTypeSchema.optional(),
   format: workoutFormatSchema.nullish(),
   difficulty: difficultySchema,
   status: contentStatusSchema.default('draft'),
   thumbnailAssetId: uuidSchema.nullish(),
-  // Each section is a video or text (its blocks): the main section's video,
-  // and the warm-up's and the stretch's. Durations come from the media assets.
+  // Each section is written (its blocks), a video, or both: the main
+  // section's video, and the warm-up's and the stretch's. Durations come from
+  // the media assets.
   videoAssetId: uuidSchema.nullish(),
   warmupVideoAssetId: uuidSchema.nullish(),
   cooldownVideoAssetId: uuidSchema.nullish(),
@@ -121,7 +120,9 @@ export const workoutSchema = z.object({
   slug: z.string(),
   name: z.string(),
   description: z.string().nullable(),
-  type: workoutTypeSchema,
+  /** Derived on save from the main section: it has a video class / it has a written (guided) rutina. Both can be true. */
+  hasVideo: z.boolean(),
+  isGuided: z.boolean(),
   format: workoutFormatSchema.nullable(),
   difficulty: difficultySchema,
   estimatedDurationSeconds: z.number().nullable(),

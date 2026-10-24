@@ -111,7 +111,8 @@ export default function RutinaDetalle() {
     : [];
   const playId = variantId ?? id;
   const stats = [
-    { k: 'Formato', v: w.type === 'video' ? 'Video' : formatLabel(w.format) || '—' },
+    // Written and on video: the user picks the class or the guided mode when starting.
+    { k: 'Formato', v: [w.isGuided ? formatLabel(w.format) || 'Guiada' : null, w.hasVideo ? 'Video' : null].filter(Boolean).join(' o ') || '—' },
     { k: 'Duración', v: w.estimatedDurationSeconds ? mmss(w.estimatedDurationSeconds) : '—' },
     { k: 'Nivel', v: difficultyLabel(w.difficulty, true) || '—' },
     ...(w.muscles.length ? [{ k: 'Trabaja', v: w.muscles.join(', ') }] : []),
@@ -145,7 +146,7 @@ export default function RutinaDetalle() {
   // A section that is a video shows as one row; text sections list their parts.
   type Sec = { key: string; label: string; units: PvUnit[]; video?: { seconds: number | null; notes: string | null } };
   const videoSec = (section: 'warmup' | 'main' | 'cooldown', label: string, url: string | null, seconds: number | null): Sec[] =>
-    url || (section === 'main' && w.type === 'video') ? [{ key: `video-${section}`, label, units: [], video: { seconds, notes: w.videoNotes?.[section] ?? null } }] : [];
+    url || (section === 'main' && w.hasVideo) ? [{ key: `video-${section}`, label, units: [], video: { seconds, notes: w.videoNotes?.[section] ?? null } }] : [];
   const allSections: Sec[] = [
     ...videoSec('warmup', 'Calentamiento', w.warmupVideoUrl, w.warmupVideoDurationSeconds),
     ...partsOf('warmup', 'Calentamiento'),
@@ -175,7 +176,7 @@ export default function RutinaDetalle() {
           <View className="absolute left-1/2 top-1/2 h-14 w-14 -translate-x-7 -translate-y-7 items-center justify-center rounded-full bg-ink/90">
             <Text className="text-[20px] text-bg">▶</Text>
           </View>
-          {w.type !== 'video' && (w.format || w.estimatedDurationSeconds) ? (
+          {w.isGuided && (w.format || w.estimatedDurationSeconds) ? (
             <View className="absolute bottom-3.5 left-5 self-start rounded bg-accent px-2 py-1">
               <Text className="font-mono-semibold text-[10px] uppercase tracking-wider text-white">
                 {[formatLabel(w.format), w.estimatedDurationSeconds ? mmss(w.estimatedDurationSeconds) : '']

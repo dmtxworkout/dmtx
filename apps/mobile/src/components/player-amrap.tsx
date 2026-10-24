@@ -168,6 +168,7 @@ export function AmrapPlayer({
     saveMutation.mutate({
       workoutId: workout.id,
       workoutName: workout.name,
+      mode: 'guided',
       format: 'amrap',
       startedAt: startRef.current ? new Date(startRef.current).toISOString() : null,
       completedAt: new Date().toISOString(),

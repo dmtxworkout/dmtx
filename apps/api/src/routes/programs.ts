@@ -55,7 +55,8 @@ function serializeDay(d: DayRow & { workout: WorkoutRow | null }) {
     id: d.id,
     isRestDay: d.isRestDay,
     workoutId: d.workout?.id ?? null,
-    type: d.workout?.type ?? ('structured' as const),
+    hasVideo: d.workout?.hasVideo ?? false,
+    isGuided: d.workout?.isGuided ?? false,
     sourceText: d.workout?.sourceText ?? '',
     videoAssetId: d.workout?.videoAssetId ?? null,
     warmupVideoAssetId: d.workout?.warmupVideoAssetId ?? null,
@@ -97,7 +98,8 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
     if (hasContent) {
       const values = {
         name: `${program.name} · ${label}`,
-        type: sections.type,
+        hasVideo: sections.hasVideo,
+        isGuided: sections.isGuided,
         format: sections.format,
         difficulty: program.difficulty,
         estimatedDurationSeconds: sections.estimatedDurationSeconds,

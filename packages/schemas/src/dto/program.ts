@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { contentStatusSchema, difficultySchema, workoutFormatSchema, workoutTypeSchema } from '../enums';
+import { contentStatusSchema, difficultySchema, workoutFormatSchema } from '../enums';
 import { slugSchema, uuidSchema, updateSchemaOf } from '../common';
 import { videoNotesSchema, workoutBlockInputSchema } from './workout';
 
@@ -43,7 +43,8 @@ export const programDaySchema = z.object({
   isRestDay: z.boolean(),
   /** The owned workout; null on a rest day (or a day never written). */
   workoutId: uuidSchema.nullable(),
-  type: workoutTypeSchema,
+  hasVideo: z.boolean(),
+  isGuided: z.boolean(),
   sourceText: z.string(),
   videoAssetId: uuidSchema.nullable(),
   warmupVideoAssetId: uuidSchema.nullable(),

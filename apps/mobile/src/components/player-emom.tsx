@@ -123,6 +123,7 @@ export function EmomPlayer({
     saveMutation.mutate({
       workoutId: workout.id,
       workoutName: workout.name,
+      mode: 'guided',
       format: 'emom',
       startedAt: startRef.current ? new Date(startRef.current).toISOString() : null,
       completedAt: new Date().toISOString(),

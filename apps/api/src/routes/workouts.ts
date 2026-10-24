@@ -48,7 +48,8 @@ function base(w: WorkoutRow) {
     slug: w.slug,
     name: w.name,
     description: w.description,
-    type: w.type,
+    hasVideo: w.hasVideo,
+    isGuided: w.isGuided,
     format: w.format,
     difficulty: w.difficulty,
     estimatedDurationSeconds: w.estimatedDurationSeconds,
@@ -291,7 +292,8 @@ workoutsRoute.openapi(
         slug: await uniqueSlug(db, wantedSlug),
         name: input.name,
         description: input.description ?? null,
-        type: sections.type,
+        hasVideo: sections.hasVideo,
+        isGuided: sections.isGuided,
         format: sections.format,
         difficulty: input.difficulty,
         estimatedDurationSeconds: sections.estimatedDurationSeconds,
@@ -353,7 +355,8 @@ workoutsRoute.openapi(
         cooldownVideoAssetId: input.cooldownVideoAssetId !== undefined ? input.cooldownVideoAssetId : current.cooldownVideoAssetId,
         videoNotes: input.videoNotes !== undefined ? input.videoNotes : current.videoNotes,
       });
-      set.type = sections.type;
+      set.hasVideo = sections.hasVideo;
+      set.isGuided = sections.isGuided;
       set.format = sections.format;
       set.videoAssetId = sections.videoAssetId;
       set.warmupVideoAssetId = sections.warmupVideoAssetId;

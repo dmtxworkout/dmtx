@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
 import { MediaThumb } from '@/components/media-thumb';
+import { KindIcon } from '@/components/kind-icon';
 
 const FORMAT_LABEL: Record<string, string> = {
   amrap: 'AMRAP',
@@ -162,7 +163,7 @@ export function WorkoutList({
               />
               <span />
               <span>Nombre</span>
-              <span>Tipo</span>
+              <span>Contenido</span>
               <span>Formato</span>
               <span>Estado</span>
               <span>Actualizado</span>
@@ -191,11 +192,13 @@ export function WorkoutList({
                   />
                 )}
                 <span className="truncate font-semibold text-ink">{w.name}</span>
-                <span className="text-[13px] text-ink-2">
-                  {w.type === 'video' ? 'Video' : 'Estructurada'}
+                <span className="flex items-center gap-1.5 text-ink-3" title={[w.hasVideo && 'Video', w.isGuided && 'Rutina escrita (guiada)'].filter(Boolean).join(' y ') || 'Vacía'}>
+                  {w.isGuided && <KindIcon kind="text" className="h-4 w-4" />}
+                  {w.hasVideo && <KindIcon kind="video" className="h-4 w-4" />}
+                  {!w.isGuided && !w.hasVideo && <span className="text-faint-2">—</span>}
                 </span>
                 <span className="text-[13px] text-ink-2">
-                  {w.type === 'video' ? '—' : w.format ? (FORMAT_LABEL[w.format] ?? w.format) : '—'}
+                  {w.isGuided && w.format ? (FORMAT_LABEL[w.format] ?? w.format) : '—'}
                 </span>
                 <span>
                   <Badge tone={w.status}>{es.status[w.status]}</Badge>

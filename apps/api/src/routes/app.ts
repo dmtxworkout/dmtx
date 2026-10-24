@@ -44,8 +44,8 @@ const mins = (seconds: number | null): number | null =>
 /** "AMRAP · 18 min" style row subtitle. */
 function workoutMeta(w: WorkoutRow): string {
   const parts: string[] = [];
-  if (w.type === 'video') parts.push('Video');
-  else if (w.format) parts.push(w.format.toUpperCase());
+  if (w.isGuided && w.format) parts.push(w.format.toUpperCase());
+  if (w.hasVideo) parts.push('Video');
   const m = mins(w.estimatedDurationSeconds);
   if (m) parts.push(`${m} min`);
   return parts.join(' · ');
@@ -205,7 +205,8 @@ function workoutSummary(w: WorkoutRow, thumb: string | null) {
     id: w.id,
     slug: w.slug,
     name: w.name,
-    type: w.type,
+    hasVideo: w.hasVideo,
+    isGuided: w.isGuided,
     format: w.format,
     difficulty: w.difficulty,
     durationSeconds: w.estimatedDurationSeconds,
@@ -223,6 +224,9 @@ interface CatalogFilter {
   /** Slugs: only rutinas whose exercises work that muscle / need that equipment. */
   muscle?: string;
   equipment?: string;
+  /** Only rutinas with a video class / only rutinas the app can guide (both may be set). */
+  video?: boolean;
+  guided?: boolean;
 }
 
 type Tags = { muscles: string[]; equipment: string[] };
@@ -311,6 +315,8 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               isNull(workouts.variantOfId),
               isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId),
               byTags ? inArray(workouts.id, byTags) : undefined,
+              f.video ? eq(workouts.hasVideo, true) : undefined,
+              f.guided ? eq(workouts.isGuided, true) : undefined,
               like
                 ? byText?.length
                   ? or(ilike(workouts.name, like), inArray(workouts.id, byText))
@@ -463,21 +469,24 @@ appRoute.get('/filters', async (c) => {
   return c.json({ muscles: sorted(g), equipment: sorted(e) });
 });
 
-// GET /api/app/browse?q=&type=&muscle=&equipment= — search / browse published content.
-// `muscle` / `equipment` are taxonomy slugs; they only apply to rutinas.
+// GET /api/app/browse?q=&type=&muscle=&equipment=&video=1&guided=1 — search / browse published content.
+// `muscle` / `equipment` are taxonomy slugs; they, `video` (has a video class)
+// and `guided` (has a written rutina the app guides) only apply to rutinas.
 appRoute.get('/browse', async (c) => {
   const q = c.req.query('q')?.trim() || undefined;
   const type = c.req.query('type');
   const muscle = c.req.query('muscle')?.trim() || undefined;
   const equipmentSlug = c.req.query('equipment')?.trim() || undefined;
+  const video = c.req.query('video') === '1';
+  const guided = c.req.query('guided') === '1';
   const types: Array<'workout' | 'program' | 'skill'> =
     type === 'workout' || type === 'program' || type === 'skill'
       ? [type]
-      : muscle || equipmentSlug
+      : muscle || equipmentSlug || video || guided
         ? ['workout']
         : ['workout', 'program', 'skill'];
 
-  const cat = await loadCatalog(c.get('db'), c.env, { userId: c.get('user')!.id, q, types, limit: 30, muscle, equipment: equipmentSlug });
+  const cat = await loadCatalog(c.get('db'), c.env, { userId: c.get('user')!.id, q, types, limit: 30, muscle, equipment: equipmentSlug, video, guided });
   const rows = [
     { title: 'Rutinas', layout: 'row', items: cat.workouts },
     { title: 'Programas', layout: 'poster', items: cat.programs },
@@ -591,7 +600,8 @@ appRoute.get('/workouts/:id', async (c) => {
     slug: w.slug,
     name: w.name,
     description: w.description,
-    type: w.type,
+    hasVideo: w.hasVideo,
+    isGuided: w.isGuided,
     format: w.format,
     difficulty: w.difficulty,
     estimatedDurationSeconds: w.estimatedDurationSeconds,
@@ -793,6 +803,7 @@ appRoute.post('/logs', async (c) => {
       workoutId: input.workoutId,
       workoutName: input.workoutName,
       format: input.format ?? null,
+      mode: input.mode ?? null,
       startedAt: input.startedAt ? new Date(input.startedAt) : null,
       completedAt: input.completedAt ? new Date(input.completedAt) : null,
       durationSeconds: input.durationSeconds ?? null,
@@ -840,6 +851,7 @@ appRoute.get('/logs', async (c) => {
       workoutId: l.workoutId,
       workoutName: l.workoutName,
       format: l.format,
+      mode: l.mode,
       durationSeconds: l.durationSeconds,
       roundsCompleted: l.roundsCompleted,
       totalVolume: l.totalVolume,
