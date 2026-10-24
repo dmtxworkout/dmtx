@@ -2,7 +2,7 @@ import { inArray, isNull, and } from 'drizzle-orm';
 import { mediaAssets } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import { estimateDurationSeconds } from '@dmtx/core';
-import type { VideoNotes, WorkoutBlockInput, WorkoutFormat } from '@dmtx/schemas';
+import type { WorkoutBlockInput, WorkoutFormat } from '@dmtx/schemas';
 
 /**
  * A rutina has three sections (warm-up, main, stretch); each is written
@@ -11,15 +11,12 @@ import type { VideoNotes, WorkoutBlockInput, WorkoutFormat } from '@dmtx/schemas
  * into what the row stores: the blocks, `hasVideo` / `isGuided` from the main
  * section, the format (the main section's first part's), and the estimated
  * duration — per section, the video's length when it has one (that is how
- * long the class runs), else the written rutina's estimate. A section that is
- * only a video may carry notes (what its class does); one with a written
- * rutina drops them, since the rutina already says it.
+ * long the class runs), else the written rutina's estimate.
  */
 export interface SectionInput {
   videoAssetId?: string | null;
   warmupVideoAssetId?: string | null;
   cooldownVideoAssetId?: string | null;
-  videoNotes?: VideoNotes | null;
   blocks: WorkoutBlockInput[];
   format?: WorkoutFormat | null;
 }
@@ -42,13 +39,10 @@ export async function sectionValues(db: Database, input: SectionInput) {
     : [];
   const lengths = new Map(rows.map((r) => [r.id, r.seconds ?? 0]));
   let total = 0;
-  const notes: VideoNotes = {};
   for (const sec of SECTIONS) {
     const own = blocks.filter((b) => b.section === sec);
     const video = videos[sec];
     total += video ? (lengths.get(video) ?? 0) : own.length ? (estimateDurationSeconds(own) ?? 0) : 0;
-    const text = input.videoNotes?.[sec]?.trim();
-    if (video && !own.length && text) notes[sec] = text;
   }
   const isGuided = blocks.some((b) => b.section === 'main');
   const hasVideo = !!videos.main;
@@ -59,7 +53,6 @@ export async function sectionValues(db: Database, input: SectionInput) {
     videoAssetId: videos.main,
     warmupVideoAssetId: videos.warmup,
     cooldownVideoAssetId: videos.cooldown,
-    videoNotes: Object.keys(notes).length ? notes : null,
     blocks,
     estimatedDurationSeconds: total > 0 ? total : null,
     hasContent: blocks.some((b) => b.section !== 'goal') || ids.length > 0,

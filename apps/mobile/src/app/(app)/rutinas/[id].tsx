@@ -144,9 +144,9 @@ export default function RutinaDetalle() {
     return out;
   };
   // A section that is a video shows as one row; text sections list their parts.
-  type Sec = { key: string; label: string; units: PvUnit[]; video?: { seconds: number | null; notes: string | null } };
+  type Sec = { key: string; label: string; units: PvUnit[]; video?: { seconds: number | null } };
   const videoSec = (section: 'warmup' | 'main' | 'cooldown', label: string, url: string | null, seconds: number | null): Sec[] =>
-    url || (section === 'main' && w.hasVideo) ? [{ key: `video-${section}`, label, units: [], video: { seconds, notes: w.videoNotes?.[section] ?? null } }] : [];
+    url || (section === 'main' && w.hasVideo) ? [{ key: `video-${section}`, label, units: [], video: { seconds } }] : [];
   const allSections: Sec[] = [
     ...videoSec('warmup', 'Calentamiento', w.warmupVideoUrl, w.warmupVideoDurationSeconds),
     ...partsOf('warmup', 'Calentamiento'),
@@ -250,9 +250,6 @@ export default function RutinaDetalle() {
                       </Text>
                     </View>
                   </View>
-                ) : null}
-                {sec.video?.notes ? (
-                  <Text className="text-[14px] leading-[21px] text-ink-2">{sec.video.notes}</Text>
                 ) : null}
                 {sec.units.map((u, ui) => (
                   <View key={ui} className="gap-2">

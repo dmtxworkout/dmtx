@@ -281,6 +281,13 @@
       "when": 1792848222235,
       "tag": "0039_workouts_drop_type",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1792849269681,
+      "tag": "0040_workouts_drop_video_notes",
+      "breakpoints": true
     }
   ]
 }

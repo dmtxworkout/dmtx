@@ -1,5 +1,5 @@
 import { boolean, integer, jsonb, pgTable, text, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
-import type { FormatConfig, Goal, LoadPrescription, Tempo, VideoNotes } from '@dmtx/schemas';
+import type { FormatConfig, Goal, LoadPrescription, Tempo } from '@dmtx/schemas';
 import {
   blockKindEnum,
   blockSectionEnum,
@@ -51,8 +51,6 @@ export const workouts = pgTable('workouts', {
   videoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   warmupVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   cooldownVideoAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
-  // What each video section's class does, as the admin described it (only video sections keep one).
-  videoNotes: jsonb().$type<VideoNotes>(),
   // A variant (RX / Escalada / …) is a full rutina linked to its base rutina.
   variantOfId: uuid().references((): AnyPgColumn => workouts.id, { onDelete: 'cascade' }),
   variantLabel: text(),

@@ -53,8 +53,6 @@ export type PvVideo = {
   missing: boolean;
   /** The media asset, for its poster frame. */
   assetId?: string | null;
-  /** What the class does, as the admin described it. */
-  notes?: string;
 };
 export type PvModel = {
   /** The sections that are videos instead of text. */
@@ -208,9 +206,7 @@ function VideoSection({ label, video, blocks }: { label: string; video: PvVideo;
           <div className="mb-1.5 font-mono text-[10px] text-muted">o guiada, ejercicio por ejercicio</div>
           <Blocks blocks={blocks!} />
         </div>
-      ) : (
-        video.notes && <p className="mt-2.5 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-2">{video.notes}</p>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -379,7 +375,6 @@ const pvBlocks = (blocks: ParsedBlock[]): PvBlock[] => blocks.map(pvBlock);
 export type PvSections = {
   videos: Record<'warmup' | 'main' | 'cooldown', string | null>;
   durations: Record<'warmup' | 'main' | 'cooldown', number | null>;
-  notes?: Record<'warmup' | 'main' | 'cooldown', string>;
 };
 const ALL_TEXT: PvSections = {
   videos: { warmup: null, main: null, cooldown: null },
@@ -399,7 +394,6 @@ export function previewFrom(
         seconds: sections.durations[sec],
         missing: !sections.videos[sec],
         assetId: sections.videos[sec],
-        notes: sections.notes?.[sec]?.trim() || undefined,
       };
   }
   // Parts carry the format headers inside the list, so the section labels are plain.

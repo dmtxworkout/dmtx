@@ -149,8 +149,6 @@ export interface WorkoutDetail {
   videoDurationSeconds: number | null;
   warmupVideoDurationSeconds: number | null;
   cooldownVideoDurationSeconds: number | null;
-  /** What each video section's class does, written by the admin; shown beside the video. */
-  videoNotes: { warmup: string | null; main: string | null; cooldown: string | null };
   /** Tags derived from the exercises: muscle groups worked (primary) and equipment needed. */
   muscles: string[];
   equipment: string[];

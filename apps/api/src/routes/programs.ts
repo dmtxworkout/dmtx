@@ -61,7 +61,6 @@ function serializeDay(d: DayRow & { workout: WorkoutRow | null }) {
     videoAssetId: d.workout?.videoAssetId ?? null,
     warmupVideoAssetId: d.workout?.warmupVideoAssetId ?? null,
     cooldownVideoAssetId: d.workout?.cooldownVideoAssetId ?? null,
-    videoNotes: d.workout?.videoNotes ?? null,
   };
 }
 
@@ -108,7 +107,6 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
         videoAssetId: sections.videoAssetId,
         warmupVideoAssetId: sections.warmupVideoAssetId,
         cooldownVideoAssetId: sections.cooldownVideoAssetId,
-        videoNotes: sections.videoNotes,
         ownerProgramId: program.id,
       };
       if (current?.workoutId) {

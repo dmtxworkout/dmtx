@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { contentStatusSchema, difficultySchema, workoutFormatSchema } from '../enums';
 import { slugSchema, uuidSchema, updateSchemaOf } from '../common';
-import { videoNotesSchema, workoutBlockInputSchema } from './workout';
+import { workoutBlockInputSchema } from './workout';
 
 /**
  * A day as the admin saves it. A program is whole weeks of days (seven per
@@ -19,7 +19,6 @@ export const programDayInputSchema = z.object({
   videoAssetId: uuidSchema.nullish(),
   warmupVideoAssetId: uuidSchema.nullish(),
   cooldownVideoAssetId: uuidSchema.nullish(),
-  videoNotes: videoNotesSchema.nullish(),
 });
 export type ProgramDayInput = z.infer<typeof programDayInputSchema>;
 
@@ -49,7 +48,6 @@ export const programDaySchema = z.object({
   videoAssetId: uuidSchema.nullable(),
   warmupVideoAssetId: uuidSchema.nullable(),
   cooldownVideoAssetId: uuidSchema.nullable(),
-  videoNotes: videoNotesSchema.nullable(),
 });
 export type ProgramDay = z.infer<typeof programDaySchema>;
 

@@ -53,19 +53,6 @@ export const workoutBlockInputSchema: z.ZodType<WorkoutBlockInput, WorkoutBlockI
     blocks: z.lazy(() => z.array(workoutBlockInputSchema)).default([]),
   }) as unknown as z.ZodType<WorkoutBlockInput, WorkoutBlockInputIn>;
 
-/**
- * What a video section's class does, written by the admin as free text
- * («3 rondas: 10 sentadillas, 10 flexiones…»): the app shows it beside the
- * video. One entry per section; only sections that are only a video (no
- * written rutina, which already says it) keep theirs.
- */
-export const videoNotesSchema = z.object({
-  warmup: z.string().max(5000).nullish(),
-  main: z.string().max(5000).nullish(),
-  cooldown: z.string().max(5000).nullish(),
-});
-export type VideoNotes = z.infer<typeof videoNotesSchema>;
-
 export const createWorkoutSchema = z.object({
   name: z.string().min(1).max(200),
   slug: slugSchema.optional(),
@@ -80,7 +67,6 @@ export const createWorkoutSchema = z.object({
   videoAssetId: uuidSchema.nullish(),
   warmupVideoAssetId: uuidSchema.nullish(),
   cooldownVideoAssetId: uuidSchema.nullish(),
-  videoNotes: videoNotesSchema.nullish(),
   scoringGoal: goalSchema.nullish(),
   // The rutina as the admin wrote it (comments and spacing included); the
   // editor reopens this text instead of regenerating it from the blocks.
@@ -131,7 +117,6 @@ export const workoutSchema = z.object({
   videoAssetId: uuidSchema.nullable(),
   warmupVideoAssetId: uuidSchema.nullable(),
   cooldownVideoAssetId: uuidSchema.nullable(),
-  videoNotes: videoNotesSchema.nullable(),
   scoringGoal: goalSchema.nullable(),
   sourceText: z.string().nullable(),
   variantOfId: uuidSchema.nullable(),

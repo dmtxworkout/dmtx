@@ -122,7 +122,6 @@ function CooldownSequence({
         uri={videoUri}
         offline={offline}
         durationSeconds={workout.cooldownVideoDurationSeconds}
-        notes={workout.videoNotes?.cooldown}
         doneLabel={parts.length ? 'Continuar' : 'Terminar'}
         onDone={() => (parts.length ? setStep('parts') : onDone())}
         onExit={onDone}
@@ -244,7 +243,6 @@ function Session({ workout }: { workout: WorkoutDetail }) {
         uri={warmupVideo}
         offline={!!localVideoUri(download, 'warmup')}
         durationSeconds={workout.warmupVideoDurationSeconds}
-        notes={workout.videoNotes?.warmup}
         doneLabel={hasWarmup ? 'Continuar' : 'Empezar rutina'}
         onDone={() => (hasWarmup ? setPhase('warmup-intro') : goMain())}
         onExit={exit}
@@ -327,7 +325,6 @@ function Session({ workout }: { workout: WorkoutDetail }) {
         uri={mainVideo}
         offline={!!localVideoUri(download, 'main')}
         durationSeconds={workout.videoDurationSeconds}
-        notes={workout.videoNotes?.main}
         doneLabel={hasCooldown ? 'Continuar' : 'Terminar'}
         onDone={() => setPhase(hasCooldown ? 'cooldown' : 'finished')}
         onExit={exit}

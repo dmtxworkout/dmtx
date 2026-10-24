@@ -61,20 +61,6 @@ type SectionVideos = Record<VideoSection, string | null>;
 type SectionKinds = Record<VideoSection, 'text' | 'video'>;
 type SectionDurations = Record<VideoSection, number | null>;
 const EMPTY_VIDEOS: SectionVideos = { warmup: null, main: null, cooldown: null };
-/** What each video section's class does, written by the admin; shown to the athlete beside the video. */
-type SectionNotes = Record<VideoSection, string>;
-const EMPTY_NOTES: SectionNotes = { warmup: '', main: '', cooldown: '' };
-const notesFrom = (n: { warmup?: string | null; main?: string | null; cooldown?: string | null } | null | undefined): SectionNotes => ({
-  warmup: n?.warmup ?? '',
-  main: n?.main ?? '',
-  cooldown: n?.cooldown ?? '',
-});
-/** The notes of the sections that are only a video (a written rutina already says what the class does; the API drops those too). */
-const notesOf = (notes: SectionNotes, secs: SectionTexts, videos: SectionVideos) => {
-  const out: Partial<SectionNotes> = {};
-  for (const sec of VIDEO_SECTIONS) if (videos[sec] && !secs[sec].trim() && notes[sec].trim()) out[sec] = notes[sec].trim();
-  return Object.keys(out).length ? out : null;
-};
 const EMPTY_DURATIONS: SectionDurations = { warmup: null, main: null, cooldown: null };
 /** Which half of a section the editor shows (UI only, never saved): a section may have both. */
 const viewsFrom = (v: SectionVideos, secs: SectionTexts): SectionKinds => ({
@@ -162,7 +148,6 @@ type DayState = {
   isRestDay: boolean;
   sections: SectionTexts;
   videos: SectionVideos;
-  notes: SectionNotes;
   /** UI only: which half of each section the editor shows. */
   views: SectionKinds;
   durations: SectionDurations;
@@ -172,7 +157,6 @@ const emptyDay = (): DayState => ({
   isRestDay: false,
   sections: { ...EMPTY_SECTIONS },
   videos: { ...EMPTY_VIDEOS },
-  notes: { ...EMPTY_NOTES },
   views: viewsFrom(EMPTY_VIDEOS, EMPTY_SECTIONS),
   durations: { ...EMPTY_DURATIONS },
 });
@@ -181,7 +165,6 @@ const copyDay = (d: DayState): DayState => ({
   id: null,
   sections: { ...d.sections },
   videos: { ...d.videos },
-  notes: { ...d.notes },
   views: { ...d.views },
   durations: { ...d.durations },
 });
@@ -468,7 +451,6 @@ export function RutinaForm({
     cooldown: workout?.cooldownVideoAssetId ?? null,
   };
   const [videosState, setVideosState] = useState<SectionVideos>(initialVideos);
-  const [notesState, setNotesState] = useState<SectionNotes>(() => notesFrom(workout?.videoNotes));
   const [viewsState, setViewsState] = useState<SectionKinds>(() => viewsFrom(initialVideos, splitSections(workout?.sourceText ?? '')));
   const [durationsState, setDurationsState] = useState<SectionDurations>({ ...EMPTY_DURATIONS });
   // A new rutina asks for name + type in one dialog, then opens the editor.
@@ -483,7 +465,7 @@ export function RutinaForm({
         ? (() => {
             const loaded = program.days.map((d): DayState => {
               const videos: SectionVideos = { warmup: d.warmupVideoAssetId, main: d.videoAssetId, cooldown: d.cooldownVideoAssetId };
-              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, notes: notesFrom(d.videoNotes), views: viewsFrom(videos, splitSections(d.sourceText)), durations: { ...EMPTY_DURATIONS } };
+              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, views: viewsFrom(videos, splitSections(d.sourceText)), durations: { ...EMPTY_DURATIONS } };
             });
             // Always whole weeks: pad the last one with empty days.
             const pad = (7 - (loaded.length % 7)) % 7;
@@ -518,9 +500,6 @@ export function RutinaForm({
   // In program mode the sections' videos (and what the editor shows) belong to the active day.
   const videos = activeDayState ? activeDayState.videos : videosState;
   const views = activeDayState ? activeDayState.views : viewsState;
-  const notes = activeDayState ? activeDayState.notes : notesState;
-  const setNote = (sec: VideoSection, text: string) =>
-    programMode ? setDay(activeDay, { notes: { ...notes, [sec]: text } }) : setNotesState((n) => ({ ...n, [sec]: text }));
   const durations = activeDayState ? activeDayState.durations : durationsState;
   const setVideo = (sec: VideoSection, id: string | null) =>
     programMode ? setDay(activeDay, { videos: { ...videos, [sec]: id } }) : setVideosState((v) => ({ ...v, [sec]: id }));
@@ -756,7 +735,7 @@ export function RutinaForm({
   const parsedTab = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
   const format = parsed.main?.format ?? 'for_time';
 
-  const previewModel = useMemo(() => previewFrom(parsed, { videos, durations, notes }, blockMode), [parsed, videos, durations, notes, blockMode]);
+  const previewModel = useMemo(() => previewFrom(parsed, { videos, durations }, blockMode), [parsed, videos, durations, blockMode]);
 
 
   const mainFormats = parsed.blocks
@@ -862,7 +841,6 @@ export function RutinaForm({
       status,
       thumbnailAssetId,
       ...videosOf(videos),
-      videoNotes: notesOf(notes, secs, videos),
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
       blocks: structure.blocks,
@@ -933,8 +911,8 @@ export function RutinaForm({
       format: structure?.format ?? null,
       blocks: structure?.blocks ?? [],
       ...(d.isRestDay
-        ? { videoAssetId: null, warmupVideoAssetId: null, cooldownVideoAssetId: null, videoNotes: null }
-        : { ...videosOf(d.videos), videoNotes: notesOf(d.notes, d.sections, d.videos) }),
+        ? { videoAssetId: null, warmupVideoAssetId: null, cooldownVideoAssetId: null }
+        : videosOf(d.videos)),
     };
   };
   const saveProgram = useMutation({
@@ -992,8 +970,7 @@ export function RutinaForm({
     status: typeof status;
     thumbnailAssetId: string | null;
     videos: SectionVideos;
-    notes: SectionNotes;
-    baseLabel: string;
+      baseLabel: string;
     sections: SectionTexts;
     variants: VariantTab[];
     days: DayState[];
@@ -1005,7 +982,6 @@ export function RutinaForm({
     status,
     thumbnailAssetId,
     videos: videosState,
-    notes: notesState,
     baseLabel,
     sections: sections ?? EMPTY_SECTIONS,
     variants: tabs,
@@ -1032,7 +1008,6 @@ export function RutinaForm({
     setStatus(baseline.status);
     setThumbnailAssetId(baseline.thumbnailAssetId);
     setVideosState(baseline.videos);
-    setNotesState(baseline.notes);
     setBaseLabel(baseline.baseLabel);
     setSections(baseline.sections);
     setVariants(baseline.variants);
@@ -1507,27 +1482,11 @@ export function RutinaForm({
                       onDuration={(secs) => setVideoDuration(activeSection, secs)}
                     />
                   </div>
-                  {activeSections[activeSection].trim() ? (
-                    <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
-                      Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.
-                    </p>
-                  ) : (
-                  <div className="flex max-w-xl flex-col gap-1.5">
-                    <label htmlFor={`video-notes-${activeSection}`} className="text-[13px] font-semibold text-ink-2">
-                      Qué se hace en el video
-                    </label>
-                    <textarea
-                      id={`video-notes-${activeSection}`}
-                      value={notes[activeSection]}
-                      onChange={(e) => setNote(activeSection, e.target.value)}
-                      rows={6}
-                      maxLength={5000}
-                      placeholder={'Opcional. El usuario lo ve junto al video, por ejemplo:\n3 rondas\n10 sentadillas\n10 flexiones\n30 s de plancha'}
-                      className="resize-y rounded-lg border border-line-2 bg-surface px-3 py-2 text-[14px] leading-relaxed text-ink placeholder:text-faint-2 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                    />
-                    <p className="text-[11.5px] text-muted">O escribe la rutina en la pestaña «Rutina»: así el usuario también puede hacerla guiada.</p>
-                  </div>
-                  )}
+                  <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
+                    {activeSections[activeSection].trim()
+                      ? 'Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.'
+                      : 'Escribe también la rutina en «Rutina» para que el usuario pueda elegir entre seguir el video o hacerla guiada.'}
+                  </p>
                 </div>
               ) : (
                 <RutinaTextEditor
@@ -1816,27 +1775,11 @@ export function RutinaForm({
                       onDuration={(secs) => setVideoDuration(activeSection, secs)}
                     />
                   </div>
-                  {activeSections[activeSection].trim() ? (
-                    <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
-                      Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.
-                    </p>
-                  ) : (
-                  <div className="flex max-w-xl flex-col gap-1.5">
-                    <label htmlFor={`video-notes-${activeSection}`} className="text-[13px] font-semibold text-ink-2">
-                      Qué se hace en el video
-                    </label>
-                    <textarea
-                      id={`video-notes-${activeSection}`}
-                      value={notes[activeSection]}
-                      onChange={(e) => setNote(activeSection, e.target.value)}
-                      rows={6}
-                      maxLength={5000}
-                      placeholder={'Opcional. El usuario lo ve junto al video, por ejemplo:\n3 rondas\n10 sentadillas\n10 flexiones\n30 s de plancha'}
-                      className="resize-y rounded-lg border border-line-2 bg-surface px-3 py-2 text-[14px] leading-relaxed text-ink placeholder:text-faint-2 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-                    />
-                    <p className="text-[11.5px] text-muted">O escribe la rutina en la pestaña «Rutina»: así el usuario también puede hacerla guiada.</p>
-                  </div>
-                  )}
+                  <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
+                    {activeSections[activeSection].trim()
+                      ? 'Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.'
+                      : 'Escribe también la rutina en «Rutina» para que el usuario pueda elegir entre seguir el video o hacerla guiada.'}
+                  </p>
                 </div>
               ) : (
                 <RutinaTextEditor
