@@ -46,7 +46,7 @@ export type PvBlock = {
 };
 export type PvSection = { name: string | null; formatLabel?: string | null; blocks: PvBlock[] };
 /** A section that is a video: its length, or `missing` while no file is chosen. */
-export type PvVideo = { seconds: number | null; missing: boolean };
+export type PvVideo = { seconds: number | null; missing: boolean; /** What the class does, as the admin described it. */ notes?: string };
 export type PvModel = {
   /** The sections that are videos instead of text. */
   videos: Partial<Record<'warmup' | 'main' | 'cooldown', PvVideo>>;
@@ -155,6 +155,7 @@ function VideoSection({ label, video }: { label: string; video: PvVideo }) {
           {video.seconds ? <span className="font-mono text-[12px] text-muted">{mmss(video.seconds)}</span> : null}
         </div>
       )}
+      {video.notes && <p className="mt-2 whitespace-pre-line text-[13.5px] leading-relaxed text-ink-2">{video.notes}</p>}
     </section>
   );
 }
@@ -324,6 +325,7 @@ export type PvSections = {
   kinds: Record<'warmup' | 'main' | 'cooldown', 'text' | 'video'>;
   videos: Record<'warmup' | 'main' | 'cooldown', string | null>;
   durations: Record<'warmup' | 'main' | 'cooldown', number | null>;
+  notes?: Record<'warmup' | 'main' | 'cooldown', string>;
 };
 const ALL_TEXT: PvSections = {
   kinds: { warmup: 'text', main: 'text', cooldown: 'text' },
@@ -339,7 +341,8 @@ export function previewFrom(
 ): PvModel {
   const videos: PvModel['videos'] = {};
   for (const sec of ['warmup', 'main', 'cooldown'] as const) {
-    if (sections.kinds[sec] === 'video') videos[sec] = { seconds: sections.durations[sec], missing: !sections.videos[sec] };
+    if (sections.kinds[sec] === 'video')
+      videos[sec] = { seconds: sections.durations[sec], missing: !sections.videos[sec], notes: sections.notes?.[sec]?.trim() || undefined };
   }
   // Parts carry the format headers inside the list, so the section labels are plain.
   const section = (s: 'warmup' | 'cooldown'): PvSection | null => {

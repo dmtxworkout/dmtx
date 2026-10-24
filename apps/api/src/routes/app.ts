@@ -605,6 +605,12 @@ appRoute.get('/workouts/:id', async (c) => {
     videoDurationSeconds: duration(media, w.videoAssetId),
     warmupVideoDurationSeconds: duration(media, w.warmupVideoAssetId),
     cooldownVideoDurationSeconds: duration(media, w.cooldownVideoAssetId),
+    // What each video section's class does, as the admin wrote it (shown beside the video).
+    videoNotes: {
+      warmup: w.videoNotes?.warmup ?? null,
+      main: w.videoNotes?.main ?? null,
+      cooldown: w.videoNotes?.cooldown ?? null,
+    },
     // The player builds each part's timing from its block; nothing at this level.
     formatConfig: null,
     scoringGoal: w.scoringGoal ?? null,

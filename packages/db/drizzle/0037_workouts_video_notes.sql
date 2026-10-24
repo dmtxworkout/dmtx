@@ -1,0 +1,1 @@
+ALTER TABLE "workouts" ADD COLUMN "video_notes" jsonb;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Button } from './ui';
@@ -17,6 +17,7 @@ export function VideoPhase({
   uri,
   offline,
   durationSeconds,
+  notes,
   doneLabel = 'Continuar',
   onDone,
   onExit,
@@ -26,6 +27,8 @@ export function VideoPhase({
   uri: string;
   offline: boolean;
   durationSeconds: number | null;
+  /** What the class does, as the admin wrote it: shown under the video. */
+  notes?: string | null;
   doneLabel?: string;
   onDone: () => void;
   onExit: () => void;
@@ -59,12 +62,19 @@ export function VideoPhase({
       </View>
       <VideoView
         player={player}
-        style={{ flex: 1 }}
+        // With notes the video keeps 16:9 and the notes scroll under it; without, it fills the screen.
+        style={notes ? { width: '100%', aspectRatio: 16 / 9 } : { flex: 1 }}
         contentFit="contain"
         nativeControls
         allowsPictureInPicture
         fullscreenOptions={{ enable: true, orientation: 'landscape', autoExitOnRotate: true }}
       />
+      {notes ? (
+        <ScrollView className="flex-1" contentContainerClassName="px-5 py-4">
+          <Text className="font-mono text-[10px] uppercase tracking-wider text-ink-3">En este video</Text>
+          <Text className="mt-2 text-[15px] leading-[23px] text-ink">{notes}</Text>
+        </ScrollView>
+      ) : null}
       <View className="px-5 pt-3" style={{ paddingBottom: insets.bottom + 12 }}>
         <Button label={doneLabel} variant={ended ? 'primary' : 'surface'} onPress={onDone} />
       </View>

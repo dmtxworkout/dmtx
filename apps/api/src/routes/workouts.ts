@@ -57,6 +57,7 @@ function base(w: WorkoutRow) {
     videoAssetId: w.videoAssetId,
     warmupVideoAssetId: w.warmupVideoAssetId,
     cooldownVideoAssetId: w.cooldownVideoAssetId,
+    videoNotes: w.videoNotes ?? null,
     variantOfId: w.variantOfId,
     variantLabel: w.variantLabel,
     createdAt: w.createdAt.toISOString(),
@@ -299,6 +300,7 @@ workoutsRoute.openapi(
         videoAssetId: sections.videoAssetId,
         warmupVideoAssetId: sections.warmupVideoAssetId,
         cooldownVideoAssetId: sections.cooldownVideoAssetId,
+        videoNotes: sections.videoNotes,
         scoringGoal: input.scoringGoal ?? null,
         sourceText: input.sourceText ?? null,
         variantOfId: input.variantOfId ?? null,
@@ -338,7 +340,7 @@ workoutsRoute.openapi(
     if (input.thumbnailAssetId !== undefined) set.thumbnailAssetId = input.thumbnailAssetId ?? null;
     // The sections travel together: blocks plus the three videos (the editor always sends them all).
     let blocks: WorkoutBlockInput[] | undefined;
-    if (input.blocks !== undefined || input.videoAssetId !== undefined || input.warmupVideoAssetId !== undefined || input.cooldownVideoAssetId !== undefined) {
+    if (input.blocks !== undefined || input.videoAssetId !== undefined || input.warmupVideoAssetId !== undefined || input.cooldownVideoAssetId !== undefined || input.videoNotes !== undefined) {
       const [current] = await db.select().from(workouts).where(eq(workouts.id, id)).limit(1);
       if (!current) return c.json({ error: 'No encontrado' }, 404);
       // Without blocks in the request, the stored ones stay (and still count for the estimate).
@@ -349,12 +351,14 @@ workoutsRoute.openapi(
         videoAssetId: input.videoAssetId !== undefined ? input.videoAssetId : current.videoAssetId,
         warmupVideoAssetId: input.warmupVideoAssetId !== undefined ? input.warmupVideoAssetId : current.warmupVideoAssetId,
         cooldownVideoAssetId: input.cooldownVideoAssetId !== undefined ? input.cooldownVideoAssetId : current.cooldownVideoAssetId,
+        videoNotes: input.videoNotes !== undefined ? input.videoNotes : current.videoNotes,
       });
       set.type = sections.type;
       set.format = sections.format;
       set.videoAssetId = sections.videoAssetId;
       set.warmupVideoAssetId = sections.warmupVideoAssetId;
       set.cooldownVideoAssetId = sections.cooldownVideoAssetId;
+      set.videoNotes = sections.videoNotes;
       set.estimatedDurationSeconds = sections.estimatedDurationSeconds;
       if (input.blocks !== undefined) blocks = sections.blocks;
     } else if (input.format !== undefined) set.format = input.format ?? null;

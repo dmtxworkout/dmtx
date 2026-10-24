@@ -2,7 +2,7 @@ import { inArray, isNull, and } from 'drizzle-orm';
 import { mediaAssets } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import { estimateDurationSeconds } from '@dmtx/core';
-import type { BlockSection, WorkoutBlockInput, WorkoutFormat, WorkoutType } from '@dmtx/schemas';
+import type { BlockSection, VideoNotes, WorkoutBlockInput, WorkoutFormat, WorkoutType } from '@dmtx/schemas';
 
 /**
  * A rutina has three sections (warm-up, main, stretch); each is a video or
@@ -10,11 +10,13 @@ import type { BlockSection, WorkoutBlockInput, WorkoutFormat, WorkoutType } from
  * blocks of the sections that are text (a section with a video drops any
  * text it may still carry), `type` from the main section, and the estimated
  * duration — the text's estimate plus the videos' lengths from media_assets.
+ * A video section may carry notes (what its class does); text sections drop theirs.
  */
 export interface SectionInput {
   videoAssetId?: string | null;
   warmupVideoAssetId?: string | null;
   cooldownVideoAssetId?: string | null;
+  videoNotes?: VideoNotes | null;
   blocks: WorkoutBlockInput[];
   format?: WorkoutFormat | null;
 }
@@ -38,12 +40,18 @@ export async function sectionValues(db: Database, input: SectionInput) {
   const total = videoSeconds + textSeconds;
   const type: WorkoutType = videos.main ? 'video' : 'structured';
   const hasContent = blocks.length > 0 || ids.length > 0;
+  const notes: VideoNotes = {};
+  for (const sec of ['warmup', 'main', 'cooldown'] as const) {
+    const text = input.videoNotes?.[sec]?.trim();
+    if (videos[sec] && text) notes[sec] = text;
+  }
   return {
     type,
     format: videos.main ? null : (input.format ?? null),
     videoAssetId: videos.main,
     warmupVideoAssetId: videos.warmup,
     cooldownVideoAssetId: videos.cooldown,
+    videoNotes: Object.keys(notes).length ? notes : null,
     blocks,
     estimatedDurationSeconds: total > 0 ? total : null,
     hasContent,

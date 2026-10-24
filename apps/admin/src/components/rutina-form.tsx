@@ -59,6 +59,20 @@ type SectionVideos = Record<VideoSection, string | null>;
 type SectionKinds = Record<VideoSection, 'text' | 'video'>;
 type SectionDurations = Record<VideoSection, number | null>;
 const EMPTY_VIDEOS: SectionVideos = { warmup: null, main: null, cooldown: null };
+/** What each video section's class does, written by the admin; shown to the athlete beside the video. */
+type SectionNotes = Record<VideoSection, string>;
+const EMPTY_NOTES: SectionNotes = { warmup: '', main: '', cooldown: '' };
+const notesFrom = (n: { warmup?: string | null; main?: string | null; cooldown?: string | null } | null | undefined): SectionNotes => ({
+  warmup: n?.warmup ?? '',
+  main: n?.main ?? '',
+  cooldown: n?.cooldown ?? '',
+});
+/** The notes of the sections that are videos (the API drops the rest too). */
+const notesOf = (notes: SectionNotes, kinds: SectionKinds) => {
+  const out: Partial<SectionNotes> = {};
+  for (const sec of VIDEO_SECTIONS) if (kinds[sec] === 'video' && notes[sec].trim()) out[sec] = notes[sec].trim();
+  return Object.keys(out).length ? out : null;
+};
 const EMPTY_DURATIONS: SectionDurations = { warmup: null, main: null, cooldown: null };
 const kindsFrom = (v: SectionVideos): SectionKinds => ({
   warmup: v.warmup ? 'video' : 'text',
@@ -151,6 +165,7 @@ type DayState = {
   isRestDay: boolean;
   sections: SectionTexts;
   videos: SectionVideos;
+  notes: SectionNotes;
   kinds: SectionKinds;
   durations: SectionDurations;
 };
@@ -159,6 +174,7 @@ const emptyDay = (): DayState => ({
   isRestDay: false,
   sections: { ...EMPTY_SECTIONS },
   videos: { ...EMPTY_VIDEOS },
+  notes: { ...EMPTY_NOTES },
   kinds: kindsFrom(EMPTY_VIDEOS),
   durations: { ...EMPTY_DURATIONS },
 });
@@ -167,6 +183,7 @@ const copyDay = (d: DayState): DayState => ({
   id: null,
   sections: { ...d.sections },
   videos: { ...d.videos },
+  notes: { ...d.notes },
   kinds: { ...d.kinds },
   durations: { ...d.durations },
 });
@@ -481,6 +498,7 @@ export function RutinaForm({
     cooldown: workout?.cooldownVideoAssetId ?? null,
   };
   const [videosState, setVideosState] = useState<SectionVideos>(initialVideos);
+  const [notesState, setNotesState] = useState<SectionNotes>(() => notesFrom(workout?.videoNotes));
   const [kindsState, setKindsState] = useState<SectionKinds>(() => kindsFrom(initialVideos));
   const [durationsState, setDurationsState] = useState<SectionDurations>({ ...EMPTY_DURATIONS });
   // A new rutina asks for name + type in one dialog, then opens the editor.
@@ -495,7 +513,7 @@ export function RutinaForm({
         ? (() => {
             const loaded = program.days.map((d): DayState => {
               const videos: SectionVideos = { warmup: d.warmupVideoAssetId, main: d.videoAssetId, cooldown: d.cooldownVideoAssetId };
-              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, kinds: kindsFrom(videos), durations: { ...EMPTY_DURATIONS } };
+              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, notes: notesFrom(d.videoNotes), kinds: kindsFrom(videos), durations: { ...EMPTY_DURATIONS } };
             });
             // Always whole weeks: pad the last one with empty days.
             const pad = (7 - (loaded.length % 7)) % 7;
@@ -530,6 +548,9 @@ export function RutinaForm({
   // In program mode the sections' kinds and videos belong to the active day.
   const videos = activeDayState ? activeDayState.videos : videosState;
   const kinds = activeDayState ? activeDayState.kinds : kindsState;
+  const notes = activeDayState ? activeDayState.notes : notesState;
+  const setNote = (sec: VideoSection, text: string) =>
+    programMode ? setDay(activeDay, { notes: { ...notes, [sec]: text } }) : setNotesState((n) => ({ ...n, [sec]: text }));
   const durations = activeDayState ? activeDayState.durations : durationsState;
   // What the main section is, for lists and the catalog; the API derives the same.
   const type: 'structured' | 'video' = kinds.main === 'video' ? 'video' : 'structured';
@@ -767,7 +788,7 @@ export function RutinaForm({
   const parsedTab = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
   const format = parsed.main?.format ?? 'for_time';
 
-  const previewModel = useMemo(() => previewFrom(parsed, { kinds, videos, durations }, blockMode), [parsed, kinds, videos, durations, blockMode]);
+  const previewModel = useMemo(() => previewFrom(parsed, { kinds, videos, durations, notes }, blockMode), [parsed, kinds, videos, durations, notes, blockMode]);
 
 
   const mainFormats = parsed.blocks
@@ -870,6 +891,7 @@ export function RutinaForm({
       status,
       thumbnailAssetId,
       ...videosOf(videos, kinds),
+      videoNotes: notesOf(notes, kinds),
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
       blocks: structure.blocks,
@@ -939,7 +961,9 @@ export function RutinaForm({
       sourceText: text || null,
       format: structure?.format ?? null,
       blocks: structure?.blocks ?? [],
-      ...(d.isRestDay ? { videoAssetId: null, warmupVideoAssetId: null, cooldownVideoAssetId: null } : videosOf(d.videos, d.kinds)),
+      ...(d.isRestDay
+        ? { videoAssetId: null, warmupVideoAssetId: null, cooldownVideoAssetId: null, videoNotes: null }
+        : { ...videosOf(d.videos, d.kinds), videoNotes: notesOf(d.notes, d.kinds) }),
     };
   };
   const saveProgram = useMutation({
@@ -997,6 +1021,7 @@ export function RutinaForm({
     status: typeof status;
     thumbnailAssetId: string | null;
     videos: SectionVideos;
+    notes: SectionNotes;
     kinds: SectionKinds;
     baseLabel: string;
     sections: SectionTexts;
@@ -1010,6 +1035,7 @@ export function RutinaForm({
     status,
     thumbnailAssetId,
     videos: videosState,
+    notes: notesState,
     kinds: kindsState,
     baseLabel,
     sections: sections ?? EMPTY_SECTIONS,
@@ -1036,6 +1062,7 @@ export function RutinaForm({
     setStatus(baseline.status);
     setThumbnailAssetId(baseline.thumbnailAssetId);
     setVideosState(baseline.videos);
+    setNotesState(baseline.notes);
     setKindsState(baseline.kinds);
     setBaseLabel(baseline.baseLabel);
     setSections(baseline.sections);
@@ -1514,6 +1541,20 @@ export function RutinaForm({
                       onDuration={(secs) => setVideoDuration(activeSection, secs)}
                     />
                   </div>
+                  <div className="flex max-w-xl flex-col gap-1.5">
+                    <label htmlFor={`video-notes-${activeSection}`} className="text-[13px] font-semibold text-ink-2">
+                      Qué se hace en el video
+                    </label>
+                    <textarea
+                      id={`video-notes-${activeSection}`}
+                      value={notes[activeSection]}
+                      onChange={(e) => setNote(activeSection, e.target.value)}
+                      rows={6}
+                      maxLength={5000}
+                      placeholder={'Opcional. El usuario lo ve junto al video, por ejemplo:\n3 rondas\n10 sentadillas\n10 flexiones\n30 s de plancha'}
+                      className="resize-y rounded-lg border border-line-2 bg-surface px-3 py-2 text-[14px] leading-relaxed text-ink placeholder:text-faint-2 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
+                    />
+                  </div>
                 </div>
               ) : (
                 <RutinaTextEditor
@@ -1795,6 +1836,20 @@ export function RutinaForm({
                       value={videos[activeSection]}
                       onChange={(id) => setVideo(activeSection, id)}
                       onDuration={(secs) => setVideoDuration(activeSection, secs)}
+                    />
+                  </div>
+                  <div className="flex max-w-xl flex-col gap-1.5">
+                    <label htmlFor={`video-notes-${activeSection}`} className="text-[13px] font-semibold text-ink-2">
+                      Qué se hace en el video
+                    </label>
+                    <textarea
+                      id={`video-notes-${activeSection}`}
+                      value={notes[activeSection]}
+                      onChange={(e) => setNote(activeSection, e.target.value)}
+                      rows={6}
+                      maxLength={5000}
+                      placeholder={'Opcional. El usuario lo ve junto al video, por ejemplo:\n3 rondas\n10 sentadillas\n10 flexiones\n30 s de plancha'}
+                      className="resize-y rounded-lg border border-line-2 bg-surface px-3 py-2 text-[14px] leading-relaxed text-ink placeholder:text-faint-2 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
                     />
                   </div>
                 </div>
