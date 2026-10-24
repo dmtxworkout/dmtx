@@ -1,6 +1,7 @@
 'use client';
 
 import { type DragEvent, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
@@ -8,6 +9,7 @@ import { cn } from '@/lib/utils';
 import { MediaPicker } from '@/components/media-picker';
 import { EyeIcon, MediaPreview } from '@/components/media-preview';
 import { Dialog } from '@/components/ui/dialog';
+import { FadeImg } from '@/components/ui/fade-img';
 import { IconButton } from '@/components/ui/icon-button';
 import { cancelUpload, formatBytes, isUploadDeclined, startUpload, uploadPct, useUpload } from '@/lib/uploads';
 
@@ -36,9 +38,6 @@ export function MediaField({
   /** `card`: the 16:9 box (forms). `bar`: one slim row (thumbnail, name, length) that sits above the rutina editor. */
   variant?: 'card' | 'bar';
 }) {
-  const [info, setInfo] = useState<MediaAsset | null>(null);
-  // The id points at a file that is no longer in the library (deleted before deletes were refused while in use).
-  const [missing, setMissing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   // The field's asset while its bytes are still travelling (from the global queue).
   const entry = useUpload(value);
@@ -48,39 +47,23 @@ export function MediaField({
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  // Re-read when the asset changes and again when its upload finishes or
-  // fails; a video Stream is still encoding is asked again every few seconds.
+  // Read through the shared cache (the preview reads the same key), so a day or section seen before
+  // shows at once; re-read when its upload finishes, and every few seconds while Stream encodes.
   const inQueue = uploadState === 'uploading' || uploadState === 'processing';
-  useEffect(() => {
-    setMissing(false);
-    if (!value || inQueue) {
-      if (!value) setInfo(null);
-      return;
-    }
-    let alive = true;
-    let timer: number | undefined;
-    const read = () => {
-      api.media
-        .view(value)
-        .then((a) => {
-          if (!alive) return;
-          setInfo(a);
-          setMissing(false);
-          if (a.status === 'processing') timer = window.setTimeout(read, 5000);
-        })
-        .catch((e: unknown) => {
-          if (!alive) return;
-          setInfo(null);
-          // Only a 404 means the file is gone; anything else (offline, a 500) is not a verdict.
-          setMissing((e as { status?: number } | null)?.status === 404);
-        });
-    };
-    read();
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-  }, [value, inQueue]);
+  const view = useQuery({
+    queryKey: ['media-view', value],
+    queryFn: () => api.media.view(value!),
+    enabled: !!value && !inQueue,
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: (q) => (q.state.data?.status === 'processing' ? 5000 : false),
+  });
+  const info: MediaAsset | null = value && !inQueue ? (view.data ?? null) : null;
+  // The id points at a file that is no longer in the library (deleted before deletes were refused while in use).
+  // Only a 404 means the file is gone; anything else (offline, a 500) is not a verdict.
+  const missing = !!value && !inQueue && view.isError && (view.error as { status?: number } | null)?.status === 404;
+  // Waiting for the record: the field shows a skeleton, not an empty box.
+  const loading = !!value && !inQueue && view.isPending && view.fetchStatus !== 'idle';
   // The callbacks are read through refs: callers pass fresh arrow functions
   // on every render, and an effect keyed on them would fire (and set state)
   // without end.
@@ -283,10 +266,11 @@ export function MediaField({
           )}
         >
           <div className="relative flex h-10 w-[72px] flex-none items-center justify-center overflow-hidden rounded-md bg-surface-2">
-            {poster ? (
+            {loading ? (
+              <span aria-hidden className="absolute inset-0 animate-pulse bg-line-2/60" />
+            ) : poster ? (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                <FadeImg src={poster} />
                 {kind === 'video' && (
                   <span className="relative flex h-5 w-5 items-center justify-center rounded-full bg-white/90">
                     <svg viewBox="0 0 24 24" className="ml-px h-2.5 w-2.5 text-ink" fill="currentColor" aria-hidden="true">
@@ -318,12 +302,19 @@ export function MediaField({
               </svg>
             )}
           </div>
+          {loading ? (
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label={es.app.loading}>
+              <span className="h-3 w-40 max-w-full animate-pulse rounded bg-line-2/60" />
+              <span className="h-2.5 w-28 max-w-full animate-pulse rounded bg-line-2/40" />
+            </div>
+          ) : (
           <div className="min-w-0 flex-1">
             <p className={cn('truncate text-[13px] font-semibold', missing || stalled === 'failed' ? 'text-accent-dark' : 'text-ink')} title={ready?.name}>
               {title}
             </p>
             <p className="truncate text-[11.5px] text-muted">{sub}</p>
           </div>
+          )}
           {inFlight && entry && !entry.cancelling && (
             <button
               type="button"
@@ -369,10 +360,7 @@ export function MediaField({
               : 'border-dashed border-line-2 bg-surface-3 hover:bg-surface-2',
         )}
       >
-        {poster && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={poster} alt="" className={cn('absolute inset-0 h-full w-full', kind === 'video' ? 'object-cover opacity-90' : 'object-cover')} />
-        )}
+        {poster && <FadeImg src={poster} className={kind === 'video' ? 'opacity-90' : undefined} />}
         {ready && kind === 'video' && (
           <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md">
             <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5 text-ink" fill="currentColor" aria-hidden="true">
@@ -399,7 +387,7 @@ export function MediaField({
             <br />o arrastra el archivo aquí
           </div>
         )}
-        {value && !info && !inFlight && !missing && <div className="absolute inset-0 animate-pulse bg-surface-2" />}
+        {loading && <div className="absolute inset-0 animate-pulse bg-surface-2" />}
         {missing && !inFlight && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 border border-dashed border-accent/50 bg-accent-tint/30 px-8 text-center text-sm font-medium text-accent-dark">
             <span>{kind === 'image' ? 'La imagen' : 'El video'} ya no está en la biblioteca</span>

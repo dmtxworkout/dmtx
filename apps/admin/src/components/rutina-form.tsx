@@ -493,6 +493,18 @@ export function RutinaForm({
   const setVideoDuration = (sec: VideoSection, secs: number | null) =>
     programMode ? setDay(activeDay, { durations: { ...durations, [sec]: secs } }) : setDurationsState((v) => ({ ...v, [sec]: secs }));
   const videoSeconds = VIDEO_SECTIONS.reduce((n, sec) => n + (videos[sec] ? (durations[sec] ?? 0) : 0), 0);
+  // Every day's videos are read (and their poster frames fetched) up front, so changing day shows its video at once.
+  const dayVideoIds = programMode ? [...new Set(days.flatMap((d) => VIDEO_SECTIONS.map((sec) => d.videos[sec])).filter((v): v is string => !!v))].join(',') : '';
+  useEffect(() => {
+    for (const id of dayVideoIds ? dayVideoIds.split(',') : []) {
+      void qc
+        .prefetchQuery({ queryKey: ['media-view', id], queryFn: () => api.media.view(id), staleTime: 5 * 60 * 1000, retry: false })
+        .then(() => {
+          const a = qc.getQueryData<{ status: string; thumbnailUrl: string | null }>(['media-view', id]);
+          if (a?.status === 'ready' && a.thumbnailUrl) new Image().src = a.thumbnailUrl;
+        });
+    }
+  }, [dayVideoIds, qc]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   const [blockModal, setBlockModal] = useState<{ name: string; text: string } | null>(null);

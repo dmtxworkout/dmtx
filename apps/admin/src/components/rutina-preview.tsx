@@ -16,6 +16,7 @@ import type { SkillGoal } from '@dmtx/schemas';
 import { createContext, useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MediaThumb } from '@/components/media-thumb';
+import { FadeImg } from '@/components/ui/fade-img';
 import { api } from '@/lib/api';
 
 // A read-only, athlete-facing rendering of the whole rutina, driven live by the
@@ -180,7 +181,7 @@ const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, 
 
 /** The video as the athlete meets it: its poster frame (Stream's thumbnail) with a play button and the length. */
 function VideoPoster({ assetId, seconds }: { assetId: string | null | undefined; seconds: number | null }) {
-  const { data, isError } = useQuery({
+  const { data, isError, isPending } = useQuery({
     queryKey: ['media-view', assetId],
     queryFn: () => api.media.view(assetId!),
     enabled: !!assetId,
@@ -192,10 +193,8 @@ function VideoPoster({ assetId, seconds }: { assetId: string | null | undefined;
   const length = seconds ?? data?.durationSeconds ?? null;
   return (
     <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-[#1c1c21]">
-      {poster && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      )}
+      {/* While the record or the frame is on its way the box pulses, not a flat empty card. */}
+      {poster ? <FadeImg src={poster} placeholder="bg-white/5" /> : !!assetId && isPending && <span aria-hidden className="absolute inset-0 animate-pulse bg-white/5" />}
       <div className="absolute inset-0 bg-black/15" />
       <span className="absolute left-1/2 top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 shadow-md">
         <svg viewBox="0 0 24 24" className="ml-0.5 h-4 w-4 text-ink" fill="currentColor" aria-hidden="true">
