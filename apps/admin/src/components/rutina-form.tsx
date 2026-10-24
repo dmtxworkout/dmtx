@@ -57,18 +57,9 @@ const EMPTY_SECTIONS: SectionTexts = { warmup: '', main: '', cooldown: '', goal:
 type VideoSection = 'warmup' | 'main' | 'cooldown';
 const VIDEO_SECTIONS: VideoSection[] = ['warmup', 'main', 'cooldown'];
 type SectionVideos = Record<VideoSection, string | null>;
-/** What the editor shows of each section: its written rutina or its video. */
-type SectionKinds = Record<VideoSection, 'text' | 'video'>;
 type SectionDurations = Record<VideoSection, number | null>;
 const EMPTY_VIDEOS: SectionVideos = { warmup: null, main: null, cooldown: null };
 const EMPTY_DURATIONS: SectionDurations = { warmup: null, main: null, cooldown: null };
-/** Which half of a section the editor shows (UI only, never saved): a section may have both. */
-const viewsFrom = (v: SectionVideos, secs: SectionTexts): SectionKinds => ({
-  warmup: v.warmup && !secs.warmup.trim() ? 'video' : 'text',
-  main: v.main && !secs.main.trim() ? 'video' : 'text',
-  cooldown: v.cooldown && !secs.cooldown.trim() ? 'video' : 'text',
-});
-const VIEWS_NONE: SectionKinds = { warmup: 'text', main: 'text', cooldown: 'text' };
 /** A section has content when it has a written rutina, a video, or both. */
 const sectionHasContent = (secs: SectionTexts, videos: SectionVideos, sec: VideoSection) => !!videos[sec] || !!secs[sec].trim();
 const videosOf = (videos: SectionVideos) => ({
@@ -148,8 +139,6 @@ type DayState = {
   isRestDay: boolean;
   sections: SectionTexts;
   videos: SectionVideos;
-  /** UI only: which half of each section the editor shows. */
-  views: SectionKinds;
   durations: SectionDurations;
 };
 const emptyDay = (): DayState => ({
@@ -157,7 +146,6 @@ const emptyDay = (): DayState => ({
   isRestDay: false,
   sections: { ...EMPTY_SECTIONS },
   videos: { ...EMPTY_VIDEOS },
-  views: viewsFrom(EMPTY_VIDEOS, EMPTY_SECTIONS),
   durations: { ...EMPTY_DURATIONS },
 });
 const copyDay = (d: DayState): DayState => ({
@@ -165,7 +153,6 @@ const copyDay = (d: DayState): DayState => ({
   id: null,
   sections: { ...d.sections },
   videos: { ...d.videos },
-  views: { ...d.views },
   durations: { ...d.durations },
 });
 const dayHasContent = (d: DayState) => VIDEO_SECTIONS.some((sec) => sectionHasContent(d.sections, d.videos, sec));
@@ -451,7 +438,6 @@ export function RutinaForm({
     cooldown: workout?.cooldownVideoAssetId ?? null,
   };
   const [videosState, setVideosState] = useState<SectionVideos>(initialVideos);
-  const [viewsState, setViewsState] = useState<SectionKinds>(() => viewsFrom(initialVideos, splitSections(workout?.sourceText ?? '')));
   const [durationsState, setDurationsState] = useState<SectionDurations>({ ...EMPTY_DURATIONS });
   // A new rutina asks for name + type in one dialog, then opens the editor.
   const [createOpen, setCreateOpen] = useState(!workout && !blockMode && !skill && !program);
@@ -465,7 +451,7 @@ export function RutinaForm({
         ? (() => {
             const loaded = program.days.map((d): DayState => {
               const videos: SectionVideos = { warmup: d.warmupVideoAssetId, main: d.videoAssetId, cooldown: d.cooldownVideoAssetId };
-              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, views: viewsFrom(videos, splitSections(d.sourceText)), durations: { ...EMPTY_DURATIONS } };
+              return { id: d.id, isRestDay: d.isRestDay, sections: splitSections(d.sourceText), videos, durations: { ...EMPTY_DURATIONS } };
             });
             // Always whole weeks: pad the last one with empty days.
             const pad = (7 - (loaded.length % 7)) % 7;
@@ -499,12 +485,9 @@ export function RutinaForm({
   };
   // In program mode the sections' videos (and what the editor shows) belong to the active day.
   const videos = activeDayState ? activeDayState.videos : videosState;
-  const views = activeDayState ? activeDayState.views : viewsState;
   const durations = activeDayState ? activeDayState.durations : durationsState;
   const setVideo = (sec: VideoSection, id: string | null) =>
     programMode ? setDay(activeDay, { videos: { ...videos, [sec]: id } }) : setVideosState((v) => ({ ...v, [sec]: id }));
-  const setView = (sec: VideoSection, k: 'text' | 'video') =>
-    programMode ? setDay(activeDay, { views: { ...views, [sec]: k } }) : setViewsState((v) => ({ ...v, [sec]: k }));
   // Read from Stream by the media field, for the duration shown while editing (the API stores its own from the asset).
   const setVideoDuration = (sec: VideoSection, secs: number | null) =>
     programMode ? setDay(activeDay, { durations: { ...durations, [sec]: secs } }) : setDurationsState((v) => ({ ...v, [sec]: secs }));
@@ -986,8 +969,7 @@ export function RutinaForm({
     sections: sections ?? EMPTY_SECTIONS,
     variants: tabs,
     // The durations the media fields report are display-only: not a change.
-    // Which half of a section the editor shows is not a change either.
-    days: days.map((d) => ({ ...d, durations: EMPTY_DURATIONS, views: VIEWS_NONE })),
+    days: days.map((d) => ({ ...d, durations: EMPTY_DURATIONS })),
   };
   const [baseline, setBaseline] = useState<Snapshot | null>(null);
   const currentRef = useRef(current);
@@ -1279,26 +1261,6 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
-              {!blockMode && !skillMode && activeSection !== 'goal' && (
-                <div
-                  className="mr-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
-                  title="La sección puede tener la rutina escrita, un video o ambos; con ambos, el usuario elige cómo entrenar"
-                >
-                  {(['text', 'video'] as const).map((k) => {
-                    return (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setView(activeSection, k)}
-                        className={cn('flex items-center gap-1.5 rounded px-2 py-0.5', views[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
-                      >
-                        <KindIcon kind={k} className="h-3 w-3" />
-                        {k === 'text' ? 'Rutina' : 'Video'}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
               {!blockMode && !programMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
@@ -1466,26 +1428,23 @@ export function RutinaForm({
                 </div>
               )}
             </div>
+            {/* The section's video: a slim bar above its written rutina, so both are in view (either, or both). */}
+            {editorReady && !blockMode && !skillMode && activeSection !== 'goal' && (
+              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">
+                <MediaField
+                  key={`${programMode ? `day-${activeDay}` : 'rutina'}-${activeSection}`}
+                  variant="bar"
+                  kind="video"
+                  label={`Video de ${SECTION_TAB[activeSection].toLowerCase()}`}
+                  value={videos[activeSection]}
+                  onChange={(id) => setVideo(activeSection, id)}
+                  onDuration={(secs) => setVideoDuration(activeSection, secs)}
+                />
+              </div>
+            )}
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
-              ) : !blockMode && !skillMode && activeSection !== 'goal' && views[activeSection] === 'video' ? (
-                <div className="flex flex-col gap-3.5 overflow-y-auto px-7 py-5">
-                  <div className="max-w-xl">
-                    <MediaField
-                      kind="video"
-                      label={`${SECTION_TAB[activeSection]} en video`}
-                      value={videos[activeSection]}
-                      onChange={(id) => setVideo(activeSection, id)}
-                      onDuration={(secs) => setVideoDuration(activeSection, secs)}
-                    />
-                  </div>
-                  {activeSections[activeSection].trim() && (
-                    <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
-                      Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.
-                    </p>
-                  )}
-                </div>
               ) : (
                 <RutinaTextEditor
                   key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
@@ -1570,26 +1529,6 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
-              {!blockMode && !skillMode && activeSection !== 'goal' && (
-                <div
-                  className="mr-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
-                  title="La sección puede tener la rutina escrita, un video o ambos; con ambos, el usuario elige cómo entrenar"
-                >
-                  {(['text', 'video'] as const).map((k) => {
-                    return (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setView(activeSection, k)}
-                        className={cn('flex items-center gap-1.5 rounded px-2 py-0.5', views[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
-                      >
-                        <KindIcon kind={k} className="h-3 w-3" />
-                        {k === 'text' ? 'Rutina' : 'Video'}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
               {!blockMode && !programMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
@@ -1757,26 +1696,23 @@ export function RutinaForm({
                 </div>
               )}
             </div>
+            {/* The section's video: a slim bar above its written rutina, so both are in view (either, or both). */}
+            {editorReady && !blockMode && !skillMode && activeSection !== 'goal' && (
+              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">
+                <MediaField
+                  key={`${programMode ? `day-${activeDay}` : 'rutina'}-${activeSection}`}
+                  variant="bar"
+                  kind="video"
+                  label={`Video de ${SECTION_TAB[activeSection].toLowerCase()}`}
+                  value={videos[activeSection]}
+                  onChange={(id) => setVideo(activeSection, id)}
+                  onDuration={(secs) => setVideoDuration(activeSection, secs)}
+                />
+              </div>
+            )}
             <div ref={editorHost} className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
-              ) : !blockMode && !skillMode && activeSection !== 'goal' && views[activeSection] === 'video' ? (
-                <div className="flex flex-col gap-3.5 overflow-y-auto px-7 py-5">
-                  <div className="max-w-xl">
-                    <MediaField
-                      kind="video"
-                      label={`${SECTION_TAB[activeSection]} en video`}
-                      value={videos[activeSection]}
-                      onChange={(id) => setVideo(activeSection, id)}
-                      onDuration={(secs) => setVideoDuration(activeSection, secs)}
-                    />
-                  </div>
-                  {activeSections[activeSection].trim() && (
-                    <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
-                      Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.
-                    </p>
-                  )}
-                </div>
               ) : (
                 <RutinaTextEditor
                   key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}

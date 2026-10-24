@@ -25,6 +25,7 @@ export function MediaField({
   value,
   onChange,
   onDuration,
+  variant = 'card',
 }: {
   kind: 'image' | 'video';
   label: string;
@@ -32,6 +33,8 @@ export function MediaField({
   onChange: (assetId: string | null) => void;
   /** Video only: the duration in seconds once Stream has read it (null when the video is removed). */
   onDuration?: (seconds: number | null) => void;
+  /** `card`: the 16:9 box (forms). `bar`: one slim row (thumbnail, name, length) that sits above the rutina editor. */
+  variant?: 'card' | 'bar';
 }) {
   const [info, setInfo] = useState<MediaAsset | null>(null);
   // The id points at a file that is no longer in the library (deleted before deletes were refused while in use).
@@ -139,6 +142,178 @@ export function MediaField({
   const openPicker = () => {
     if (!inFlight) setPickerOpen(true);
   };
+
+  const what = kind === 'image' ? 'imagen' : 'video';
+  const mmss = (n: number) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
+  const dialogs = (
+    <>
+      <MediaPicker
+        kind={kind}
+        open={pickerOpen}
+        current={value}
+        onClose={() => setPickerOpen(false)}
+        onPick={(id) => {
+          if (id !== value) onDuration?.(null);
+          onChange(id);
+        }}
+      />
+      <Dialog open={previewOpen && !!ready} onClose={() => setPreviewOpen(false)} title="Vista previa" className="max-w-4xl md:h-[min(85vh,44rem)]">
+        {ready && <MediaPreview asset={ready} className="min-h-0 flex-1 px-5 pb-5 pt-4" />}
+      </Dialog>
+    </>
+  );
+  const actions = value && !inFlight && (
+    <div className="flex flex-none gap-1 opacity-0 transition-opacity group-hover/field:opacity-100 group-focus-within/field:opacity-100">
+      {ready && (
+        <IconButton
+          label="Vista previa"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPreviewOpen(true);
+          }}
+          className="border-line-2 bg-surface text-ink shadow-sm hover:bg-surface"
+        >
+          <EyeIcon className="h-4 w-4" />
+        </IconButton>
+      )}
+      <IconButton
+        label="Quitar"
+        onClick={(e) => {
+          e.stopPropagation();
+          remove();
+        }}
+        className="border-line-2 bg-surface text-ink shadow-sm hover:bg-surface hover:text-accent-dark"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+          <path d="M3 6h18" />
+          <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        </svg>
+      </IconButton>
+    </div>
+  );
+
+  if (variant === 'bar') {
+    // One slim row: what the section's video is, or a dashed «Agregar video»; same clicks, drop and hover actions as the card.
+    const title = inFlight
+      ? entry?.cancelling
+        ? 'Cancelando…'
+        : entry?.status === 'uploading'
+          ? `${es.app.uploading} ${uploadPct(entry)}%`
+          : kind === 'video'
+            ? 'Subido · Cloudflare está procesando el video…'
+            : 'Procesando…'
+      : missing
+        ? `El ${what} ya no está en la biblioteca`
+        : stalled === 'processing'
+          ? 'Cloudflare está procesando el video…'
+          : stalled === 'failed'
+            ? 'Cloudflare no pudo procesar el video'
+            : stalled
+              ? 'La subida se interrumpió'
+              : ready
+                ? ready.name
+                : value
+                  ? ''
+                  : `Agregar ${what}`;
+    const sub = inFlight
+      ? 'Puedes guardar y seguir trabajando mientras tanto.'
+      : missing || stalled === 'failed' || stalled === 'uploading'
+        ? `Haz clic para elegir ${kind === 'image' ? 'otra' : 'otro'} o quítalo.`
+        : stalled === 'processing'
+          ? 'Estará listo en unos minutos.'
+          : ready
+            ? [label, ready.durationSeconds ? mmss(ready.durationSeconds) : null, ready.sizeBytes ? formatBytes(ready.sizeBytes) : null].filter(Boolean).join(' · ')
+            : value
+              ? ''
+              : `${label} · o arrastra un archivo aquí`;
+    return (
+      <div>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={value ? `Cambiar el ${what}` : `Agregar ${what}`}
+          onClick={openPicker}
+          onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPicker())}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          className={cn(
+            'group/field flex h-14 items-center gap-3 rounded-lg border px-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+            !inFlight && 'cursor-pointer',
+            dragging
+              ? 'border-accent bg-accent-tint/40'
+              : missing || stalled === 'failed'
+                ? 'border-dashed border-accent/50 bg-accent-tint/30'
+                : value
+                  ? 'border-line-2 bg-surface hover:bg-surface-2'
+                  : 'border-dashed border-line-2 bg-surface hover:bg-surface-2',
+          )}
+        >
+          <div className="relative flex h-10 w-[72px] flex-none items-center justify-center overflow-hidden rounded-md bg-surface-2">
+            {poster ? (
+              <>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={poster} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                {kind === 'video' && (
+                  <span className="relative flex h-5 w-5 items-center justify-center rounded-full bg-white/90">
+                    <svg viewBox="0 0 24 24" className="ml-px h-2.5 w-2.5 text-ink" fill="currentColor" aria-hidden="true">
+                      <path d="M8 5.5v13l11-6.5z" />
+                    </svg>
+                  </span>
+                )}
+              </>
+            ) : inFlight ? (
+              <span className="h-1 w-12 overflow-hidden rounded-full bg-line-2">
+                <span
+                  className={cn('block h-full rounded-full bg-accent', entry?.status !== 'uploading' && 'animate-pulse')}
+                  style={{ width: `${entry && entry.status === 'uploading' ? uploadPct(entry) : 100}%` }}
+                />
+              </span>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-muted" aria-hidden="true">
+                {value ? (
+                  <>
+                    <rect x="3" y="5" width="18" height="14" rx="3" />
+                    <path d="m10 9 5 3-5 3z" />
+                  </>
+                ) : (
+                  <>
+                    <path d="M12 5v14" />
+                    <path d="M5 12h14" />
+                  </>
+                )}
+              </svg>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className={cn('truncate text-[13px] font-semibold', missing || stalled === 'failed' ? 'text-accent-dark' : 'text-ink')} title={ready?.name}>
+              {title}
+            </p>
+            <p className="truncate text-[11.5px] text-muted">{sub}</p>
+          </div>
+          {inFlight && entry && !entry.cancelling && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                cancelUpload(entry.assetId);
+              }}
+              className="flex-none px-2 text-xs font-medium text-ink-3 hover:text-accent-dark"
+            >
+              {es.app.cancel}
+            </button>
+          )}
+          {actions}
+        </div>
+        {error && <p className="mt-1.5 text-xs text-accent-dark">{error}</p>}
+        {dialogs}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -303,19 +478,7 @@ export function MediaField({
       )}
       {error && <p className="mt-1.5 text-xs text-accent-dark">{error}</p>}
 
-      <MediaPicker
-        kind={kind}
-        open={pickerOpen}
-        current={value}
-        onClose={() => setPickerOpen(false)}
-        onPick={(id) => {
-          if (id !== value) onDuration?.(null);
-          onChange(id);
-        }}
-      />
-      <Dialog open={previewOpen && !!ready} onClose={() => setPreviewOpen(false)} title="Vista previa" className="max-w-4xl md:h-[min(85vh,44rem)]">
-        {ready && <MediaPreview asset={ready} className="min-h-0 flex-1 px-5 pb-5 pt-4" />}
-      </Dialog>
+      {dialogs}
     </div>
   );
 }
