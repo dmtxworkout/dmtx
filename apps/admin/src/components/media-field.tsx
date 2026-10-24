@@ -193,6 +193,35 @@ export function MediaField({
     </div>
   );
 
+  if (variant === 'bar' && !value && !inFlight) {
+    // Nothing yet: one quiet line, plainly optional (the written rutina is what most sections are); it still takes a drop.
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={openPicker}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          title="Una clase completa que el usuario puede seguir en lugar de la versión guiada"
+          className={cn(
+            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] transition-colors',
+            dragging ? 'bg-accent-tint/40 text-accent-dark ring-1 ring-accent' : 'text-ink-3 hover:bg-surface-3 hover:text-ink',
+          )}
+        >
+          <span className="text-[15px] leading-none">+</span>
+          {dragging ? 'Suelta el video aquí' : `Agregar ${label.toLowerCase()}`}
+          <span className="text-muted">(opcional)</span>
+        </button>
+        {error && <p className="mt-1 px-2 text-xs text-accent-dark">{error}</p>}
+        {dialogs}
+      </div>
+    );
+  }
+
   if (variant === 'bar') {
     // One slim row: what the section's video is, or a dashed «Agregar video»; same clicks, drop and hover actions as the card.
     const title = inFlight

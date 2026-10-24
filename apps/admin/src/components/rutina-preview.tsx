@@ -13,7 +13,9 @@ import {
   type ParsedRutina,
 } from '@dmtx/core';
 import type { SkillGoal } from '@dmtx/schemas';
+import { createContext, useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { MediaThumb } from '@/components/media-thumb';
 import { api } from '@/lib/api';
 
 // A read-only, athlete-facing rendering of the whole rutina, driven live by the
@@ -32,7 +34,18 @@ export type PvItem =
       note?: string | null;
       /** 1-based EMOM interval the item is fixed to, when written as "intervalo N:". */
       interval?: number | null;
+      /** The catalog exercise it resolved to (its demo video shows beside it). */
+      exerciseId?: string | null;
     };
+
+/**
+ * Each exercise's media, by id: in guided mode the app shows every exercise's
+ * own demo video, so the preview shows its thumbnail beside the line (a gap
+ * where an exercise has none). Without a provider (the guide's examples) no
+ * thumbnails are drawn.
+ */
+export type ExerciseMedia = Map<string, { thumbnailAssetId: string | null; demoVideoAssetId: string | null }>;
+export const ExerciseMediaContext = createContext<ExerciseMedia | null>(null);
 export type PvBlock = {
   title: string | null;
   rounds: number | null;
@@ -74,7 +87,10 @@ function Line({ item }: { item: PvItem }) {
       </div>
     );
   }
-  return (
+  const media = useContext(ExerciseMediaContext);
+  const own = media && item.exerciseId ? media.get(item.exerciseId) : undefined;
+  const thumb = own?.thumbnailAssetId ?? own?.demoVideoAssetId ?? null;
+  const line = (
     <div className="text-[13px] leading-6 text-ink">
       {item.interval != null && (
         <span className="mr-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-accent-dark">
@@ -87,6 +103,20 @@ function Line({ item }: { item: PvItem }) {
       {item.tempo && <span className="text-ink-3"> · {item.tempo}</span>}
       {item.perSide && <span className="text-ink-3"> · c/lado</span>}
       {item.note && <div className="text-[12px] leading-5 text-muted">— {item.note}</div>}
+    </div>
+  );
+  if (!media) return line;
+  return (
+    <div className="flex items-start gap-2.5 py-0.5">
+      {thumb ? (
+        <MediaThumb assetId={thumb} className="mt-0.5 h-6 w-9 flex-none rounded" />
+      ) : (
+        <span
+          className="mt-0.5 h-6 w-9 flex-none rounded border border-dashed border-line-2"
+          title={item.exerciseId ? 'Este ejercicio no tiene video de demostración' : undefined}
+        />
+      )}
+      <div className="min-w-0">{line}</div>
     </div>
   );
 }
@@ -199,11 +229,14 @@ function VideoSection({ label, video, blocks }: { label: string; video: PvVideo;
           Sube un video para esta sección
         </div>
       ) : (
-        <VideoPoster assetId={video.assetId} seconds={video.seconds} />
+        <>
+          <div className="mb-1.5 font-mono text-[10px] text-muted">Clase en video</div>
+          <VideoPoster assetId={video.assetId} seconds={video.seconds} />
+        </>
       )}
       {written ? (
         <div className="mt-3">
-          <div className="mb-1.5 font-mono text-[10px] text-muted">o guiada, ejercicio por ejercicio</div>
+          <div className="mb-1.5 font-mono text-[10px] text-muted">o guiada · cada ejercicio con su video</div>
           <Blocks blocks={blocks!} />
         </div>
       ) : null}
@@ -355,6 +388,7 @@ function pvItem(it: ParsedItem, inSlot = false): PvItem {
     note: it.notes,
     // Items under an "intervalo N:" group already sit under that heading.
     interval: !inSlot && it.intervalIndex != null ? it.intervalIndex + 1 : null,
+    exerciseId: it.match?.id ?? null,
   };
 }
 /** Parsed blocks → preview blocks, nesting kept (parts show their header, groups their box). */

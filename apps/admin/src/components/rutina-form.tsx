@@ -34,7 +34,7 @@ import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { useUploads } from '@/lib/uploads';
 import { toast } from '@/components/ui/toast';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
-import { RutinaPreview, previewFrom } from '@/components/rutina-preview';
+import { ExerciseMediaContext, RutinaPreview, previewFrom, type ExerciseMedia } from '@/components/rutina-preview';
 import { KindIcon } from '@/components/kind-icon';
 import { RutinaGuide } from '@/components/rutina-guide';
 
@@ -718,6 +718,24 @@ export function RutinaForm({
   const parsedTab = useMemo(() => parseRutina(value, { catalog }), [value, catalog]);
   const format = parsed.main?.format ?? 'for_time';
 
+  // Where a class video can go: every rutina section (not a reusable block, a skill level or the goal tab).
+  const classVideoSlot = !blockMode && !skillMode && activeSection !== 'goal';
+  const classVideo = classVideoSlot ? (
+    <MediaField
+      key={`${programMode ? `day-${activeDay}` : 'rutina'}-${activeSection}`}
+      variant="bar"
+      kind="video"
+      label="Clase en video"
+      value={videos[activeSection as VideoSection]}
+      onChange={(id) => setVideo(activeSection as VideoSection, id)}
+      onDuration={(secs) => setVideoDuration(activeSection as VideoSection, secs)}
+    />
+  ) : null;
+  // Each exercise's demo media, for the preview's thumbnails (guided mode shows them).
+  const exerciseMedia = useMemo<ExerciseMedia>(
+    () => new Map((exList?.data ?? []).map((e) => [e.id, { thumbnailAssetId: e.thumbnailAssetId, demoVideoAssetId: e.demoVideoAssetId }])),
+    [exList],
+  );
   const previewModel = useMemo(() => previewFrom(parsed, { videos, durations }, blockMode), [parsed, videos, durations, blockMode]);
 
 
@@ -1428,18 +1446,17 @@ export function RutinaForm({
                 </div>
               )}
             </div>
-            {/* The section's video: a slim bar above its written rutina, so both are in view (either, or both). */}
-            {editorReady && !blockMode && !skillMode && activeSection !== 'goal' && (
-              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">
-                <MediaField
-                  key={`${programMode ? `day-${activeDay}` : 'rutina'}-${activeSection}`}
-                  variant="bar"
-                  kind="video"
-                  label={`Video de ${SECTION_TAB[activeSection].toLowerCase()}`}
-                  value={videos[activeSection]}
-                  onChange={(id) => setVideo(activeSection, id)}
-                  onDuration={(secs) => setVideoDuration(activeSection, secs)}
-                />
+            {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
+                class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
+            {editorReady && classVideoSlot && videos[activeSection] && (
+              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
+            )}
+            {editorReady && classVideoSlot && (
+              <div className="flex flex-none items-center gap-2 border-b border-line bg-surface px-4 py-1.5 text-[11.5px] text-muted">
+                <KindIcon kind="text" className="h-3 w-3" />
+                <span>
+                  <span className="font-semibold text-ink-3">Guiada</span> · cada ejercicio muestra su propio video de demostración
+                </span>
               </div>
             )}
             <div ref={editorHost} className="min-h-0 flex-1">
@@ -1472,6 +1489,9 @@ export function RutinaForm({
                 />
               )}
             </div>
+            {editorReady && classVideoSlot && !videos[activeSection] && (
+              <div className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
+            )}
           </div>
             )}
           </div>
@@ -1696,18 +1716,17 @@ export function RutinaForm({
                 </div>
               )}
             </div>
-            {/* The section's video: a slim bar above its written rutina, so both are in view (either, or both). */}
-            {editorReady && !blockMode && !skillMode && activeSection !== 'goal' && (
-              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">
-                <MediaField
-                  key={`${programMode ? `day-${activeDay}` : 'rutina'}-${activeSection}`}
-                  variant="bar"
-                  kind="video"
-                  label={`Video de ${SECTION_TAB[activeSection].toLowerCase()}`}
-                  value={videos[activeSection]}
-                  onChange={(id) => setVideo(activeSection, id)}
-                  onDuration={(secs) => setVideoDuration(activeSection, secs)}
-                />
+            {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
+                class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
+            {editorReady && classVideoSlot && videos[activeSection] && (
+              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
+            )}
+            {editorReady && classVideoSlot && (
+              <div className="flex flex-none items-center gap-2 border-b border-line bg-surface px-4 py-1.5 text-[11.5px] text-muted">
+                <KindIcon kind="text" className="h-3 w-3" />
+                <span>
+                  <span className="font-semibold text-ink-3">Guiada</span> · cada ejercicio muestra su propio video de demostración
+                </span>
               </div>
             )}
             <div ref={editorHost} className="min-h-0 flex-1">
@@ -1740,11 +1759,16 @@ export function RutinaForm({
                 />
               )}
             </div>
+            {editorReady && classVideoSlot && !videos[activeSection] && (
+              <div className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
+            )}
           </div>
         )}
           {/* Right: live athlete-facing preview */}
           <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
-            <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDay) : name} />
+            <ExerciseMediaContext.Provider value={blockMode ? null : exerciseMedia}>
+              <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDay) : name} />
+            </ExerciseMediaContext.Provider>
             {programMode && (
               <p className="font-mono text-[11px] text-muted">
                 {es.programs.week} {Math.floor(activeDay / 7) + 1} · {WEEKDAYS[activeDay % 7]} · {es.programs.day} {activeDay + 1} de <strong className="font-semibold text-ink-2">{name || newLabel}</strong>.
