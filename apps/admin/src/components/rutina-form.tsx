@@ -4,7 +4,7 @@
 // as text in the rutina notation and parsed live by @dmtx/core; everything
 // else (name, status, difficulty, media) lives in the header + settings drawer.
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
 import type { BlockSection, CreateWorkoutInput, Program, ProgramDayInput, ReusableBlock, Skill, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
@@ -36,6 +36,7 @@ import { toast } from '@/components/ui/toast';
 import { RutinaTextEditor, type InsertGroup, type InsertKind, type RutinaEditorApi } from '@/components/rutina-text-editor';
 import { ExerciseMediaContext, RutinaPreview, previewFrom, type ExerciseMedia } from '@/components/rutina-preview';
 import { KindIcon } from '@/components/kind-icon';
+import { Tour, type TourStep } from '@/components/ui/tour';
 import { RutinaGuide } from '@/components/rutina-guide';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
@@ -736,6 +737,116 @@ export function RutinaForm({
     () => new Map((exList?.data ?? []).map((e) => [e.id, { thumbnailAssetId: e.thumbnailAssetId, demoVideoAssetId: e.demoVideoAssetId }])),
     [exList],
   );
+  // ---- First-run tutorial ----------------------------------------------------
+  // The first time an admin opens the rutina (or program) editor, a step-by-step
+  // tour: write a short rutina, see it in the preview, meet the sections and the
+  // optional class video. Seen once per browser; the Guía replays it.
+  const TOUR_KEY = 'dmtx.tour.rutina-editor.v1';
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourWanted = !blockMode && !skillMode && editorReady && !createOpen;
+  useEffect(() => {
+    if (!tourWanted) return;
+    try {
+      if (!window.localStorage.getItem(TOUR_KEY)) setTourOpen(true);
+    } catch {
+      // Storage blocked: no automatic tour (the Guía still offers it).
+    }
+  }, [tourWanted]);
+  const closeTour = useCallback(() => {
+    setTourOpen(false);
+    try {
+      window.localStorage.setItem(TOUR_KEY, '1');
+    } catch {
+      // ignore
+    }
+  }, []);
+  // The steps read the live editor through a ref (they are built once).
+  const tourState = useRef({ main: '', mainVideo: null as string | null, section: 'main' as BlockSection });
+  tourState.current = { main: (activeSections.main ?? '').trim(), mainVideo: videos.main, section: activeSection };
+  const tourExercise = (exList?.data ?? []).find((e) => !e.archivedAt)?.name ?? 'Sentadilla';
+  const tourSetValue = useRef(setValue);
+  tourSetValue.current = setValue;
+  const tourSteps = useMemo<TourStep[]>(
+    () => [
+      {
+        title: programMode ? 'Así se arma un programa' : 'Así se crea una rutina',
+        body: (
+          <>
+            En un minuto: escribes una rutina corta, ves cómo la verá el usuario y conoces la clase en video. Puedes
+            saltarlo cuando quieras y repetirlo desde la Guía.
+          </>
+        ),
+      },
+      {
+        target: 'editor',
+        title: 'Escribe la rutina como en una pizarra',
+        body: (
+          <>
+            Una cosa por línea: primero el formato, luego cada ejercicio con su cantidad, con sangría. Prueba con:
+            <pre className="mt-2 rounded-md bg-surface-2 px-2.5 py-2 font-mono text-[12px] leading-5 text-ink">
+              {`AMRAP 10 min
+  10 ${tourExercise}`}
+            </pre>
+            Mientras escribes, el editor sugiere ejercicios del catálogo.
+          </>
+        ),
+        done: () => tourState.current.main.split('\n').filter((l) => l.trim()).length >= 2,
+        action: {
+          label: 'Escríbelo por mí',
+          run: () => {
+            setActiveSection('main');
+            tourSetValue.current(`AMRAP 10 min\n  10 ${tourExercise}\n`);
+          },
+        },
+      },
+      {
+        target: 'preview',
+        title: 'Así lo verá el usuario',
+        body: (
+          <>
+            La vista previa se actualiza mientras escribes. Es una rutina <strong className="font-semibold">guiada</strong>: la app
+            lleva al usuario ejercicio por ejercicio y cada ejercicio muestra su propio video de demostración, el que
+            tiene guardado en Ejercicios. Un hueco punteado junto a un ejercicio significa que aún no tiene video.
+          </>
+        ),
+      },
+      {
+        target: 'sections',
+        title: 'Calentamiento y estiramiento',
+        body: (
+          <>
+            Cada pestaña es una parte de la rutina. Rutina es la principal; Calentamiento y Estiramiento son opcionales y
+            se escriben igual. El icono de cada pestaña dice qué tiene: una lista si está escrita, un play si tiene clase en video.
+          </>
+        ),
+      },
+      {
+        target: 'class-video',
+        title: 'Clase en video (opcional)',
+        body: (
+          <>
+            Además de escribirla, una sección puede tener una clase completa en video. No hace falta: los ejercicios ya
+            tienen sus videos. Si la sección tiene las dos, el usuario elige al empezar entre <strong className="font-semibold">ver la clase</strong> o
+            hacerla <strong className="font-semibold">guiada</strong>. Pruébalo: haz clic para elegir un video de la biblioteca o súbelo.
+          </>
+        ),
+        done: () => !!tourState.current.mainVideo,
+      },
+      {
+        target: 'guide',
+        title: 'La Guía',
+        body: (
+          <>
+            Todo lo demás (formatos, rondas, descansos, cargas, el menú +) está en la Guía, con ejemplos. Desde ahí
+            también puedes repetir este tutorial. Cuando termines, guarda con ⌘S o con el botón Guardar.
+          </>
+        ),
+      },
+    ],
+    // Built once per mode and exercise name; live values come through refs.
+    [programMode, tourExercise],
+  );
+
   const previewModel = useMemo(() => previewFrom(parsed, { videos, durations }, blockMode), [parsed, videos, durations, blockMode]);
 
 
@@ -1175,7 +1286,7 @@ export function RutinaForm({
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          <Button type="button" variant="outline" onClick={() => setGuideOpen(true)}>
+          <Button type="button" variant="outline" data-tour="guide" onClick={() => setGuideOpen(true)}>
             Guía
           </Button>
           {!blockMode && (
@@ -1228,7 +1339,7 @@ export function RutinaForm({
             ) : (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
-            <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
+            <div data-tour="sections" className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
               {(blockMode ? (['main'] as const) : skillMode ? (['main', 'warmup', 'cooldown', 'goal'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
                 const empty = sec === 'goal' ? !activeSections.goal.trim() : !sectionHasContent(activeSections, videos, sec);
                 return (
@@ -1449,17 +1560,9 @@ export function RutinaForm({
             {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
                 class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
             {editorReady && classVideoSlot && videos[activeSection] && (
-              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
+              <div data-tour="class-video" className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
             )}
-            {editorReady && classVideoSlot && (
-              <div className="flex flex-none items-center gap-2 border-b border-line bg-surface px-4 py-1.5 text-[11.5px] text-muted">
-                <KindIcon kind="text" className="h-3 w-3" />
-                <span>
-                  <span className="font-semibold text-ink-3">Guiada</span> · cada ejercicio muestra su propio video de demostración
-                </span>
-              </div>
-            )}
-            <div ref={editorHost} className="min-h-0 flex-1">
+            <div ref={editorHost} data-tour="editor" className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
               ) : (
@@ -1490,7 +1593,7 @@ export function RutinaForm({
               )}
             </div>
             {editorReady && classVideoSlot && !videos[activeSection] && (
-              <div className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
+              <div data-tour="class-video" className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
             )}
           </div>
             )}
@@ -1498,7 +1601,7 @@ export function RutinaForm({
         ) : (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface">
             {/* Tab bar: base + variants (+), undo/redo on the right */}
-            <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
+            <div data-tour="sections" className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
               {(blockMode ? (['main'] as const) : skillMode ? (['main', 'warmup', 'cooldown', 'goal'] as const) : (['main', 'warmup', 'cooldown'] as const)).map((sec) => {
                 const empty = sec === 'goal' ? !activeSections.goal.trim() : !sectionHasContent(activeSections, videos, sec);
                 return (
@@ -1719,17 +1822,9 @@ export function RutinaForm({
             {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
                 class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
             {editorReady && classVideoSlot && videos[activeSection] && (
-              <div className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
+              <div data-tour="class-video" className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
             )}
-            {editorReady && classVideoSlot && (
-              <div className="flex flex-none items-center gap-2 border-b border-line bg-surface px-4 py-1.5 text-[11.5px] text-muted">
-                <KindIcon kind="text" className="h-3 w-3" />
-                <span>
-                  <span className="font-semibold text-ink-3">Guiada</span> · cada ejercicio muestra su propio video de demostración
-                </span>
-              </div>
-            )}
-            <div ref={editorHost} className="min-h-0 flex-1">
+            <div ref={editorHost} data-tour="editor" className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
               ) : (
@@ -1760,12 +1855,12 @@ export function RutinaForm({
               )}
             </div>
             {editorReady && classVideoSlot && !videos[activeSection] && (
-              <div className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
+              <div data-tour="class-video" className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
             )}
           </div>
         )}
           {/* Right: live athlete-facing preview */}
-          <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
+          <aside data-tour="preview" className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-line bg-surface px-[22px] py-[22px] lg:w-[360px] lg:border-l lg:border-t-0">
             <ExerciseMediaContext.Provider value={blockMode ? null : exerciseMedia}>
               <RutinaPreview model={previewModel} name={programMode ? dayLabel(activeDay) : name} />
             </ExerciseMediaContext.Provider>
@@ -1873,7 +1968,21 @@ export function RutinaForm({
       </Dialog>
 
       {/* Guide drawer */}
-      <RutinaGuide open={guideOpen} onClose={() => setGuideOpen(false)} skillMode={skillMode} programMode={programMode} />
+      <RutinaGuide
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        skillMode={skillMode}
+        programMode={programMode}
+        onStartTour={
+          blockMode || skillMode
+            ? undefined
+            : () => {
+                setGuideOpen(false);
+                setTourOpen(true);
+              }
+        }
+      />
+      <Tour open={tourOpen} steps={tourSteps} onClose={closeTour} />
 
       {/* Settings drawer */}
       {settingsOpen && (

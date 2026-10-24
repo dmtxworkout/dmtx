@@ -775,9 +775,32 @@ For time cap 20 min
       ),
     },
     {
+      id: 'class',
+      title: 'Guiada o clase en video',
+      keywords: 'video clase guiada demostracion subir ejercicio modo elegir opcional',
+      body: (
+        <>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Lo que escribes en el editor es una rutina <strong className="font-semibold">guiada</strong>: la app lleva al usuario
+            ejercicio por ejercicio, con temporizador, y cada ejercicio muestra su propio video de demostración (el que tiene
+            guardado en Ejercicios). No hace falta subir ningún video para que la rutina tenga videos.
+          </p>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Aparte, cada sección puede tener una <strong className="font-semibold">clase en video</strong>: una clase completa,
+            grabada de principio a fin, que el usuario sigue en lugar de la versión guiada. Es opcional; se agrega con
+            «+ Agregar clase en video» debajo del editor.
+          </p>
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Una sección puede tener la rutina escrita, la clase en video o las dos. Con las dos, al empezar el usuario elige
+            «Ver la clase» o «Guiada». Solo con la clase, la ve directamente; solo escrita, la hace guiada.
+          </p>
+        </>
+      ),
+    },
+    {
       id: 'sections',
-      title: 'Calentamiento y enfriamiento',
-      keywords: 'calentamiento enfriamiento pestaña seccion',
+      title: 'Calentamiento y estiramiento',
+      keywords: 'calentamiento enfriamiento estiramiento pestaña seccion',
       body: <SceneSections />,
     },
     {
@@ -838,14 +861,14 @@ For time cap 20 min
           <p className="text-[13px] leading-relaxed text-ink-2">
             Un programa es un calendario en semanas de siete días. La barra sobre el editor muestra la semana activa:
             cada día es una casilla; haz clic para escribir su rutina en el editor y arrastra para moverlo dentro de la
-            semana. Una casilla rellena tiene contenido (franja naranja: rutina; azul: video), una discontinua está vacía y las rayadas son días de descanso.
+            semana. Una casilla con borde sólido tiene contenido, una discontinua está vacía y las rayadas son días de descanso.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
             El desplegable «Semana N» cambia de semana, añade una nueva (vacía), duplica una (inserta la copia justo
             después) o la elimina.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            Cada día es una de tres cosas: una rutina escrita en el editor, una sola clase en video, o descanso. Para
+            Cada día es una rutina (escrita, con clase en video o las dos, como cualquier rutina) o descanso. Para
             reutilizar una rutina del catálogo, insértala desde el menú + (Rutinas): se copia su texto. Para publicar,
             ningún día puede quedar vacío.
           </p>
@@ -916,11 +939,14 @@ export function RutinaGuide({
   onClose,
   skillMode = false,
   programMode = false,
+  onStartTour,
 }: {
   open: boolean;
   onClose: () => void;
   skillMode?: boolean;
   programMode?: boolean;
+  /** Replays the first-run tutorial (closes the guide). */
+  onStartTour?: () => void;
 }) {
   const [query, setQuery] = useState('');
   const all = useMemo(() => sections(skillMode, programMode), [skillMode, programMode]);
@@ -937,6 +963,16 @@ export function RutinaGuide({
             <h3 className="text-[15px] font-bold">Guía del editor</h3>
             <p className="text-[12px] text-muted">Cómo se escribe y qué ve el usuario.</p>
           </div>
+          <span className="flex-1" />
+          {onStartTour && (
+            <button
+              type="button"
+              onClick={onStartTour}
+              className="mr-3 rounded-md border border-line-2 px-2.5 py-1 text-[12px] font-medium text-ink-2 hover:bg-surface-2"
+            >
+              Ver el tutorial
+            </button>
+          )}
           <button type="button" onClick={onClose} aria-label="Cerrar" className="rounded p-1 text-ink-3 hover:bg-surface-3 hover:text-ink">
             ✕
           </button>
