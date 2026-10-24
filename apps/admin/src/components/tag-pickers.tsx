@@ -4,7 +4,8 @@
 // field shows the chosen tags and an "Agregar" button that opens a popover
 // where existing tags are searched and ticked, and a name that doesn't exist
 // yet is created right there ("Agregar «…»").
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Equipment, Muscle, Taxonomy } from '@dmtx/schemas';
 import { api } from '@/lib/api';
@@ -48,13 +49,45 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const box = useRef<HTMLDivElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  // The panel lives at the document root (a dialog's scroll area would clip it) and follows the
+  // field: below it, or above when there is more room there; the list shrinks to fit.
+  const [place, setPlace] = useState<{ left: number; width: number; top?: number; bottom?: number; maxH: number } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = box.current?.getBoundingClientRect();
+      if (!r) return;
+      const vh = window.innerHeight;
+      const below = vh - r.bottom - 14;
+      const above = r.top - 14;
+      // 41 = the search row; the list wants up to 288 px.
+      const up = below < 41 + 160 && above > below;
+      const room = up ? above : below;
+      setPlace({
+        left: r.left,
+        width: r.width,
+        ...(up ? { bottom: vh - r.top + 6 } : { top: r.bottom + 6 }),
+        maxH: Math.max(96, Math.min(288, room - 41)),
+      });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     input.current?.focus();
     const onDown = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (!box.current?.contains(t) && !panel.current?.contains(t)) setOpen(false);
     };
     // Capture phase: Escape closes only the popover, not a dialog around it.
     const onKey = (e: KeyboardEvent) => {
@@ -118,8 +151,12 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
         </button>
       </div>
 
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-20 mt-1.5 overflow-hidden rounded-xl border border-line-2 bg-surface shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]">
+      {open && place && createPortal(
+        <div
+          ref={panel}
+          style={{ position: 'fixed', left: place.left, width: place.width, top: place.top, bottom: place.bottom }}
+          className="z-[80] overflow-hidden rounded-xl border border-line-2 bg-surface shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
+        >
           <div className="flex items-center gap-2 border-b border-line-3 px-3">
             <span className="text-[14px] text-muted" aria-hidden>
               ⌕
@@ -145,7 +182,7 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
             )}
           </div>
 
-          <div className="max-h-72 overflow-y-auto p-1.5">
+          <div className="overflow-y-auto p-1.5" style={{ maxHeight: place.maxH }}>
               {canCreate && (
                 <button
                   type="button"
@@ -191,7 +228,8 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
                 </div>
               ))}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
