@@ -2,7 +2,7 @@ import { createRoute, z } from '@hono/zod-openapi';
 import { and, count, desc, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { programDays, programs, workoutBlocks, workouts } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
-import { sectionValues } from '../lib/workout-sections';
+import { missingVideosMessage, sectionValues } from '../lib/workout-sections';
 import {
   createProgramSchema,
   paginated,
@@ -75,6 +75,16 @@ async function loadFull(db: Database, p: ProgramRow) {
  * none. Days with an id are updated in place, new ones created, the rest
  * deleted with their rutina.
  */
+/** The days' videos, labelled as the admin reads them («Semana 1 · Día 3»), for the missing-video check. */
+const dayRutinas = (days: ProgramDayInput[]) =>
+  days
+    .map((d, i) => ({
+      label: `Semana ${Math.floor(i / 7) + 1} · ${['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'][i % 7]}`,
+      warmupVideoAssetId: d.isRestDay ? null : d.warmupVideoAssetId,
+      videoAssetId: d.isRestDay ? null : d.videoAssetId,
+      cooldownVideoAssetId: d.isRestDay ? null : d.cooldownVideoAssetId,
+    }));
+
 async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput[]) {
   const existing = await db.select().from(programDays).where(eq(programDays.programId, program.id));
   const keep = new Set(days.map((d) => d.id).filter((id): id is string => !!id));
@@ -207,11 +217,16 @@ programsRoute.openapi(
     request: { body: { content: { 'application/json': { schema: createProgramSchema } } } },
     responses: {
       201: { description: 'Creado', content: { 'application/json': { schema: programSchema } } },
+      400: { description: 'No se puede publicar', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
+    if (input.status === 'published') {
+      const missing = await missingVideosMessage(db, dayRutinas(input.days));
+      if (missing) return c.json({ error: missing }, 400);
+    }
     const [row] = await db
       .insert(programs)
       .values({
@@ -240,6 +255,7 @@ programsRoute.openapi(
     },
     responses: {
       200: { description: 'Actualizado', content: { 'application/json': { schema: programSchema } } },
+      400: { description: 'No se puede publicar', content: { 'application/json': { schema: errorSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
@@ -247,6 +263,26 @@ programsRoute.openapi(
     const db = c.get('db');
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
+    // Published (now or already): no day may point at a video that is gone.
+    {
+      const [now] = await db.select().from(programs).where(and(eq(programs.id, id), isNull(programs.deletedAt))).limit(1);
+      if (!now) return c.json({ error: 'No encontrado' }, 404);
+      if ((input.status ?? now.status) === 'published') {
+        const rutinas = input.days
+          ? dayRutinas(input.days)
+          : dayRutinas(
+              (await daysOf(db, [id])).map((d) => ({
+                isRestDay: d.isRestDay,
+                blocks: [],
+                warmupVideoAssetId: d.workout?.warmupVideoAssetId ?? null,
+                videoAssetId: d.workout?.videoAssetId ?? null,
+                cooldownVideoAssetId: d.workout?.cooldownVideoAssetId ?? null,
+              })),
+            );
+        const missing = await missingVideosMessage(db, rutinas);
+        if (missing) return c.json({ error: missing }, 400);
+      }
+    }
     const set: Partial<typeof programs.$inferInsert> = { updatedAt: new Date() };
     if (input.name !== undefined) set.name = input.name;
     if (input.slug !== undefined) set.slug = input.slug;

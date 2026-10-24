@@ -34,6 +34,8 @@ export function MediaField({
   onDuration?: (seconds: number | null) => void;
 }) {
   const [info, setInfo] = useState<MediaAsset | null>(null);
+  // The id points at a file that is no longer in the library (deleted before deletes were refused while in use).
+  const [missing, setMissing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   // The field's asset while its bytes are still travelling (from the global queue).
   const entry = useUpload(value);
@@ -47,6 +49,7 @@ export function MediaField({
   // fails; a video Stream is still encoding is asked again every few seconds.
   const inQueue = uploadState === 'uploading' || uploadState === 'processing';
   useEffect(() => {
+    setMissing(false);
     if (!value || inQueue) {
       if (!value) setInfo(null);
       return;
@@ -59,9 +62,15 @@ export function MediaField({
         .then((a) => {
           if (!alive) return;
           setInfo(a);
+          setMissing(false);
           if (a.status === 'processing') timer = window.setTimeout(read, 5000);
         })
-        .catch(() => alive && setInfo(null));
+        .catch((e: unknown) => {
+          if (!alive) return;
+          setInfo(null);
+          // Only a 404 means the file is gone; anything else (offline, a 500) is not a verdict.
+          setMissing((e as { status?: number } | null)?.status === 404);
+        });
     };
     read();
     return () => {
@@ -186,7 +195,15 @@ export function MediaField({
             <br />o arrastra el archivo aquí
           </div>
         )}
-        {value && !info && !inFlight && <div className="absolute inset-0 animate-pulse bg-surface-2" />}
+        {value && !info && !inFlight && !missing && <div className="absolute inset-0 animate-pulse bg-surface-2" />}
+        {missing && !inFlight && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 border border-dashed border-accent/50 bg-accent-tint/30 px-8 text-center text-sm font-medium text-accent-dark">
+            <span>{kind === 'image' ? 'La imagen' : 'El video'} ya no está en la biblioteca</span>
+            <span className="text-[11px] font-normal text-ink-3">
+              Haz clic para elegir {kind === 'image' ? 'otra' : 'otro'} o quítalo con la papelera.
+            </span>
+          </div>
+        )}
         {inFlight && (
           <div className="absolute inset-0 flex cursor-default flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
             <span>

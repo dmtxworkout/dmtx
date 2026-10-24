@@ -13,7 +13,7 @@ import {
 } from '@dmtx/schemas';
 import type { WorkoutBlockInput } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
-import { sectionValues } from '../lib/workout-sections';
+import { missingVideosMessage, sectionValues } from '../lib/workout-sections';
 import { requireAdmin } from '../middleware/auth';
 
 const errorSchema = z.object({ error: z.string() });
@@ -275,12 +275,17 @@ workoutsRoute.openapi(
     request: { body: { content: { 'application/json': { schema: createWorkoutSchema } } } },
     responses: {
       201: { description: 'Creada', content: { 'application/json': { schema: workoutSchema } } },
+      400: { description: 'No se puede publicar', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
-    // Each section is text or a video; type, format and duration follow from that.
+    if (input.status === 'published') {
+      const missing = await missingVideosMessage(db, [input]);
+      if (missing) return c.json({ error: missing }, 400);
+    }
+    // Each section is written, a video or both; the flags, format and duration follow from that.
     const sections = await sectionValues(db, input);
     // Variants share the base name; their slug carries the level label.
     const wantedSlug =
@@ -324,6 +329,7 @@ workoutsRoute.openapi(
     },
     responses: {
       200: { description: 'Actualizada', content: { 'application/json': { schema: workoutSchema } } },
+      400: { description: 'No se puede publicar', content: { 'application/json': { schema: errorSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
@@ -331,6 +337,21 @@ workoutsRoute.openapi(
     const db = c.get('db');
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
+    // Published (now or already): every video it will point at must still be in the library.
+    {
+      const [now] = await db.select().from(workouts).where(eq(workouts.id, id)).limit(1);
+      if (!now) return c.json({ error: 'No encontrado' }, 404);
+      if ((input.status ?? now.status) === 'published') {
+        const missing = await missingVideosMessage(db, [
+          {
+            warmupVideoAssetId: input.warmupVideoAssetId !== undefined ? input.warmupVideoAssetId : now.warmupVideoAssetId,
+            videoAssetId: input.videoAssetId !== undefined ? input.videoAssetId : now.videoAssetId,
+            cooldownVideoAssetId: input.cooldownVideoAssetId !== undefined ? input.cooldownVideoAssetId : now.cooldownVideoAssetId,
+          },
+        ]);
+        if (missing) return c.json({ error: missing }, 400);
+      }
+    }
     const set: Partial<typeof workouts.$inferInsert> = {};
     if (input.name !== undefined) set.name = input.name;
     if (input.slug !== undefined) set.slug = input.slug;

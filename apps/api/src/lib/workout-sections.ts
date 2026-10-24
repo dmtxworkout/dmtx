@@ -38,6 +38,17 @@ export async function sectionValues(db: Database, input: SectionInput) {
         .where(and(inArray(mediaAssets.id, ids), isNull(mediaAssets.deletedAt)))
     : [];
   const lengths = new Map(rows.map((r) => [r.id, r.seconds ?? 0]));
+  // A video that is no longer in the library (deleted before deletes were
+  // refused while in use) counts as no video: the row never points at a file
+  // that is gone, and has_video says the truth.
+  const missing: (typeof SECTIONS)[number][] = [];
+  for (const sec of SECTIONS) {
+    const id = videos[sec];
+    if (id && !lengths.has(id)) {
+      missing.push(sec);
+      videos[sec] = null;
+    }
+  }
   let total = 0;
   for (const sec of SECTIONS) {
     const own = blocks.filter((b) => b.section === sec);
@@ -55,6 +66,43 @@ export async function sectionValues(db: Database, input: SectionInput) {
     cooldownVideoAssetId: videos.cooldown,
     blocks,
     estimatedDurationSeconds: total > 0 ? total : null,
-    hasContent: blocks.some((b) => b.section !== 'goal') || ids.length > 0,
+    hasContent: blocks.some((b) => b.section !== 'goal') || Object.values(videos).some(Boolean),
+    /** The sections whose video was no longer in the library (dropped above). */
+    missing,
   };
+}
+
+export const SECTION_LABEL: Record<(typeof SECTIONS)[number], string> = {
+  warmup: 'Calentamiento',
+  main: 'Rutina',
+  cooldown: 'Estiramiento',
+};
+
+/**
+ * Publishing is refused while a rutina points at a video that is no longer
+ * in the library: says which (for a program, which day) so the admin can pick
+ * another or take it off. Null when every video exists.
+ */
+export async function missingVideosMessage(
+  db: Database,
+  rutinas: { label?: string; warmupVideoAssetId?: string | null; videoAssetId?: string | null; cooldownVideoAssetId?: string | null }[],
+): Promise<string | null> {
+  const wanted = new Set<string>();
+  for (const r of rutinas) for (const id of [r.warmupVideoAssetId, r.videoAssetId, r.cooldownVideoAssetId]) if (id) wanted.add(id);
+  if (!wanted.size) return null;
+  const rows = await db
+    .select({ id: mediaAssets.id })
+    .from(mediaAssets)
+    .where(and(inArray(mediaAssets.id, [...wanted]), isNull(mediaAssets.deletedAt)));
+  const present = new Set(rows.map((r) => r.id));
+  for (const r of rutinas) {
+    const ids = { warmup: r.warmupVideoAssetId, main: r.videoAssetId, cooldown: r.cooldownVideoAssetId };
+    for (const sec of SECTIONS) {
+      const id = ids[sec];
+      if (id && !present.has(id)) {
+        return `${r.label ? `${r.label}: l` : 'L'}a sección ${SECTION_LABEL[sec]} tiene un video que ya no está en la biblioteca. Elige otro o quítalo antes de publicar.`;
+      }
+    }
+  }
+  return null;
 }

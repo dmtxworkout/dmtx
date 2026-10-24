@@ -288,6 +288,13 @@
       "when": 1792849269681,
       "tag": "0040_workouts_drop_video_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1792850825996,
+      "tag": "0041_clear_deleted_media_refs",
+      "breakpoints": true
     }
   ]
 }
