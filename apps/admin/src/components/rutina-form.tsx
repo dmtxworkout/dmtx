@@ -1285,7 +1285,6 @@ export function RutinaForm({
                   title="La sección puede tener la rutina escrita, un video o ambos; con ambos, el usuario elige cómo entrenar"
                 >
                   {(['text', 'video'] as const).map((k) => {
-                    const filled = k === 'text' ? !!activeSections[activeSection].trim() : !!videos[activeSection];
                     return (
                       <button
                         key={k}
@@ -1295,7 +1294,6 @@ export function RutinaForm({
                       >
                         <KindIcon kind={k} className="h-3 w-3" />
                         {k === 'text' ? 'Rutina' : 'Video'}
-                        {filled && <span className={cn('h-1.5 w-1.5 rounded-full', views[activeSection] === k ? 'bg-white' : 'bg-accent')} aria-label="con contenido" />}
                       </button>
                     );
                   })}
@@ -1578,7 +1576,6 @@ export function RutinaForm({
                   title="La sección puede tener la rutina escrita, un video o ambos; con ambos, el usuario elige cómo entrenar"
                 >
                   {(['text', 'video'] as const).map((k) => {
-                    const filled = k === 'text' ? !!activeSections[activeSection].trim() : !!videos[activeSection];
                     return (
                       <button
                         key={k}
@@ -1588,7 +1585,6 @@ export function RutinaForm({
                       >
                         <KindIcon kind={k} className="h-3 w-3" />
                         {k === 'text' ? 'Rutina' : 'Video'}
-                        {filled && <span className={cn('h-1.5 w-1.5 rounded-full', views[activeSection] === k ? 'bg-white' : 'bg-accent')} aria-label="con contenido" />}
                       </button>
                     );
                   })}
