@@ -157,6 +157,12 @@ export function Tour({ steps, open, onClose }: { steps: TourStep[]; open: boolea
         {step.done && !step.done() && (
           <p className="mt-2 font-mono text-[10.5px] text-accent-dark">Cuando lo hagas, seguimos solos.</p>
         )}
+        {/* The step's own shortcut gets a row of its own, so the navigation never crowds. */}
+        {step.action && (
+          <Button type="button" variant="outline" size="sm" onClick={step.action.run} className="mt-3 w-full">
+            {step.action.label}
+          </Button>
+        )}
         <div className="mt-4 flex items-center gap-2">
           <button type="button" onClick={onClose} className="text-[12px] font-medium text-ink-3 hover:text-ink">
             Saltar
@@ -165,11 +171,6 @@ export function Tour({ steps, open, onClose }: { steps: TourStep[]; open: boolea
           {i > 0 && (
             <Button type="button" variant="outline" size="sm" onClick={back}>
               Atrás
-            </Button>
-          )}
-          {step.action && (
-            <Button type="button" variant="outline" size="sm" onClick={step.action.run}>
-              {step.action.label}
             </Button>
           )}
           <Button type="button" size="sm" onClick={next} className={cn(n === shown.length && 'px-4')}>
