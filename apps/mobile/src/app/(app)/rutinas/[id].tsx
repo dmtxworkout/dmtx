@@ -179,7 +179,8 @@ export default function RutinaDetalle() {
           {w.isGuided && (w.format || w.estimatedDurationSeconds) ? (
             <View className="absolute bottom-3.5 left-5 self-start rounded bg-accent px-2 py-1">
               <Text className="font-mono-semibold text-[10px] uppercase tracking-wider text-white">
-                {[formatLabel(w.format), w.estimatedDurationSeconds ? mmss(w.estimatedDurationSeconds) : '']
+                {/* With a video too, the duration is the class's, not the format's: show the format alone. */}
+                {[formatLabel(w.format), w.estimatedDurationSeconds && !w.hasVideo ? mmss(w.estimatedDurationSeconds) : '']
                   .filter(Boolean)
                   .join(' ')}
               </Text>
