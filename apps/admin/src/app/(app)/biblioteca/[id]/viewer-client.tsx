@@ -311,31 +311,63 @@ export function MediaViewer({ id }: { id: string }) {
                 <p className="mt-0.5 font-mono text-[12px] text-muted">{details.join(' · ')}</p>
                 <p className="font-mono text-[12px] text-muted">Añadido el {added}</p>
               </div>
-              <div>
-                <p className="text-[12px] font-semibold text-ink-2">Usado en</p>
-                {usage.isLoading ? (
-                  <p className="mt-0.5 text-[12.5px] text-muted">{es.app.loading}</p>
-                ) : !usage.data?.items.length ? (
-                  <p className="mt-0.5 text-[12.5px] text-muted">Ningún contenido lo usa.</p>
-                ) : (
-                  <ul className="mt-1 flex flex-col gap-1">
-                    {usage.data.items.map((u) => (
-                      <li key={`${u.type}-${u.id}-${u.field}`} className="text-[12.5px]">
-                        <Link
-                          href={`${USAGE_PATH[u.type]}/${u.id}`}
-                          className="font-medium text-accent hover:text-accent-dark"
-                        >
-                          {u.name}
-                        </Link>
-                        <span className="text-muted">
-                          {' '}
-                          · {USAGE_LABEL[u.type]} · {usageFieldLabel(u.field)}
+            </div>
+          </section>
+          <section className="rounded-xl border border-line-2 bg-surface">
+            {editor.sectionBtn(
+              'usage',
+              'Usado en',
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.75}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-4 w-4 text-ink-3"
+                aria-hidden="true"
+              >
+                <path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" />
+                <path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" />
+              </svg>,
+              usage.data && (
+                <span className="ml-auto rounded-full bg-surface-2 px-2 py-0.5 font-mono text-[11px] font-medium text-ink-3">
+                  {used.length}
+                </span>
+              ),
+            )}
+            <div className={cn('p-2', editor.section !== 'usage' && 'hidden')}>
+              {usage.isLoading ? (
+                <p className="px-2 py-1.5 text-[12.5px] text-muted">{es.app.loading}</p>
+              ) : !used.length ? (
+                <p className="px-2 py-1.5 text-[12.5px] text-muted">Ningún contenido lo usa todavía.</p>
+              ) : (
+                <ul className="flex flex-col">
+                  {used.map((u) => (
+                    <li key={`${u.type}-${u.id}-${u.field}`}>
+                      <Link
+                        href={`${USAGE_PATH[u.type]}/${u.id}`}
+                        className="group/use flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-2"
+                      >
+                        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md border border-line-2 bg-surface-3 text-ink-3">
+                          <UsageIcon field={u.field} />
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-semibold text-ink" title={u.name}>
+                            {u.name}
+                          </span>
+                          <span className="block text-[11.5px] text-muted">
+                            {USAGE_LABEL[u.type]} · como {usageFieldLabel(u.field)}
+                          </span>
+                        </span>
+                        <span aria-hidden className="text-[14px] text-faint group-hover/use:text-ink">
+                          →
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </section>
           {a.kind === 'image' && a.status === 'ready' && editor.tools}
@@ -401,5 +433,20 @@ export function MediaViewer({ id }: { id: string }) {
         </div>
       </Dialog>
     </div>
+  );
+}
+
+/** A use as a video or as a cover image. */
+function UsageIcon({ field }: { field: 'video' | 'thumbnail' }) {
+  return field === 'video' ? (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5" aria-hidden="true">
+      <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
+    </svg>
   );
 }

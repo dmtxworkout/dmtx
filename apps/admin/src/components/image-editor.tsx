@@ -95,7 +95,7 @@ export function useImageEditor({
   const [future, setFuture] = useState<ImageBitmap[]>([]);
   const [current, setCurrent] = useState<ImageBitmap | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [tool, setTool] = useState<'info' | 'crop' | 'resize'>('info');
+  const [tool, setTool] = useState<'info' | 'usage' | 'crop' | 'resize'>('info');
   // Crop tool state (in image pixels), aspect and orientation.
   const [aspectId, setAspectId] = useState('original');
   const [portrait, setPortrait] = useState(false);
@@ -320,7 +320,7 @@ export function useImageEditor({
 
   const px = (n: number) => Math.round(n * scale);
   const sideClass = 'rounded-xl border border-line-2 bg-surface';
-  const sectionBtn = (id: 'info' | 'crop' | 'resize', label: string, icon: ReactNode) => (
+  const sectionBtn = (id: 'info' | 'usage' | 'crop' | 'resize', label: string, icon: ReactNode, extra?: ReactNode) => (
     <button
       type="button"
       onClick={() => setTool(id)}
@@ -332,11 +332,12 @@ export function useImageEditor({
     >
       {icon}
       {label}
+      {extra}
     </button>
   );
 
   return {
-    /** Which side section is open (one at a time: Información, crop or resize). */
+    /** Which side section is open (one at a time: Información, Usado en, crop or resize). */
     section: tool,
     /** The header of a side section: click opens it and closes the one that was open. */
     sectionBtn,
