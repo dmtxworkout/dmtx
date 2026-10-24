@@ -1,28 +1,23 @@
 'use client';
 
-import { type ChangeEvent, type DragEvent, useEffect, useRef, useState } from 'react';
-import type { MediaStatus } from '@dmtx/api-client';
+import { type DragEvent, useEffect, useRef, useState } from 'react';
+import type { MediaAsset } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { MediaPicker } from '@/components/media-picker';
+import { EyeIcon, MediaPreview } from '@/components/media-preview';
+import { Dialog } from '@/components/ui/dialog';
+import { IconButton } from '@/components/ui/icon-button';
 import { cancelUpload, formatBytes, isUploadDeclined, startUpload, uploadPct, useUpload } from '@/lib/uploads';
 
-interface Info {
-  name: string;
-  sizeBytes: number | null;
-  status: MediaStatus;
-  /** Image: the delivery URL; video: Stream's player (iframe). Null until ready. */
-  url: string | null;
-  durationSeconds: number | null;
-}
-
 /**
- * Upload + preview a single media asset (image or video), or pick an existing
- * one from the library. Supports click and drag-and-drop. Holds only the id:
- * a dropped file is handed to the background upload queue and the field gets
- * its id right away, so the form can be saved (or left) while it uploads. A
- * video is played through Cloudflare Stream's player once it is encoded.
+ * A single media asset (image or video), the Shopify way: clicking the field
+ * opens the library (which also uploads), a file dropped on it uploads
+ * straight away, and on hover an eye shows it big (a video plays) and a trash
+ * can takes it off. Holds only the id: a dropped file is handed to the
+ * background upload queue and the field gets its id right away, so the form
+ * can be saved (or left) while it uploads.
  */
 export function MediaField({
   kind,
@@ -38,8 +33,8 @@ export function MediaField({
   /** Video only: the duration in seconds once Stream has read it (null when the video is removed). */
   onDuration?: (seconds: number | null) => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [info, setInfo] = useState<Info | null>(null);
+  const [info, setInfo] = useState<MediaAsset | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   // The field's asset while its bytes are still travelling (from the global queue).
   const entry = useUpload(value);
   const uploadState = entry?.status;
@@ -63,13 +58,7 @@ export function MediaField({
         .view(value)
         .then((a) => {
           if (!alive) return;
-          setInfo({
-            name: a.name,
-            sizeBytes: a.sizeBytes,
-            status: a.status,
-            url: a.status === 'ready' ? (a.kind === 'video' ? a.embedUrl : a.viewUrl) : null,
-            durationSeconds: a.durationSeconds,
-          });
+          setInfo(a);
           if (a.status === 'processing') timer = window.setTimeout(read, 5000);
         })
         .catch(() => alive && setInfo(null));
@@ -123,14 +112,14 @@ export function MediaField({
   // Not in flight here, but the record is not ready either: encoding at
   // Cloudflare (processing), broken (failed) or abandoned by a closed tab (uploading).
   const stalled = !!value && !inFlight && !!info && info.status !== 'ready' ? info.status : null;
-  const url = !inFlight && info?.status === 'ready' ? info.url : null;
-  const hasVideo = kind === 'video' && !!url;
-
-  function onInput(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (file) void upload(file);
-  }
+  const ready = !inFlight && info?.status === 'ready' ? info : null;
+  // A video shows its poster frame here (it plays in the preview); an image itself.
+  const poster = ready ? (kind === 'video' ? ready.thumbnailUrl : ready.viewUrl) : null;
+  const remove = () => {
+    onChange(null);
+    onDuration?.(null);
+    setError(null);
+  };
 
   function onDrop(e: DragEvent) {
     e.preventDefault();
@@ -138,22 +127,19 @@ export function MediaField({
     const file = e.dataTransfer.files?.[0];
     if (file) void upload(file);
   }
+  const openPicker = () => {
+    if (!inFlight) setPickerOpen(true);
+  };
 
   return (
     <div>
       <div className="mb-1.5 text-[13px] font-semibold text-ink-2">{label}</div>
-      <input
-        ref={inputRef}
-        type="file"
-        accept={kind === 'image' ? 'image/*' : 'video/*'}
-        className="hidden"
-        onChange={onInput}
-      />
       <div
-        role={hasVideo ? undefined : 'button'}
-        tabIndex={hasVideo ? undefined : 0}
-        onClick={hasVideo ? undefined : () => inputRef.current?.click()}
-        onKeyDown={hasVideo ? undefined : (e) => (e.key === 'Enter' || e.key === ' ') && inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        aria-label={value ? `Cambiar ${kind === 'image' ? 'la imagen' : 'el video'}` : `Elegir ${kind === 'image' ? 'una imagen' : 'un video'}`}
+        onClick={openPicker}
+        onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), openPicker())}
         onDragOver={(e) => {
           e.preventDefault();
           setDragging(true);
@@ -161,33 +147,27 @@ export function MediaField({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          'relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
-          !hasVideo && 'cursor-pointer',
+          'group/field relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30',
+          !inFlight && 'cursor-pointer',
           dragging
             ? 'border-accent bg-accent-tint/40'
-            : url
-              ? hasVideo
-                ? 'border-line bg-black'
-                : 'border-line'
+            : poster
+              ? 'border-line bg-black'
               : 'border-dashed border-line-2 bg-surface-3 hover:bg-surface-2',
         )}
       >
-        {url && kind === 'image' && (
+        {poster && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={poster} alt="" className={cn('absolute inset-0 h-full w-full', kind === 'video' ? 'object-cover opacity-90' : 'object-cover')} />
         )}
-        {url && kind === 'video' && (
-          // Stream's player: plays the encoded HLS right here, so what was uploaded can be checked without leaving the form.
-          <iframe
-            key={url}
-            src={url}
-            title={info?.name ?? 'Video'}
-            allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-            allowFullScreen
-            className="absolute inset-0 h-full w-full border-0"
-          />
+        {ready && kind === 'video' && (
+          <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-white/90 shadow-md">
+            <svg viewBox="0 0 24 24" className="ml-0.5 h-5 w-5 text-ink" fill="currentColor" aria-hidden="true">
+              <path d="M8 5.5v13l11-6.5z" />
+            </svg>
+          </span>
         )}
-        {!url && !inFlight && !stalled && (
+        {!value && !inFlight && (
           <div className="px-4 text-xs text-muted">
             <svg
               viewBox="0 0 24 24"
@@ -199,16 +179,16 @@ export function MediaField({
               aria-hidden="true"
               className="mx-auto mb-1.5 h-6 w-6 text-faint"
             >
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <path d="M17 8l-5-5-5 5" />
-              <path d="M12 3v12" />
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
             </svg>
-            Arrastra {kind === 'image' ? 'una imagen' : 'un video'} aquí
-            <br />o haz clic para subir
+            <span className="font-semibold text-ink-2">Elegir {kind === 'image' ? 'una imagen' : 'un video'}</span>
+            <br />o arrastra el archivo aquí
           </div>
         )}
+        {value && !info && !inFlight && <div className="absolute inset-0 animate-pulse bg-surface-2" />}
         {inFlight && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
+          <div className="absolute inset-0 flex cursor-default flex-col items-center justify-center gap-2.5 bg-surface/90 px-8 text-sm font-medium text-ink-2">
             <span>
               {entry?.cancelling
                 ? 'Cancelando…'
@@ -254,59 +234,71 @@ export function MediaField({
             ) : stalled === 'failed' ? (
               <>
                 <span>Cloudflare no pudo procesar el video</span>
-                <span className="text-[11px] font-normal text-muted">Quita el archivo y sube otro (MP4 H.264 suele funcionar).</span>
+                <span className="text-[11px] font-normal text-muted">Quítalo y elige otro (MP4 H.264 suele funcionar).</span>
               </>
             ) : (
               <>
                 <span>La subida se interrumpió</span>
-                <span className="text-[11px] font-normal text-muted">Se cerró la pestaña antes de terminar. Quita el archivo y súbelo de nuevo.</span>
+                <span className="text-[11px] font-normal text-muted">Se cerró la pestaña antes de terminar. Quítalo y súbelo de nuevo.</span>
               </>
             )}
           </div>
         )}
+        {/* On hover: look at it big, or take it off. */}
+        {value && !inFlight && (
+          <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover/field:opacity-100 group-focus-within/field:opacity-100">
+            {ready && (
+              <IconButton
+                label="Vista previa"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewOpen(true);
+                }}
+                className="border-line-2 bg-surface text-ink shadow-sm hover:bg-surface"
+              >
+                <EyeIcon className="h-4 w-4" />
+              </IconButton>
+            )}
+            <IconButton
+              label="Quitar"
+              onClick={(e) => {
+                e.stopPropagation();
+                remove();
+              }}
+              className="border-line-2 bg-surface text-ink shadow-sm hover:bg-surface hover:text-accent-dark"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                <path d="M3 6h18" />
+                <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              </svg>
+            </IconButton>
+          </div>
+        )}
       </div>
 
-      {hasVideo && info && (
-        <div className="mt-1.5 truncate font-mono text-[11px] text-muted" title={info.name}>
-          {info.name}
-          {info.sizeBytes ? ` · ${formatBytes(info.sizeBytes)}` : ''}
-          {info.durationSeconds ? ` · ${Math.floor(info.durationSeconds / 60)}:${String(info.durationSeconds % 60).padStart(2, '0')}` : ''}
+      {ready && (
+        <div className="mt-1.5 truncate font-mono text-[11px] text-muted" title={ready.name}>
+          {ready.name}
+          {ready.sizeBytes ? ` · ${formatBytes(ready.sizeBytes)}` : ''}
+          {ready.durationSeconds ? ` · ${Math.floor(ready.durationSeconds / 60)}:${String(ready.durationSeconds % 60).padStart(2, '0')}` : ''}
         </div>
       )}
-      <div className="mt-2 flex flex-wrap items-center gap-3 text-xs">
-        {hasVideo && (
-          <button type="button" onClick={() => inputRef.current?.click()} className="font-medium text-accent hover:text-accent-dark">
-            Subir otro video
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="font-medium text-accent hover:text-accent-dark"
-        >
-          {es.media.library}
-        </button>
-        {value && (
-          <button
-            type="button"
-            onClick={() => {
-              onChange(null);
-              onDuration?.(null);
-            }}
-            className="text-ink-3 hover:text-accent-dark"
-          >
-            {es.app.remove}
-          </button>
-        )}
-        {error && <span className="text-accent-dark">{error}</span>}
-      </div>
+      {error && <p className="mt-1.5 text-xs text-accent-dark">{error}</p>}
 
       <MediaPicker
         kind={kind}
         open={pickerOpen}
+        current={value}
         onClose={() => setPickerOpen(false)}
-        onPick={(id) => onChange(id)}
+        onPick={(id) => {
+          if (id !== value) onDuration?.(null);
+          onChange(id);
+        }}
       />
+      <Dialog open={previewOpen && !!ready} onClose={() => setPreviewOpen(false)} title="Vista previa" className="max-w-4xl md:h-[min(85vh,44rem)]">
+        {ready && <MediaPreview asset={ready} className="min-h-0 flex-1 px-5 pb-5 pt-4" />}
+      </Dialog>
     </div>
   );
 }

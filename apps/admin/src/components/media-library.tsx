@@ -29,6 +29,7 @@ import { FolderIcon } from '@/components/folder-picker';
 import { IconButton } from '@/components/ui/icon-button';
 import { Popover } from '@/components/ui/popover';
 import { toast } from '@/components/ui/toast';
+import { EyeIcon, MediaPreview } from '@/components/media-preview';
 
 export type MediaKindFilter = 'all' | 'image' | 'video';
 
@@ -257,6 +258,8 @@ export function MediaBrowser({
   const replaceRef = useRef<HTMLInputElement>(null);
   const [replacing, setReplacing] = useState<MediaAsset | null>(null);
   const [usageOpen, setUsageOpen] = useState<string | null>(null);
+  // The picker's «Vista previa»: the file shown big beside the grid (the eye on a tile), with ← → through the list.
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,6 +366,9 @@ export function MediaBrowser({
     const ext = u.name.split('.').pop();
     return ext && ext.length <= 5 && ext !== u.name ? ext.toUpperCase() : u.kind === 'image' ? es.media.image : es.media.video;
   };
+  const previewable = items.filter((m) => m.status === 'ready');
+  const previewIndex = previewable.findIndex((m) => m.id === previewId);
+  const previewAsset = previewIndex >= 0 ? previewable[previewIndex]! : null;
   const pendingLabel = (m: MediaAsset, up: UploadEntry | undefined) =>
     up?.cancelling
       ? 'Cancelando…'
@@ -494,6 +500,7 @@ export function MediaBrowser({
         </div>
       )}
 
+      <div className="flex min-h-0 flex-1 gap-5">
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {isLoading ? (
           <p className="py-10 text-center text-sm text-muted">{es.app.loading}</p>
@@ -764,8 +771,8 @@ export function MediaBrowser({
                 <div
                   key={m.id}
                   className={cn(
-                    'relative rounded-lg border p-2 transition-colors',
-                    on ? 'border-accent bg-accent-tint/30' : 'border-line-2',
+                    'group/tile relative rounded-lg border p-2 transition-colors',
+                    on ? 'border-accent bg-accent-tint/30' : previewId === m.id ? 'border-ink-3' : 'border-line-2',
                   )}
                 >
                   <button
@@ -797,6 +804,20 @@ export function MediaBrowser({
                       />
                     )}
                   </button>
+                  {!pending && !onOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setPreviewId(previewId === m.id ? null : m.id)}
+                      aria-label="Vista previa"
+                      title="Vista previa"
+                      className={cn(
+                        'absolute right-3.5 top-[108px] flex h-6 w-6 items-center justify-center rounded-md shadow-sm transition-opacity',
+                        previewId === m.id ? 'bg-accent text-white opacity-100' : 'bg-ink/80 text-white opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100',
+                      )}
+                    >
+                      <EyeIcon className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <label className="absolute left-3.5 top-3.5 flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-line-2 bg-surface shadow-sm">
                     <input
                       type="checkbox"
@@ -815,6 +836,37 @@ export function MediaBrowser({
             })}
           </div>
         )}
+      </div>
+      {layout === 'grid' && previewAsset && (
+        <aside className="flex w-[min(46%,30rem)] flex-none flex-col border-l border-line-3 pb-3 pl-5">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-[14px] font-semibold text-ink">Vista previa</h3>
+            <div className="flex items-center gap-1">
+              <IconButton label="Anterior" disabled={previewIndex <= 0} onClick={() => setPreviewId(previewable[previewIndex - 1]?.id ?? null)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </IconButton>
+              <IconButton
+                label="Siguiente"
+                disabled={previewIndex >= previewable.length - 1}
+                onClick={() => setPreviewId(previewable[previewIndex + 1]?.id ?? null)}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </IconButton>
+              <IconButton label="Cerrar vista previa" onClick={() => setPreviewId(null)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </IconButton>
+            </div>
+          </div>
+          <MediaPreview asset={previewAsset} className="min-h-0 flex-1" />
+        </aside>
+      )}
       </div>
     </div>
   );

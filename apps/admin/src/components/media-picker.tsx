@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { es } from '@/i18n/es';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -12,13 +12,19 @@ export function MediaPicker({
   open,
   onClose,
   onPick,
+  current = null,
 }: {
   kind: 'image' | 'video';
   open: boolean;
   onClose: () => void;
   onPick: (assetId: string) => void;
+  /** The field's file: marked when the picker opens. */
+  current?: string | null;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
+  useEffect(() => {
+    if (open) setSelected(current ? [current] : []);
+  }, [open, current]);
   const close = () => {
     setSelected([]);
     onClose();
