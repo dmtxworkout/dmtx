@@ -441,17 +441,10 @@ export function MediaBrowser({
               {es.media[k]}
             </Chip>
           ))}
-        {/* With the preview open the drop zone folds away (Shopify): «Subir» moves up here and the whole browser takes a drop. */}
-        {layout === 'grid' && previewAsset && (
-          <Button type="button" variant="outline" size="sm" disabled={uploading} onClick={() => inputRef.current?.click()}>
-            <UploadIcon className="mr-1.5 h-4 w-4" />
-            {uploading ? es.app.uploading : 'Subir'}
-          </Button>
-        )}
-        {(layout === 'table' || previewAsset) && error && <p className="text-xs text-accent-dark">{error}</p>}
+        {layout === 'table' && error && <p className="text-xs text-accent-dark">{error}</p>}
       </div>
       {/* The table has no drop zone of its own: the whole list takes a drop, like Shopify. */}
-      {(layout === 'table' || previewAsset) && dragging > 0 && (
+      {layout === 'table' && dragging > 0 && (
         <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-accent bg-accent-tint/70">
           <p className="rounded-lg bg-surface px-4 py-2 text-sm font-semibold text-ink shadow">
             Suelta los archivos para subirlos
@@ -477,38 +470,38 @@ export function MediaBrowser({
         className="hidden"
         onChange={(e) => void upload(Array.from(e.target.files ?? []))}
       />
-      {layout === 'grid' && !previewAsset && (
-        <div
-          className={cn(
-            'mb-3 flex flex-none flex-col items-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors',
-            dragging > 0 ? 'border-accent bg-accent-tint/40' : 'border-line-2',
-          )}
-        >
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={uploading}
-            onClick={() => inputRef.current?.click()}
-          >
-            <UploadIcon className="mr-1.5 h-4 w-4" />
-            {uploading ? es.app.uploading : 'Subir'}
-          </Button>
-          <p className="text-xs text-muted">
-            {dragging > 0
-              ? 'Suelta los archivos aquí'
-              : kind === 'video'
-                ? 'O arrastra videos de tu computadora'
-                : kind === 'image'
-                  ? 'O arrastra imágenes de tu computadora'
-                  : 'O arrastra imágenes o videos de tu computadora'}
-          </p>
-          {error && <p className="text-xs text-accent-dark">{error}</p>}
-        </div>
-      )}
-
       <div className="flex min-h-0 flex-1 gap-5">
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+        {/* The drop zone sits above the tiles, so with the preview open it narrows with them (Shopify); a drop anywhere in the picker uploads. */}
+        {layout === 'grid' && (
+          <div
+            className={cn(
+              'mb-3 flex flex-none flex-col items-center gap-1.5 rounded-lg border-2 border-dashed px-4 py-5 text-center transition-colors',
+              dragging > 0 ? 'border-accent bg-accent-tint/40' : 'border-line-2',
+            )}
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              <UploadIcon className="mr-1.5 h-4 w-4" />
+              {uploading ? es.app.uploading : 'Subir'}
+            </Button>
+            <p className="text-xs text-muted">
+              {dragging > 0
+                ? 'Suelta los archivos aquí'
+                : kind === 'video'
+                  ? 'O arrastra videos de tu computadora'
+                  : kind === 'image'
+                    ? 'O arrastra imágenes de tu computadora'
+                    : 'O arrastra imágenes o videos de tu computadora'}
+            </p>
+            {error && <p className="text-xs text-accent-dark">{error}</p>}
+          </div>
+        )}
         {isLoading ? (
           <p className="py-10 text-center text-sm text-muted">{es.app.loading}</p>
         ) : items.length === 0 && subfolders.length === 0 ? (
