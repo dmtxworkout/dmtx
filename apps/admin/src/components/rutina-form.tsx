@@ -1482,11 +1482,11 @@ export function RutinaForm({
                       onDuration={(secs) => setVideoDuration(activeSection, secs)}
                     />
                   </div>
-                  <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
-                    {activeSections[activeSection].trim()
-                      ? 'Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.'
-                      : 'Escribe también la rutina en «Rutina» para que el usuario pueda elegir entre seguir el video o hacerla guiada.'}
-                  </p>
+                  {activeSections[activeSection].trim() && (
+                    <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
+                      Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <RutinaTextEditor
@@ -1775,11 +1775,11 @@ export function RutinaForm({
                       onDuration={(secs) => setVideoDuration(activeSection, secs)}
                     />
                   </div>
-                  <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
-                    {activeSections[activeSection].trim()
-                      ? 'Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.'
-                      : 'Escribe también la rutina en «Rutina» para que el usuario pueda elegir entre seguir el video o hacerla guiada.'}
-                  </p>
+                  {activeSections[activeSection].trim() && (
+                    <p className="max-w-xl text-[12.5px] leading-relaxed text-muted">
+                      Esta sección también tiene la rutina escrita: el usuario elige entre seguir el video o que la app lo guíe ejercicio por ejercicio.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <RutinaTextEditor
