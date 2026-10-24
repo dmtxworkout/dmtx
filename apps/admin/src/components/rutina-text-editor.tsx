@@ -278,6 +278,9 @@ const PENCIL_ICON =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const PLUS_ICON =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+// The gutter's "+": a bolder stroke than the menu's, it has to read at 11px.
+const ADD_ICON =
+  '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
 const BOOKMARK_ICON =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>';
 
@@ -556,7 +559,7 @@ class AddMarker extends GutterMarker {
   override toDOM() {
     const el = document.createElement('div');
     el.className = `rt-add${this.hot ? ' hot' : ''}`;
-    el.textContent = '+';
+    el.innerHTML = ADD_ICON;
     el.title = 'Insertar plantilla, bloque reutilizable o rutina';
     return el;
   }
@@ -1131,24 +1134,28 @@ const theme = EditorView.theme({
   '.rt-tail-comment': { color: '#008000', fontStyle: 'italic' },
   '.rt-notes': { color: '#0b7285', fontStyle: 'italic' },
   // "+" gutter
-  '.rt-gutter-add': { width: '16px' },
-  '.rt-gutter-add .cm-gutterElement': { padding: '0 0 0 2px' },
+  '.rt-gutter-add': { width: '22px' },
+  // Centred on its line whatever the line's height: the marker box fills the row and centres the button.
+  '.rt-gutter-add .cm-gutterElement': { padding: '0 0 0 3px', display: 'flex', alignItems: 'center' },
   '.rt-add': {
-    width: '14px',
-    height: '16px',
-    marginTop: '3px',
-    borderRadius: '4px',
-    fontFamily: 'var(--font-sans)',
-    fontSize: '14px',
-    lineHeight: '16px',
-    textAlign: 'center',
-    color: 'var(--color-muted)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '18px',
+    height: '18px',
+    borderRadius: '5px',
+    border: '1px solid var(--color-line-2)',
+    backgroundColor: 'var(--color-surface)',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+    color: 'var(--color-ink-2)',
     cursor: 'pointer',
     opacity: '0',
     userSelect: 'none',
+    transition: 'opacity 120ms, background-color 120ms, color 120ms, border-color 120ms',
   },
+  '.rt-add svg': { pointerEvents: 'none' },
   '.rt-add.hot': { opacity: '1' },
-  '.rt-add:hover': { backgroundColor: 'var(--color-accent-tint)', color: 'var(--color-accent-dark)' },
+  '.rt-add:hover': { backgroundColor: 'var(--color-accent)', borderColor: 'var(--color-accent)', color: '#fff' },
   // Insert menu
   '.rt-insert': { width: '340px', padding: '6px', fontFamily: 'var(--font-sans)' },
   '.rt-insert-search': {
