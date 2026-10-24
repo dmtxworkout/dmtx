@@ -409,8 +409,7 @@ function WeekStrip({
             title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : dayIsVideo(d) ? 'video' : 'rutina'}`}
             className={cn(
               'flex h-9 w-12 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
-              // The cell names its weekday and, with an icon, what the day holds
-              // (video / structured rutina); dashed = empty, hatched = rest.
+              // The cell names its weekday; dashed = empty, hatched = rest.
               isActive ? 'border-accent font-semibold text-accent-dark' : d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
               isActive ? (d.isRestDay ? '' : 'bg-accent-tint') : 'hover:border-line-3 hover:text-ink',
               uploadingVideo(d) && 'animate-pulse',
@@ -419,12 +418,6 @@ function WeekStrip({
             style={d.isRestDay ? { background: HATCH } : undefined}
           >
             <span>{WEEKDAY_SHORT[j]}</span>
-            {has && !d.isRestDay && (
-              <KindIcon
-                kind={dayIsVideo(d) ? 'video' : 'text'}
-                className={cn('mt-0.5 h-3 w-3', isActive ? 'text-accent-dark/70' : 'text-muted')}
-              />
-            )}
           </button>
         );
       })}
@@ -1293,23 +1286,6 @@ export function RutinaForm({
                   </div>
                 );
               })}
-              {!blockMode && activeSection !== 'goal' && (
-                <div
-                  className="ml-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
-                  title="Esta sección se escribe como rutina o es un video"
-                >
-                  {(['text', 'video'] as const).map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setKind(activeSection, k)}
-                      className={cn('rounded px-2 py-0.5', kinds[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
-                    >
-                      {k === 'text' ? 'Rutina' : 'Video'}
-                    </button>
-                  ))}
-                </div>
-              )}
               <span className="flex-1" />
               <div className="flex items-center gap-0.5 px-2">
                 <button
@@ -1339,6 +1315,24 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
+              {!blockMode && activeSection !== 'goal' && (
+                <div
+                  className="mr-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
+                  title="Esta sección se escribe como rutina o es un video"
+                >
+                  {(['text', 'video'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setKind(activeSection, k)}
+                      className={cn('flex items-center gap-1.5 rounded px-2 py-0.5', kinds[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
+                    >
+                      <KindIcon kind={k} className="h-3 w-3" />
+                      {k === 'text' ? 'Rutina' : 'Video'}
+                    </button>
+                  ))}
+                </div>
+              )}
               {!blockMode && !programMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
@@ -1575,23 +1569,6 @@ export function RutinaForm({
                   </div>
                 );
               })}
-              {!blockMode && activeSection !== 'goal' && (
-                <div
-                  className="ml-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
-                  title="Esta sección se escribe como rutina o es un video"
-                >
-                  {(['text', 'video'] as const).map((k) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setKind(activeSection, k)}
-                      className={cn('rounded px-2 py-0.5', kinds[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
-                    >
-                      {k === 'text' ? 'Rutina' : 'Video'}
-                    </button>
-                  ))}
-                </div>
-              )}
               <span className="flex-1" />
               <div className="flex items-center gap-0.5 px-2">
                 <button
@@ -1621,6 +1598,24 @@ export function RutinaForm({
                   </svg>
                 </button>
               </div>
+              {!blockMode && activeSection !== 'goal' && (
+                <div
+                  className="mr-2 flex items-center self-center rounded-md border border-line-2 bg-surface p-0.5 font-mono text-[11px]"
+                  title="Esta sección se escribe como rutina o es un video"
+                >
+                  {(['text', 'video'] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setKind(activeSection, k)}
+                      className={cn('flex items-center gap-1.5 rounded px-2 py-0.5', kinds[activeSection] === k ? 'bg-ink text-white' : 'text-ink-3 hover:text-ink')}
+                    >
+                      <KindIcon kind={k} className="h-3 w-3" />
+                      {k === 'text' ? 'Rutina' : 'Video'}
+                    </button>
+                  ))}
+                </div>
+              )}
               {!blockMode && !programMode && (
                 <div ref={versionRef} className="relative mr-2 flex items-center border-l border-line pl-2">
                   <button
