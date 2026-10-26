@@ -3,10 +3,10 @@ import { and, asc, countDistinct, eq, inArray, isNull, max } from 'drizzle-orm';
 import { equipment, exerciseEquipment, exerciseMuscles, exercises, muscles } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import {
-  arrangeMusclesSchema,
   createEquipmentSchema,
   createMuscleSchema,
   equipmentSchema,
+  setMuscleZoneSchema,
   muscleSchema,
   slugify,
   taxonomySchema,
@@ -122,26 +122,18 @@ taxonomyRoute.openapi(
 taxonomyRoute.openapi(
   createRoute({
     method: 'post',
-    path: '/muscles/arrange',
+    path: '/muscles/zone',
     tags: ['taxonomy'],
-    request: { body: { content: { 'application/json': { schema: arrangeMusclesSchema } } } },
-    responses: { 204: { description: 'Zonas y orden guardados' } },
+    request: { body: { content: { 'application/json': { schema: setMuscleZoneSchema } } } },
+    responses: { 204: { description: 'Zona asignada' } },
   }),
   async (c) => {
     const db = c.get('db');
-    const { items } = c.req.valid('json');
-    const ids = items.map((i) => i.id);
-    const before = new Map(
-      (await db.select({ id: muscles.id, zone: muscles.zone }).from(muscles).where(inArray(muscles.id, ids))).map((m) => [m.id, m.zone]),
-    );
-    for (const it of items) {
-      if (!before.has(it.id)) continue;
-      await db.update(muscles).set({ zone: it.zone, position: it.position }).where(eq(muscles.id, it.id));
-    }
-    // The rutinas working a muscle that changed zone may gain or lose «Cuerpo completo».
-    const moved = items.filter((it) => before.has(it.id) && before.get(it.id) !== it.zone);
+    const { ids, zone } = c.req.valid('json');
+    await db.update(muscles).set({ zone }).where(inArray(muscles.id, ids));
+    // The rutinas working these muscles may gain or lose «Cuerpo completo».
     const affected = new Set<string>();
-    for (const m of moved) for (const w of await workoutsWorking(db, m.id)) affected.add(w);
+    for (const id of ids) for (const w of await workoutsWorking(db, id)) affected.add(w);
     await syncWorkoutMuscles(db, [...affected]);
     return c.body(null, 204);
   },
