@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -30,19 +31,33 @@ export function ActionsMenu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  // The menu lives at the document root (a table or card with overflow hidden
+  // would clip it), placed under the button.
+  const [pos, setPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
+  useLayoutEffect(() => {
+    if (!open) return setPos(null);
+    const r = ref.current?.getBoundingClientRect();
+    if (r) setPos(align === 'right' ? { top: r.bottom + 4, right: window.innerWidth - r.right } : { top: r.bottom + 4, left: r.left });
+  }, [open, align]);
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      if (!ref.current?.contains(e.target as Node) && !menu.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onScroll = (e: Event) => {
+      if (!menu.current?.contains(e.target as Node)) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false);
     };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('mousedown', onDown);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [open]);
 
@@ -66,13 +81,12 @@ export function ActionsMenu({
         </svg>
         )}
       </Button>
-      {open && (
+      {open && pos && createPortal(
         <div
+          ref={menu}
           role="menu"
-          className={cn(
-            'absolute top-full z-20 mt-1 w-52 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]',
-            align === 'right' ? 'right-0' : 'left-0',
-          )}
+          style={{ position: 'fixed', ...pos }}
+          className="z-[80] w-52 rounded-xl border border-line-2 bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.25)]"
         >
           {items.map((it, i) => (
             <button
@@ -92,7 +106,8 @@ export function ActionsMenu({
               {it.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
