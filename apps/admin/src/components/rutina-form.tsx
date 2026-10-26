@@ -1323,12 +1323,8 @@ export function RutinaForm({
                 onDuplicateWeek={duplicateWeek}
                 onRemoveWeek={removeWeek}
               />
-              <span className="hidden h-5 w-px bg-line-2 sm:block" />
-              {/* What the day is */}
+              {/* The highlighted day in the strip says which day this is; only «Descanso» is left here. */}
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span className="shrink-0 font-mono text-[11px] text-ink-2">
-                  <span className="font-semibold">{WEEKDAYS[activeDay % 7]}</span>
-                </span>
                 <span className="flex-1" />
                 <button
                   type="button"
