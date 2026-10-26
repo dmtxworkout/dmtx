@@ -119,11 +119,13 @@ alias resolves, and the closest catalog name comes first in `suggestions`),
 
 **Objetivo** (skills only): a fourth section, `Objetivo` header like the others,
 holding the marks that unlock the next level — one exercise line each, with an
-amount: `3 Dominadas`, `Plancha 60s`, `400 m Carrera`, `Sentadilla 5x5 @100 kg`.
-Formats, rondas and descansos are errors there (`goal_structure`), as is a line
-without an amount (`goal_needs_amount`). `goalsFrom(parsed)` turns them into
-`SkillGoal[]` (metric reps / time_seconds / distance_meters / load_kg with reps);
-`toWorkoutInput` leaves the section out of the blocks.
+amount: `3 Dominadas`, `Plancha 60s`, `400 m Carrera`, `Sentadilla 1x5 @100 kg`.
+It is not typed by hand: the admin's goal panel (`skill-goals.tsx`) writes it with
+`goalLine(goal)` from the exercises the level's rutina uses, and it is not offered
+by autocomplete. Formats, rondas and descansos are errors there (`goal_structure`),
+as is a line without an amount (`goal_needs_amount`). `goalsFrom(parsed)` turns
+them into `SkillGoal[]` (metric reps / time_seconds / distance_meters / load_kg
+with reps); `toWorkoutInput` leaves the section out of the blocks.
 
 `toWorkoutInput(parsed)` yields the `format*`/`blocks` fields of
 `CreateWorkoutInput`; `completionsAt(text, offset, catalog, opts)` powers the

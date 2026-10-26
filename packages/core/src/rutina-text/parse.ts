@@ -1000,6 +1000,19 @@ export function toWorkoutInput(p: ParsedRutina): RutinaStructureInput {
 }
 
 /**
+ * One goal as an "Objetivo" line, the way `goalsFrom` reads it back: "15 Sentadillas",
+ * "Plancha 60s", "400 m Carrera", "Sentadilla 1x5 @100 kg". The admin's goal panel
+ * writes the section with these, so the goals never leave the level's text.
+ */
+export function goalLine(g: SkillGoal): string {
+  const n = (v: number) => (Number.isInteger(v) ? String(v) : String(v).replace('.', ','));
+  if (g.metric === 'time_seconds') return `${g.exerciseName} ${n(g.value)}s`;
+  if (g.metric === 'distance_meters') return `${n(g.value)} m ${g.exerciseName}`;
+  if (g.metric === 'load_kg') return `${g.exerciseName} 1x${g.reps ?? 1} @${n(g.value)} kg`;
+  return `${n(g.value)} ${g.exerciseName}`;
+}
+
+/**
  * The goals written in the "Objetivo" section, one per resolved exercise line:
  * the metric follows what was written (reps, time, distance, or a load for N
  * reps). Lines that did not resolve or carry no amount are left out (they are

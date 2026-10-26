@@ -140,7 +140,6 @@ const SECTIONS: Completion[] = [
   { label: 'Calentamiento', detail: 'lo indentado debajo es el calentamiento', type: 'section', apply: 'Calentamiento' },
   { label: 'Estiramiento', detail: 'lo indentado debajo es el estiramiento', type: 'section', apply: 'Estiramiento' },
   { label: 'Rutina', detail: 'vuelve a la parte principal (o quita la sangría)', type: 'section', apply: 'Rutina' },
-  { label: 'Objetivo', detail: 'marcas que desbloquean el siguiente nivel (habilidades)', type: 'section', apply: 'Objetivo' },
 ];
 
 const LOADS: Completion[] = [

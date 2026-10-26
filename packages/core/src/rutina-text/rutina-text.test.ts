@@ -1,7 +1,7 @@
 import { Catalog } from './catalog';
 import { describe, expect, it } from 'vitest';
 import { completionsAt } from './completion';
-import { goalsFrom, parseRutina, toWorkoutInput, hasErrors } from './parse';
+import { goalLine, goalsFrom, parseRutina, toWorkoutInput, hasErrors } from './parse';
 import { splitSections } from './sections';
 import { pluralName } from './normalize';
 import { serializeRutina } from './serialize';
@@ -705,6 +705,17 @@ Objetivo
     // The goals are not part of the training.
     expect(toWorkoutInput(p).blocks.every((b) => b.section !== 'goal')).toBe(true);
     expect(splitSections(`3 rondas\n  10 burpees\n\nObjetivo\n  20 burpees\n`).goal).toBe('20 burpees\n');
+  });
+  it('writes a goal back as a line that reads as the same goal', () => {
+    const goals = [
+      { exerciseId: 'burpee', exerciseName: 'Burpees', metric: 'reps' as const, value: 20, reps: null },
+      { exerciseId: 'plank', exerciseName: 'Plancha', metric: 'time_seconds' as const, value: 60, reps: null },
+      { exerciseId: 'run', exerciseName: 'Carrera', metric: 'distance_meters' as const, value: 400, reps: null },
+      { exerciseId: 'squat', exerciseName: 'Sentadilla', metric: 'load_kg' as const, value: 102.5, reps: 5 },
+    ];
+    const p = parse(`Objetivo\n${goals.map((g) => `  ${goalLine(g)}`).join('\n')}\n`);
+    expect(hasErrors(p)).toBe(false);
+    expect(goalsFrom(p)).toEqual(goals);
   });
   it('rejects structure and lines without an amount there', () => {
     const p = parse(`Objetivo

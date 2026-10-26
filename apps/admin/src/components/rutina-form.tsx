@@ -10,6 +10,7 @@ import { CONTENT_STATUS, DIFFICULTY } from '@dmtx/schemas';
 import type { BlockSection, CreateWorkoutInput, Program, ProgramDayInput, ReusableBlock, Skill, SkillLevelInput, Workout, WorkoutFormat } from '@dmtx/schemas';
 import {
   Catalog,
+  goalLine,
   goalsFrom,
   parseRutina,
   serializeRutina,
@@ -38,6 +39,7 @@ import { ExerciseMediaContext, RutinaPreview, previewFrom, type ExerciseMedia } 
 import { KindIcon } from '@/components/kind-icon';
 import { Tour, type TourStep } from '@/components/ui/tour';
 import { RutinaGuide } from '@/components/rutina-guide';
+import { SkillGoals, rutinaExercises } from '@/components/skill-goals';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   amrap: 'AMRAP',
@@ -68,8 +70,6 @@ const videosOf = (videos: SectionVideos) => ({
   warmupVideoAssetId: videos.warmup,
   cooldownVideoAssetId: videos.cooldown,
 });
-const GOAL_PLACEHOLDER = 'Las marcas que desbloquean el siguiente nivel, una por línea:\n3 Dominadas\nPlancha 60s\nSentadilla 5x5 @100 kg';
-
 const PLACEHOLDER = 'Escribe la rutina como en papel, o pulsa + para insertar una plantilla o un bloque reutilizable…';
 
 // ---- Text helpers ----------------------------------------------------------
@@ -629,14 +629,13 @@ export function RutinaForm({
   const activeVariant = activeTab > 0 ? tabs[activeTab - 1] : undefined;
   const activeSections = activeDayState ? activeDayState.sections : activeVariant ? activeVariant.sections : (sections ?? EMPTY_SECTIONS);
   const value = activeSections[activeSection];
-  const setValue = (v: string) => {
-    if (programMode) setDays((ds) => ds.map((d, i) => (i === activeDay ? { ...d, sections: { ...d.sections, [activeSection]: v } } : d)));
-    else if (activeTab === 0) setSections((sc) => ({ ...(sc ?? EMPTY_SECTIONS), [activeSection]: v }));
-    else
-      setVariants((vs) =>
-        (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, sections: { ...t.sections, [activeSection]: v } } : t)),
-      );
+  /** Set one section's text in the active version (or day). */
+  const setSectionText = (sec: BlockSection, v: string) => {
+    if (programMode) setDays((ds) => ds.map((d, i) => (i === activeDay ? { ...d, sections: { ...d.sections, [sec]: v } } : d)));
+    else if (activeTab === 0) setSections((sc) => ({ ...(sc ?? EMPTY_SECTIONS), [sec]: v }));
+    else setVariants((vs) => (vs ?? []).map((t, i) => (i === activeTab - 1 ? { ...t, sections: { ...t.sections, [sec]: v } } : t)));
   };
+  const setValue = (v: string) => setSectionText(activeSection, v);
   /** Replace an exercise name (as a whole word, accents and case ignored) in every section of every version; returns the lines changed. */
   const renameInTexts = (oldName: string, newName: string): number => {
     let changed = 0;
@@ -1236,14 +1235,31 @@ export function RutinaForm({
     if (skillMode) {
       // Every level but the last needs a way to unlock the next one.
       const all = [{ label: baseLabel, sections: sections ?? EMPTY_SECTIONS }, ...tabs];
-      for (let i = 0; i < all.length - 1; i += 1) {
-        const goals = goalsFrom(parseRutina(joinSections(all[i]!.sections), { catalog }));
-        if (!goals.length) {
+      for (let i = 0; i < all.length; i += 1) {
+        const level = parseRutina(joinSections(all[i]!.sections), { catalog });
+        const goals = goalsFrom(level);
+        // A goal must be about an exercise the level trains (one removed from its rutina since).
+        const inRutina = new Set(rutinaExercises(level).map((e) => e.exerciseId));
+        const stray = goals.find((g) => !inRutina.has(g.exerciseId));
+        if (stray) {
           setActiveTab(i);
           setActiveSection('goal');
           toast(
             <>
-              El nivel <strong className="font-extrabold">{all[i]!.label || `Nivel ${i + 1}`}</strong> no tiene objetivo: nadie podría pasar al siguiente. Escríbelo en su pestaña Objetivo.
+              El objetivo de <strong className="font-extrabold">{all[i]!.label || `Nivel ${i + 1}`}</strong> pide{' '}
+              <strong className="font-extrabold">{stray.exerciseName}</strong>, que ya no está en su rutina. Quítalo o vuelve a ponerlo en la rutina.
+            </>,
+            'error',
+          );
+          shakeBar();
+          return;
+        }
+        if (!goals.length && i < all.length - 1) {
+          setActiveTab(i);
+          setActiveSection('goal');
+          toast(
+            <>
+              <strong className="font-extrabold">{all[i]!.label || `Nivel ${i + 1}`}</strong> no tiene objetivo: nadie podría pasar al siguiente. Elígelo en su pestaña Objetivo.
             </>,
             'error',
           );
@@ -1572,8 +1588,6 @@ export function RutinaForm({
                 </div>
               )}
             </div>
-            {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
-                class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
             {/* The section's video sits above its written rutina: the slim bar once there is one, a quiet «+ Agregar…» line until then. */}
             {editorReady && classVideoSlot && (
               <div
@@ -1591,10 +1605,9 @@ export function RutinaForm({
                   key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
                   value={value}
                   onChange={setValue}
-                  onlyExercises={activeSection === 'goal'}
                   catalog={catalog}
                   parsed={parsedTab}
-                  placeholder={activeSection === 'goal' ? GOAL_PLACEHOLDER : PLACEHOLDER}
+                  placeholder={PLACEHOLDER}
                   autoFocus={isNew}
                   extras={extras}
                   inserts={inserts}
@@ -1837,8 +1850,6 @@ export function RutinaForm({
                 </div>
               )}
             </div>
-            {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
-                class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
             {/* The section's video sits above its written rutina: the slim bar once there is one, a quiet «+ Agregar…» line until then. */}
             {editorReady && classVideoSlot && (
               <div
@@ -1851,15 +1862,22 @@ export function RutinaForm({
             <div ref={editorHost} data-tour="editor" className="min-h-0 flex-1">
               {!editorReady ? (
                 <div className="px-4 py-10 text-center font-mono text-[12px] text-muted">{es.app.loading}</div>
+              ) : skillMode && activeSection === 'goal' ? (
+                // A level's goal is picked from the exercises its rutina uses, not written.
+                <SkillGoals
+                  parsed={parsed}
+                  goals={goalsFrom(parsed)}
+                  onChange={(goals) => setSectionText('goal', goals.map(goalLine).join('\n'))}
+                  isLast={activeTab === tabs.length}
+                />
               ) : (
                 <RutinaTextEditor
                   key={`${programMode ? `day-${activeDay}` : activeTab === 0 ? 'base' : (activeVariant?.id ?? `new-${activeTab}`)}-${activeSection}`}
                   value={value}
                   onChange={setValue}
-                  onlyExercises={activeSection === 'goal'}
                   catalog={catalog}
                   parsed={parsedTab}
-                  placeholder={activeSection === 'goal' ? GOAL_PLACEHOLDER : PLACEHOLDER}
+                  placeholder={PLACEHOLDER}
                   autoFocus={isNew}
                   extras={extras}
                   inserts={inserts}

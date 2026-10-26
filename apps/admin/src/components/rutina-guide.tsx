@@ -891,16 +891,14 @@ For time cap 20 min
       body: (
         <>
           <p className="text-[13px] leading-relaxed text-ink-2">
-            En la pestaña Objetivo escribes las marcas que el usuario debe alcanzar para pasar al siguiente nivel, una por línea y
-            con la gramática de siempre. Hay que cumplirlas todas. El último nivel no lleva objetivo.
+            La pestaña Objetivo no se escribe: lista los ejercicios de la rutina de ese nivel y marcas los que el usuario tiene
+            que lograr, cada uno con su marca (repeticiones, segundos, metros, o kg por repeticiones). Así el objetivo siempre es
+            algo que el nivel entrena. Para pasar al siguiente nivel hay que cumplirlos todos.
           </p>
-          <Example
-            text={`Objetivo
-  3 Dominadas
-  Plancha 60s
-  Sentadilla 5x5 @100 kg
-`}
-          />
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Si quitas de la rutina un ejercicio que era objetivo, aparece tachado con «Ya no está en la rutina de este nivel» y no
+            se puede guardar hasta quitarlo. En el último nivel el objetivo es opcional: la meta final de la habilidad.
+          </p>
         </>
       ),
     });
