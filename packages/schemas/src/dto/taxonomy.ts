@@ -45,6 +45,12 @@ export const updateMuscleSchema = z.object({
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;
 
+/** Muscles dragged to another zone or place: each one's zone and position, in one go. */
+export const arrangeMusclesSchema = z.object({
+  items: z.array(z.object({ id: uuidSchema, zone: muscleZoneSchema.nullable(), position: z.number().int() })).min(1).max(500),
+});
+export type ArrangeMusclesInput = z.infer<typeof arrangeMusclesSchema>;
+
 export const createEquipmentSchema = z.object({ name: z.string().min(1).max(100) });
 export type CreateEquipmentInput = z.infer<typeof createEquipmentSchema>;
 export const updateEquipmentSchema = z.object({

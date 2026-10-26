@@ -1,4 +1,5 @@
 import type {
+  ArrangeMusclesInput,
   CreateEquipmentInput,
   CreateMuscleInput,
   Equipment,
@@ -21,6 +22,9 @@ export function taxonomyApi(http: Http) {
     },
     updateMuscle(id: string, input: UpdateMuscleInput): Promise<Muscle> {
       return http.request(`/api/taxonomy/muscles/${id}`, { method: 'PATCH', ...json(input) });
+    },
+    arrangeMuscles(input: ArrangeMusclesInput): Promise<void> {
+      return http.request('/api/taxonomy/muscles/arrange', { method: 'POST', ...json(input) });
     },
     removeMuscle(id: string): Promise<void> {
       return http.request(`/api/taxonomy/muscles/${id}`, { method: 'DELETE' });
