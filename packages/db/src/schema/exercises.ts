@@ -1,4 +1,4 @@
-import { jsonb, pgTable, primaryKey, text, uuid, timestamp } from 'drizzle-orm/pg-core';
+import { index, jsonb, pgTable, primaryKey, text, uuid, timestamp } from 'drizzle-orm/pg-core';
 import type { Tempo } from '@dmtx/schemas';
 import {
   difficultyEnum,
@@ -39,7 +39,7 @@ export const exerciseMuscles = pgTable(
       .notNull()
       .references(() => muscles.id, { onDelete: 'restrict' }),
   },
-  (t) => [primaryKey({ columns: [t.exerciseId, t.muscleId] })],
+  (t) => [primaryKey({ columns: [t.exerciseId, t.muscleId] }), index('exercise_muscles_muscle_idx').on(t.muscleId)],
 );
 
 export const exerciseEquipment = pgTable(

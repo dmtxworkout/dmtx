@@ -13,6 +13,7 @@ import {
   slugify,
   updateExerciseSchema,
 } from '@dmtx/schemas';
+import { syncWorkoutMuscles, workoutsUsing } from '../lib/workout-muscles';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
 
@@ -206,6 +207,7 @@ exercisesRoute.openapi(
         );
         if (values.length) await db.insert(exerciseMuscles).values(values);
         await db.update(exercises).set({ updatedAt: now }).where(inArray(exercises.id, ids));
+        await syncWorkoutMuscles(db, await workoutsUsing(db, ids));
         break;
       }
       case 'remove_muscles':
@@ -214,6 +216,7 @@ exercisesRoute.openapi(
           .delete(exerciseMuscles)
           .where(and(inArray(exerciseMuscles.exerciseId, ids), inArray(exerciseMuscles.muscleId, input.muscleIds)));
         await db.update(exercises).set({ updatedAt: now }).where(inArray(exercises.id, ids));
+        await syncWorkoutMuscles(db, await workoutsUsing(db, ids));
         break;
       case 'add_equipment': {
         if (!input.equipmentIds.length) break;
@@ -400,6 +403,8 @@ exercisesRoute.openapi(
       if (input.muscleIds.length) {
         await db.insert(exerciseMuscles).values(input.muscleIds.map((muscleId) => ({ exerciseId: id, muscleId })));
       }
+      // The rutinas that use it now work different muscles.
+      await syncWorkoutMuscles(db, await workoutsUsing(db, [id]));
     }
     if (input.equipmentIds !== undefined) {
       await db.delete(exerciseEquipment).where(eq(exerciseEquipment.exerciseId, id));

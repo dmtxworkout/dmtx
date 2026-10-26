@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgTable, text, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, primaryKey, text, uuid, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { FormatConfig, Goal, LoadPrescription, Tempo } from '@dmtx/schemas';
 import {
   blockKindEnum,
@@ -8,6 +8,7 @@ import {
   difficultyEnum,
   itemKindEnum,
   measurementTypeEnum,
+  muscleRoleEnum,
   primaryId,
   publishable,
   softDelete,
@@ -16,6 +17,7 @@ import {
 } from './_shared';
 import { mediaAssets } from './media';
 import { exercises } from './exercises';
+import { muscles } from './taxonomy';
 import { skills } from './skills';
 import { programs } from './programs';
 
@@ -36,6 +38,8 @@ export const workouts = pgTable('workouts', {
   // it has a video class / it has a written rutina the app guides. Both can be true.
   hasVideo: boolean().notNull().default(false),
   isGuided: boolean().notNull().default(false),
+  // Derived on save from `workout_muscles`: works at least four zones as primary.
+  fullBody: boolean().notNull().default(false),
   format: workoutFormatEnum(),
   difficulty: difficultyEnum().notNull(),
   estimatedDurationSeconds: integer(),
@@ -79,7 +83,7 @@ export const workoutBlocks = pgTable('workout_blocks', {
   label: text(),
   notes: text(),
   ...timestamps,
-});
+}, (t) => [index('workout_blocks_workout_idx').on(t.workoutId)]);
 
 /** One exercise instance (a prescription) inside a block. */
 export const workoutItems = pgTable('workout_items', {
@@ -105,4 +109,25 @@ export const workoutItems = pgTable('workout_items', {
   goal: jsonb().$type<Goal>(),
   notes: text(),
   ...timestamps,
-});
+}, (t) => [index('workout_items_block_idx').on(t.blockId), index('workout_items_exercise_idx').on(t.exerciseId)]);
+
+/**
+ * What a rutina works, stored on save so the app can browse by zone and muscle
+ * with one indexed query: derived from the main section's exercises (`manual`
+ * false, primary when at least a quarter of them work it) plus the muscles the
+ * admin adds by hand (`manual`, primary) — all a video-only rutina has.
+ */
+export const workoutMuscles = pgTable(
+  'workout_muscles',
+  {
+    workoutId: uuid()
+      .notNull()
+      .references(() => workouts.id, { onDelete: 'cascade' }),
+    muscleId: uuid()
+      .notNull()
+      .references(() => muscles.id, { onDelete: 'cascade' }),
+    role: muscleRoleEnum().notNull(),
+    manual: boolean().notNull().default(false),
+  },
+  (t) => [primaryKey({ columns: [t.workoutId, t.muscleId] }), index('workout_muscles_muscle_idx').on(t.muscleId, t.workoutId)],
+);

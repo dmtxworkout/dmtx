@@ -1,12 +1,13 @@
 import { integer, pgTable, text, uuid } from 'drizzle-orm/pg-core';
-import { primaryId, timestamps } from './_shared';
+import { muscleZoneEnum, primaryId, timestamps } from './_shared';
 import { mediaAssets } from './media';
 
-/** A muscle tag, e.g. "Pierna" or "Pecho": the app filters and labels rutinas by it. */
+/** A muscle tag, e.g. "Bíceps", in a body zone (Brazos): the app browses rutinas by zone and muscle. */
 export const muscles = pgTable('muscles', {
   id: primaryId(),
   slug: text().notNull().unique(),
   name: text().notNull(),
+  zone: muscleZoneEnum(),
   position: integer().notNull().default(0),
   ...timestamps,
 });

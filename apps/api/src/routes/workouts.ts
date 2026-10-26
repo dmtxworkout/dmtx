@@ -14,6 +14,7 @@ import {
 import type { WorkoutBlockInput } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { missingVideosMessage, sectionValues } from '../lib/workout-sections';
+import { musclesOfWorkout, syncWorkoutMuscles } from '../lib/workout-muscles';
 import { requireAdmin } from '../middleware/auth';
 
 const errorSchema = z.object({ error: z.string() });
@@ -50,6 +51,7 @@ function base(w: WorkoutRow) {
     description: w.description,
     hasVideo: w.hasVideo,
     isGuided: w.isGuided,
+    fullBody: w.fullBody,
     format: w.format,
     difficulty: w.difficulty,
     estimatedDurationSeconds: w.estimatedDurationSeconds,
@@ -110,8 +112,10 @@ async function loadFull(db: Database, w: WorkoutRow) {
         .from(workouts)
         .where(and(eq(workouts.variantOfId, w.id), isNull(workouts.deletedAt)))
         .orderBy(workouts.createdAt);
+  const muscles = await musclesOfWorkout(db, w.id);
   return {
     ...base(w),
+    muscles,
     variants: variants.map((v) => ({ id: v.id, label: v.label ?? '' })),
     scoringGoal: w.scoringGoal ?? null,
     sourceText: w.sourceText ?? null,
@@ -314,7 +318,9 @@ workoutsRoute.openapi(
       .returning();
     if (!row) throw new Error('No se pudo crear la rutina');
     if (sections.blocks.length) await insertBlocks(db, row.id, sections.blocks);
-    return c.json(await loadFull(db, row), 201);
+    await syncWorkoutMuscles(db, [row.id], input.extraMuscleIds ?? []);
+    const [fresh] = await db.select().from(workouts).where(eq(workouts.id, row.id)).limit(1);
+    return c.json(await loadFull(db, fresh ?? row), 201);
   },
 );
 
@@ -398,7 +404,9 @@ workoutsRoute.openapi(
       await db.delete(workoutBlocks).where(eq(workoutBlocks.workoutId, id));
       if (blocks.length) await insertBlocks(db, id, blocks);
     }
-    return c.json(await loadFull(db, row), 200);
+    if (blocks !== undefined || input.extraMuscleIds !== undefined) await syncWorkoutMuscles(db, [id], input.extraMuscleIds);
+    const [fresh] = await db.select().from(workouts).where(eq(workouts.id, id)).limit(1);
+    return c.json(await loadFull(db, fresh ?? row), 200);
   },
 );
 

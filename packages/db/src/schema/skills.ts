@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import type { SkillGoal } from '@dmtx/schemas';
 import {
   contentStatusEnum,
@@ -9,7 +9,6 @@ import {
   timestamps,
 } from './_shared';
 import { mediaAssets } from './media';
-import { muscles } from './taxonomy';
 import { workouts } from './workouts';
 
 /** A trainable skill, e.g. "Dominadas / Pull-up", made of ordered levels. */
@@ -25,19 +24,6 @@ export const skills = pgTable('skills', {
   ...timestamps,
   ...softDelete,
 });
-
-export const skillMuscles = pgTable(
-  'skill_muscles',
-  {
-    skillId: uuid()
-      .notNull()
-      .references(() => skills.id, { onDelete: 'cascade' }),
-    muscleId: uuid()
-      .notNull()
-      .references(() => muscles.id, { onDelete: 'restrict' }),
-  },
-  (t) => [primaryKey({ columns: [t.skillId, t.muscleId] })],
-);
 
 /** A level within a skill: a workout to train + the goals (from its "Objetivo" section) that unlock the next level. */
 export const skillLevels = pgTable('skill_levels', {

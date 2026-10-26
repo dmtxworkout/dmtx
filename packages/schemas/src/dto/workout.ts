@@ -7,6 +7,7 @@ import {
   difficultySchema,
   itemKindSchema,
   measurementTypeSchema,
+  muscleRoleSchema,
   workoutFormatSchema,
 } from '../enums';
 import { formatConfigSchema } from '../format-config';
@@ -75,6 +76,9 @@ export const createWorkoutSchema = z.object({
   // row linked to its base. Lists hide variants; the base's detail lists them.
   variantOfId: uuidSchema.nullish(),
   variantLabel: z.string().max(60).nullish(),
+  // Muscles the admin adds by hand, on top of those worked out from the
+  // exercises (a rutina that is only a video has no exercises to read).
+  extraMuscleIds: z.array(uuidSchema).optional(),
   blocks: z.array(workoutBlockInputSchema).default([]),
 });
 export type CreateWorkoutInput = z.infer<typeof createWorkoutSchema>;
@@ -121,6 +125,10 @@ export const workoutSchema = z.object({
   sourceText: z.string().nullable(),
   variantOfId: uuidSchema.nullable(),
   variantLabel: z.string().nullable(),
+  /** What it works: from the main section's exercises (primary when most use it), plus the ones added by hand. */
+  muscles: z.array(z.object({ muscleId: uuidSchema, role: muscleRoleSchema, manual: z.boolean() })),
+  /** Works at least four zones as primary. */
+  fullBody: z.boolean(),
   /** For a base rutina: its variants in creation order. Empty for a variant. */
   variants: z.array(z.object({ id: uuidSchema, label: z.string() })),
   createdAt: z.iso.datetime(),
@@ -134,5 +142,6 @@ export const workoutListItemSchema = workoutSchema.omit({
   scoringGoal: true,
   sourceText: true,
   variants: true,
+  muscles: true,
 });
 export type WorkoutListItem = z.infer<typeof workoutListItemSchema>;

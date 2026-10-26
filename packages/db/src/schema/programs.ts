@@ -1,16 +1,7 @@
-import { boolean, integer, pgTable, primaryKey, text, uuid } from 'drizzle-orm/pg-core';
+import { boolean, integer, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { contentStatusEnum, difficultyEnum, primaryId, publishable, softDelete, timestamps } from './_shared';
 import { mediaAssets } from './media';
-import { muscles } from './taxonomy';
 import { workouts } from './workouts';
-
-/** Reusable objective tags (weight-loss, strength, hypertrophy, …). */
-export const goalTags = pgTable('goal_tags', {
-  id: primaryId(),
-  slug: text().notNull().unique(),
-  name: text().notNull(),
-  ...timestamps,
-});
 
 /**
  * A program: a calendar in whole weeks (`programDays`, seven per week). Each
@@ -29,32 +20,6 @@ export const programs = pgTable('programs', {
   ...timestamps,
   ...softDelete,
 });
-
-export const programGoalTags = pgTable(
-  'program_goal_tags',
-  {
-    programId: uuid()
-      .notNull()
-      .references(() => programs.id, { onDelete: 'cascade' }),
-    goalTagId: uuid()
-      .notNull()
-      .references(() => goalTags.id, { onDelete: 'cascade' }),
-  },
-  (t) => [primaryKey({ columns: [t.programId, t.goalTagId] })],
-);
-
-export const programMuscles = pgTable(
-  'program_muscles',
-  {
-    programId: uuid()
-      .notNull()
-      .references(() => programs.id, { onDelete: 'cascade' }),
-    muscleId: uuid()
-      .notNull()
-      .references(() => muscles.id, { onDelete: 'restrict' }),
-  },
-  (t) => [primaryKey({ columns: [t.programId, t.muscleId] })],
-);
 
 /** A single day of a program: `position` is the absolute day index (week = position / 7). */
 export const programDays = pgTable('program_days', {

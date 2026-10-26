@@ -40,6 +40,7 @@ import { KindIcon } from '@/components/kind-icon';
 import { Tour, type TourStep } from '@/components/ui/tour';
 import { RutinaGuide } from '@/components/rutina-guide';
 import { SkillGoals, goalProblem, rutinaExercises } from '@/components/skill-goals';
+import { WorkoutMuscles } from '@/components/workout-muscles';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   amrap: 'AMRAP',
@@ -449,6 +450,8 @@ export function RutinaForm({
   const [durationsState, setDurationsState] = useState<SectionDurations>({ ...EMPTY_DURATIONS });
   // A new rutina asks for name + type in one dialog, then opens the editor.
   const [createOpen, setCreateOpen] = useState(!workout && !blockMode && !skill && !program);
+  // Muscles added by hand to a rutina (all a video-only one has); the rest come from its exercises.
+  const [extraMuscles, setExtraMuscles] = useState<string[]>(() => (workout?.muscles ?? []).filter((m) => m.manual).map((m) => m.muscleId));
   const [thumbnailAssetId, setThumbnailAssetId] = useState<string | null>(
     workout?.thumbnailAssetId ?? skill?.thumbnailAssetId ?? program?.thumbnailAssetId ?? null,
   );
@@ -536,6 +539,7 @@ export function RutinaForm({
     [exList],
   );
   const catalogReady = !!exList;
+  const exerciseMuscles = useMemo(() => new Map((exList?.data ?? []).map((e) => [e.id, e.muscleIds])), [exList]);
 
   // The rutina text, one piece per section (each section is a tab). Seeded once
   // the catalog is available (names come from it).
@@ -973,6 +977,7 @@ export function RutinaForm({
       ...videosOf(videos),
       variantOfId: variant?.ofId ?? null,
       variantLabel: variant ? variant.label : baseLabel.trim() || null,
+      extraMuscleIds: extraMuscles,
       blocks: structure.blocks,
     };
   };
@@ -1099,6 +1104,7 @@ export function RutinaForm({
     difficulty: typeof difficulty;
     status: typeof status;
     thumbnailAssetId: string | null;
+    extraMuscles: string[];
     videos: SectionVideos;
       baseLabel: string;
     sections: SectionTexts;
@@ -1111,6 +1117,7 @@ export function RutinaForm({
     difficulty,
     status,
     thumbnailAssetId,
+    extraMuscles,
     videos: videosState,
     baseLabel,
     sections: sections ?? EMPTY_SECTIONS,
@@ -1136,6 +1143,7 @@ export function RutinaForm({
     setDifficulty(baseline.difficulty);
     setStatus(baseline.status);
     setThumbnailAssetId(baseline.thumbnailAssetId);
+    setExtraMuscles(baseline.extraMuscles);
     setVideosState(baseline.videos);
     setBaseLabel(baseline.baseLabel);
     setSections(baseline.sections);
@@ -2080,6 +2088,16 @@ export function RutinaForm({
                   <p className="mt-1 text-[11px] leading-4 text-ink-3">Se calcula sola a partir del texto.</p>
                 </div>
               </div>
+
+              {!programMode && !skillMode && !blockMode && (
+                <WorkoutMuscles
+                  mainText={(sections ?? EMPTY_SECTIONS).main}
+                  catalog={catalog}
+                  exerciseMuscles={exerciseMuscles}
+                  extra={extraMuscles}
+                  onExtraChange={setExtraMuscles}
+                />
+              )}
 
               <div className="flex flex-col gap-2.5">
                 <MonoLabel>{es.fields.thumbnail}</MonoLabel>

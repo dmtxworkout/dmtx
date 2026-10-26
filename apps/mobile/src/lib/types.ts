@@ -56,9 +56,10 @@ export interface Browse {
   rows: ContentRow[];
 }
 
-/** Tags the app can filter rutinas by (slug → label). */
+/** What the app can browse by: body zones with their muscles, «Cuerpo completo», and (rutinas only) equipment. */
 export interface BrowseFilters {
-  muscles: { slug: string; name: string }[];
+  zones: { zone: string; name: string; muscles: { slug: string; name: string }[] }[];
+  fullBody: boolean;
   equipment: { slug: string; name: string }[];
 }
 

@@ -12,6 +12,7 @@ import {
   updateEquipmentSchema,
   updateMuscleSchema,
 } from '@dmtx/schemas';
+import { syncWorkoutMuscles, workoutsWorking } from '../lib/workout-muscles';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
 
@@ -52,6 +53,7 @@ async function loadAll(db: Database) {
       id: m.id,
       slug: m.slug,
       name: m.name,
+      zone: m.zone,
       position: m.position,
       exerciseCount: use.muscle.get(m.id) ?? 0,
     })),
@@ -109,7 +111,7 @@ taxonomyRoute.openapi(
     const [agg] = await db.select({ pos: max(muscles.position) }).from(muscles);
     const [row] = await db
       .insert(muscles)
-      .values({ slug, name: input.name.trim(), position: (agg?.pos ?? 0) + 1 })
+      .values({ slug, name: input.name.trim(), zone: input.zone ?? null, position: (agg?.pos ?? 0) + 1 })
       .returning();
     if (!row) throw new Error('No se pudo crear el músculo');
     return c.json({ ...row, exerciseCount: 0 }, 201);
@@ -135,11 +137,14 @@ taxonomyRoute.openapi(
       .update(muscles)
       .set({
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.zone !== undefined ? { zone: input.zone ?? null } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
       })
       .where(eq(muscles.id, id))
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
+    // Another zone can change which rutinas count as «Cuerpo completo».
+    if (input.zone !== undefined) await syncWorkoutMuscles(db, await workoutsWorking(db, id));
     const use = await usage(db);
     return c.json({ ...row, exerciseCount: use.muscle.get(row.id) ?? 0 }, 200);
   },
@@ -160,9 +165,11 @@ taxonomyRoute.openapi(
     const db = c.get('db');
     const { id } = c.req.valid('param');
     // Like deleting a tag: the exercises simply stop carrying it.
+    const affected = await workoutsWorking(db, id);
     await db.delete(exerciseMuscles).where(eq(exerciseMuscles.muscleId, id));
     const [row] = await db.delete(muscles).where(eq(muscles.id, id)).returning({ id: muscles.id });
     if (!row) return c.json({ error: 'No encontrado' }, 404);
+    await syncWorkoutMuscles(db, affected);
     return c.body(null, 204);
   },
 );

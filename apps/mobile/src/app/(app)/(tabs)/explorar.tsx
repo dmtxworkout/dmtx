@@ -26,35 +26,96 @@ export default function Explorar() {
   const insets = useSafeAreaInsets();
   const [q, setQ] = useState('');
   const [type, setType] = useState<string>('all');
-  // Tag filters only apply to rutinas; picking one narrows the results to them.
-  const [muscle, setMuscle] = useState<string | null>(null);
+  // What the content works (rutinas, programs and skills): whole zones, or a
+  // muscle of one (Brazos → Bíceps), or «Cuerpo completo». With several, the
+  // content that works them all comes first.
+  const [zones, setZones] = useState<string[]>([]);
+  const [muscles, setMuscles] = useState<string[]>([]);
+  const [fullBody, setFullBody] = useState(false);
+  // The zone whose muscles show in the row below, to narrow it to one.
+  const [open, setOpen] = useState<string | null>(null);
+  // Rutinas only: equipment, and how the rutina is done (a video class, guided; a rutina may be both).
   const [equipment, setEquipment] = useState<string | null>(null);
-  // How the rutina is done: a video class, guided exercise by exercise (a rutina may be both).
   const [video, setVideo] = useState(false);
   const [guided, setGuided] = useState(false);
   const showTags = type === 'all' || type === 'workout';
-  const filters = useQuery({ queryKey: ['browse-filters'], queryFn: api.filters, enabled: showTags });
+  const filters = useQuery({ queryKey: ['browse-filters'], queryFn: api.filters });
   const browse = useQuery({
-    queryKey: ['browse', q, type, showTags ? muscle : null, showTags ? equipment : null, showTags && video, showTags && guided],
+    queryKey: ['browse', q, type, zones, muscles, fullBody, showTags ? equipment : null, showTags && video, showTags && guided],
     queryFn: () =>
       api.browse({
         q,
         type,
-        muscle: showTags ? (muscle ?? undefined) : undefined,
+        zones,
+        muscles,
+        fullBody,
         equipment: showTags ? (equipment ?? undefined) : undefined,
         video: showTags && video,
         guided: showTags && guided,
       }),
   });
+
+  const zoneList = filters.data?.zones ?? [];
+  const musclesOf = (zone: string) => zoneList.find((z) => z.zone === zone)?.muscles ?? [];
+  const picked = (zone: string) => musclesOf(zone).filter((m) => muscles.includes(m.slug));
+  const zoneOn = (zone: string) => zones.includes(zone) || picked(zone).length > 0;
+  const clearZone = (zone: string) => {
+    setZones((zs) => zs.filter((z) => z !== zone));
+    setMuscles((ms) => ms.filter((m) => !musclesOf(zone).some((x) => x.slug === m)));
+  };
+  // A zone: on (and open, to narrow it); tapped again while open, off.
+  const tapZone = (zone: string) => {
+    if (!zoneOn(zone)) {
+      setZones((zs) => [...zs, zone]);
+      setOpen(musclesOf(zone).length > 1 ? zone : null);
+    } else if (open !== zone && musclesOf(zone).length > 1) setOpen(zone);
+    else {
+      clearZone(zone);
+      setOpen(null);
+    }
+  };
+  // A muscle narrows its zone: the zone as a whole gives way to the muscles picked.
+  const tapMuscle = (zone: string, slug: string) => {
+    const next = muscles.includes(slug) ? muscles.filter((m) => m !== slug) : [...muscles, slug];
+    setMuscles(next);
+    const anyLeft = musclesOf(zone).some((m) => next.includes(m.slug));
+    setZones((zs) => (anyLeft ? zs.filter((z) => z !== zone) : zs.includes(zone) ? zs : [...zs, zone]));
+  };
+  const bodyChips = [
+    ...(filters.data?.fullBody ? [{ key: 'b:full', label: 'Cuerpo completo', active: fullBody, onPress: () => setFullBody(!fullBody) }] : []),
+    ...zoneList.map((z) => {
+      const narrowed = picked(z.zone);
+      return {
+        key: `z:${z.zone}`,
+        label: narrowed.length ? `${z.name} · ${narrowed.map((m) => m.name).join(', ')}` : z.name,
+        active: zoneOn(z.zone),
+        onPress: () => tapZone(z.zone),
+      };
+    }),
+  ];
+  const openZone = open ? zoneList.find((z) => z.zone === open) : undefined;
+  const muscleChips = openZone
+    ? [
+        {
+          key: 'm:all',
+          label: `Todo ${openZone.name.toLowerCase()}`,
+          active: zones.includes(openZone.zone),
+          onPress: () => {
+            setMuscles((ms) => ms.filter((m) => !openZone.muscles.some((x) => x.slug === m)));
+            setZones((zs) => (zs.includes(openZone.zone) ? zs : [...zs, openZone.zone]));
+          },
+        },
+        ...openZone.muscles.map((m) => ({
+          key: `m:${m.slug}`,
+          label: m.name,
+          active: muscles.includes(m.slug),
+          onPress: () => tapMuscle(openZone.zone, m.slug),
+        })),
+      ]
+    : [];
   const tagChips = [
     { key: 'k:video', label: '▶ Con video', active: video, onPress: () => setVideo(!video) },
     { key: 'k:guided', label: '☰ Guiada', active: guided, onPress: () => setGuided(!guided) },
-    ...(filters.data?.muscles ?? []).map((m) => ({
-      key: `m:${m.slug}`,
-      label: m.name,
-      active: muscle === m.slug,
-      onPress: () => setMuscle(muscle === m.slug ? null : m.slug),
-    })),
     ...(filters.data?.equipment ?? []).map((e) => ({
       key: `e:${e.slug}`,
       label: e.name,
@@ -85,6 +146,20 @@ export default function Explorar() {
             <Chip key={c.value} label={c.label} active={c.value === type} onPress={() => setType(c.value)} />
           ))}
         </ScrollView>
+        {bodyChips.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+            {bodyChips.map((c) => (
+              <Chip key={c.key} label={c.label} active={c.active} onPress={c.onPress} />
+            ))}
+          </ScrollView>
+        ) : null}
+        {muscleChips.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pl-3">
+            {muscleChips.map((c) => (
+              <Chip key={c.key} label={c.label} active={c.active} onPress={c.onPress} />
+            ))}
+          </ScrollView>
+        ) : null}
         {showTags && tagChips.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
             {tagChips.map((c) => (

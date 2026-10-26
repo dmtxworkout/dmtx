@@ -13,6 +13,8 @@ import {
   MEASUREMENT_TYPE,
   MEDIA_KIND,
   MEDIA_PROCESSING_STATUS,
+  MUSCLE_ROLE,
+  MUSCLE_ZONE,
   PAYMENT_STATUS,
   SUBSCRIPTION_STATUS,
   WORKOUT_FORMAT,
@@ -29,6 +31,8 @@ export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
 export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);
 export const blockSectionEnum = pgEnum('block_section', BLOCK_SECTION);
 export const itemKindEnum = pgEnum('item_kind', ITEM_KIND);
+export const muscleZoneEnum = pgEnum('muscle_zone', MUSCLE_ZONE);
+export const muscleRoleEnum = pgEnum('muscle_role', MUSCLE_ROLE);
 export const mediaKindEnum = pgEnum('media_kind', MEDIA_KIND);
 export const mediaProcessingStatusEnum = pgEnum('media_processing_status', MEDIA_PROCESSING_STATUS);
 export const subscriptionStatusEnum = pgEnum('subscription_status', SUBSCRIPTION_STATUS);

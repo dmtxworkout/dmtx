@@ -1,15 +1,18 @@
 import { z } from 'zod';
 import { uuidSchema } from '../common';
+import { muscleZoneSchema } from '../enums';
 
 /**
  * Muscles and equipment: the tags an exercise carries so the app can search
- * "pierna" or "sin equipo" and show what a rutina works. One flat list each;
- * the admin picks the granularity with the names (Pierna, Pecho, Core…).
+ * "brazos" or "sin equipo" and show what a rutina works. Each muscle belongs
+ * to a body zone (Brazos → Bíceps, Tríceps…): the app browses by zone, and
+ * narrows to a muscle.
  */
 export const muscleSchema = z.object({
   id: uuidSchema,
   slug: z.string(),
   name: z.string(),
+  zone: muscleZoneSchema.nullable(),
   position: z.number().int(),
   exerciseCount: z.number().int(),
 });
@@ -32,10 +35,12 @@ export type Taxonomy = z.infer<typeof taxonomySchema>;
 
 export const createMuscleSchema = z.object({
   name: z.string().min(1).max(100),
+  zone: muscleZoneSchema.nullish(),
 });
 export type CreateMuscleInput = z.infer<typeof createMuscleSchema>;
 export const updateMuscleSchema = z.object({
   name: z.string().min(1).max(100).optional(),
+  zone: muscleZoneSchema.nullish(),
   position: z.number().int().optional(),
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;

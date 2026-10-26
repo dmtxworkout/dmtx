@@ -13,6 +13,7 @@ import {
   updateProgramSchema,
 } from '@dmtx/schemas';
 import type { ProgramDayInput } from '@dmtx/schemas';
+import { syncWorkoutMuscles } from '../lib/workout-muscles';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
 import { insertBlocks, uniqueSlug } from './workouts';
@@ -132,6 +133,7 @@ async function syncDays(db: Database, program: ProgramRow, days: ProgramDayInput
         workoutId = w.id;
       }
       if (sections.blocks.length) await insertBlocks(db, workoutId, sections.blocks);
+      await syncWorkoutMuscles(db, [workoutId]);
     } else if (current?.workoutId) {
       // Became a rest day (or was emptied): its rutina goes.
       await retire([current.workoutId]);

@@ -7,7 +7,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Equipment, Muscle, Taxonomy } from '@dmtx/schemas';
+import { MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type Equipment, type Muscle, type Taxonomy } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -252,7 +252,9 @@ export function MusclePicker({ value, onChange }: { value: string[]; onChange: (
     <TagPopover
       addLabel="Agregar músculos"
       placeholder="Buscar o agregar músculos"
-      sections={[{ items: muscles }]}
+      sections={[...MUSCLE_ZONE, null]
+        .map((zone) => ({ title: zone ? MUSCLE_ZONE_LABEL[zone] : 'Sin zona', items: muscles.filter((m) => (m.zone ?? null) === zone) }))
+        .filter((sec) => sec.items.length)}
       selected={selected}
       onToggle={toggle}
       onCreate={async (name) => {

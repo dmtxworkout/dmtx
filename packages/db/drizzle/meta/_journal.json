@@ -302,6 +302,27 @@
       "when": 1793031735138,
       "tag": "0042_drop_collections",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1793032626162,
+      "tag": "0043_muscle_zones",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1793032626805,
+      "tag": "0044_workout_muscles",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1793032719076,
+      "tag": "0045_backfill_workout_muscles",
+      "breakpoints": true
     }
   ]
 }

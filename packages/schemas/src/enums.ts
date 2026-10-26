@@ -19,6 +19,28 @@ export const DIFFICULTY = ['beginner', 'intermediate', 'advanced'] as const;
 export const difficultySchema = enumOf(DIFFICULTY);
 export type Difficulty = z.infer<typeof difficultySchema>;
 
+// --- Muscles -----------------------------------------------------------------
+// The body zones the app browses by; each muscle belongs to one. Fixed: the
+// app's chips and rows are built from them. Spanish names in the i18n.
+export const MUSCLE_ZONE = ['chest', 'back', 'shoulders', 'arms', 'core', 'legs'] as const;
+export const muscleZoneSchema = enumOf(MUSCLE_ZONE);
+export type MuscleZone = z.infer<typeof muscleZoneSchema>;
+
+/** Spanish names of the zones (shared by the admin and the app). */
+export const MUSCLE_ZONE_LABEL: Record<MuscleZone, string> = {
+  chest: 'Pecho',
+  back: 'Espalda',
+  shoulders: 'Hombros',
+  arms: 'Brazos',
+  core: 'Core',
+  legs: 'Piernas',
+};
+
+/** How much a rutina works a muscle: most of its exercises (primary) or a few (secondary). */
+export const MUSCLE_ROLE = ['primary', 'secondary'] as const;
+export const muscleRoleSchema = enumOf(MUSCLE_ROLE);
+export type MuscleRole = z.infer<typeof muscleRoleSchema>;
+
 // --- Exercises ---------------------------------------------------------------
 export const MEASUREMENT_TYPE = ['reps', 'time', 'distance'] as const;
 export const measurementTypeSchema = enumOf(MEASUREMENT_TYPE);

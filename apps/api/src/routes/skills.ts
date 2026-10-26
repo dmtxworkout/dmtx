@@ -13,6 +13,7 @@ import {
   updateSkillSchema,
 } from '@dmtx/schemas';
 import type { SkillLevelInput } from '@dmtx/schemas';
+import { syncWorkoutMuscles } from '../lib/workout-muscles';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
 
@@ -100,6 +101,7 @@ async function syncLevels(db: Database, skill: SkillRow, levels: SkillLevelInput
       await db.update(workouts).set(workoutValues).where(eq(workouts.id, current.workoutId));
       await db.delete(workoutBlocks).where(eq(workoutBlocks.workoutId, current.workoutId));
       if (l.blocks.length) await insertBlocks(db, current.workoutId, l.blocks);
+      await syncWorkoutMuscles(db, [current.workoutId]);
       await db
         .update(skillLevels)
         .set({ position: i, name: l.name, description: l.description ?? null, unlockGoals: l.unlockGoals, thumbnailAssetId: l.thumbnailAssetId ?? null })
@@ -111,6 +113,7 @@ async function syncLevels(db: Database, skill: SkillRow, levels: SkillLevelInput
         .returning({ id: workouts.id });
       if (!w) throw new Error('No se pudo crear la rutina del nivel');
       if (l.blocks.length) await insertBlocks(db, w.id, l.blocks);
+      await syncWorkoutMuscles(db, [w.id]);
       await db.insert(skillLevels).values({
         skillId: skill.id,
         position: i,

@@ -2,7 +2,6 @@ import { and, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
 import {
   equipment,
   exerciseEquipment,
-  exerciseMuscles,
   exercises,
   muscles,
   programDays,
@@ -14,11 +13,13 @@ import {
   workoutBlocks,
   workoutItems,
   workoutLogs,
+  workoutMuscles,
   workouts,
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
-import { createWorkoutLogSchema } from '@dmtx/schemas';
-import type { SkillGoal } from '@dmtx/schemas';
+import { MUSCLE_ZONE, MUSCLE_ZONE_LABEL, createWorkoutLogSchema } from '@dmtx/schemas';
+import type { MuscleZone, SkillGoal } from '@dmtx/schemas';
+import { FULL_BODY_ZONES } from '@dmtx/core';
 import { createApp } from '../lib/openapi';
 import { nestBlocks, type Nested } from './workouts';
 import { tagsForExercises } from './taxonomy';
@@ -246,32 +247,34 @@ interface CatalogFilter {
   q?: string;
   types: Array<'workout' | 'program' | 'skill'>;
   limit: number;
-  /** Slugs: only rutinas whose exercises work that muscle / need that equipment. */
-  muscle?: string;
+  /** Only rutinas whose exercises need that equipment (slug). */
   equipment?: string;
   /** Only rutinas with a video class / only rutinas the app can guide (both may be set). */
   video?: boolean;
   guided?: boolean;
+  /**
+   * Content ranked by what it works (zones / muscles / «Cuerpo completo»):
+   * only these ids, best first. Built by `rankByMuscles`.
+   */
+  ranked?: Ranked;
 }
 
 type Tags = { muscles: string[]; equipment: string[] };
 
 /**
- * The tags of each rutina, derived from its exercises: their muscles and the
- * equipment they need. One query each for
- * a whole page of rutinas.
+ * The tags of each rutina: the muscles it works (stored on save, primary
+ * first) and the equipment its exercises need. One query each for a whole
+ * page of rutinas.
  */
 async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<string, Tags>> {
   const out = new Map<string, Tags>();
   if (!workoutIds.length) return out;
   const [g, e] = await Promise.all([
     db
-      .selectDistinct({ workoutId: workoutBlocks.workoutId, name: muscles.name, position: muscles.position })
-      .from(workoutItems)
-      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
-      .innerJoin(exerciseMuscles, eq(exerciseMuscles.exerciseId, workoutItems.exerciseId))
-      .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
-      .where(inArray(workoutBlocks.workoutId, workoutIds)),
+      .select({ workoutId: workoutMuscles.workoutId, name: muscles.name, position: muscles.position, role: workoutMuscles.role })
+      .from(workoutMuscles)
+      .innerJoin(muscles, eq(muscles.id, workoutMuscles.muscleId))
+      .where(inArray(workoutMuscles.workoutId, workoutIds)),
     db
       .selectDistinct({ workoutId: workoutBlocks.workoutId, name: equipment.name, position: equipment.position })
       .from(workoutItems)
@@ -283,24 +286,21 @@ async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<stri
   const tags = (id: string) => out.get(id) ?? (out.set(id, { muscles: [], equipment: [] }), out.get(id)!);
   const sorted = <T extends { position: number; name: string }>(xs: T[]) =>
     [...xs].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
-  for (const r of sorted(g)) tags(r.workoutId).muscles.push(r.name);
+  for (const r of [...sorted(g.filter((r) => r.role === 'primary')), ...sorted(g.filter((r) => r.role !== 'primary'))])
+    tags(r.workoutId).muscles.push(r.name);
   for (const r of sorted(e)) tags(r.workoutId).equipment.push(r.name);
   return out;
 }
 
-/** Ids of rutinas matching a muscle slug / equipment slug / free text over the tag names. */
-async function workoutIdsByTags(db: Database, f: { muscle?: string; equipment?: string; q?: string }): Promise<string[] | null> {
-  const sets: string[][] = [];
-  if (f.muscle || f.q) {
+/** Ids of rutinas needing an equipment slug, or matching free text over the muscle names. */
+async function workoutIdsByTags(db: Database, f: { equipment?: string; q?: string }): Promise<string[] | null> {
+  if (f.q) {
     const rows = await db
-      .selectDistinct({ workoutId: workoutBlocks.workoutId })
-      .from(workoutItems)
-      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
-      .innerJoin(exerciseMuscles, eq(exerciseMuscles.exerciseId, workoutItems.exerciseId))
-      .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
-      .where(f.muscle ? eq(muscles.slug, f.muscle) : ilike(muscles.name, `%${f.q}%`));
-    if (f.muscle) sets.push(rows.map((r) => r.workoutId));
-    else return rows.map((r) => r.workoutId); // free text: a hint, merged with the name match by the caller
+      .selectDistinct({ workoutId: workoutMuscles.workoutId })
+      .from(workoutMuscles)
+      .innerJoin(muscles, eq(muscles.id, workoutMuscles.muscleId))
+      .where(ilike(muscles.name, `%${f.q}%`));
+    return rows.map((r) => r.workoutId); // a hint, merged with the name match by the caller
   }
   if (f.equipment) {
     const rows = await db
@@ -310,11 +310,99 @@ async function workoutIdsByTags(db: Database, f: { muscle?: string; equipment?: 
       .innerJoin(exerciseEquipment, eq(exerciseEquipment.exerciseId, workoutItems.exerciseId))
       .innerJoin(equipment, eq(equipment.id, exerciseEquipment.equipmentId))
       .where(eq(equipment.slug, f.equipment));
-    sets.push(rows.map((r) => r.workoutId));
+    return rows.map((r) => r.workoutId);
   }
-  if (!sets.length) return null;
-  return sets.reduce((acc, ids) => acc.filter((id) => ids.includes(id)));
+  return null;
 }
+
+// --- Browsing by what content works -------------------------------------------
+
+/** Content ids in rank order, per type. */
+type Ranked = Record<'workout' | 'program' | 'skill', string[]>;
+
+/** Live rutinas, standalone or owned by a program / skill (their status follows the owner's). */
+const liveWorkout = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId));
+
+/** What a rutina counts for: itself, or the program / skill that owns it. */
+const targetOf = (w: { id: string; ownerProgramId: string | null; ownerSkillId: string | null }) =>
+  w.ownerProgramId ? `program:${w.ownerProgramId}` : w.ownerSkillId ? `skill:${w.ownerSkillId}` : `workout:${w.id}`;
+
+/**
+ * Rank rutinas, programs and skills by what they work. Each asked zone or
+ * muscle is one criterion; content that meets more of them comes first («Brazos
+ * + Espalda»: those working both, then those working one), then the one that
+ * works them more (primary over secondary). A program or a skill works what its
+ * rutinas work. `fullBody` keeps only content working four zones or more.
+ * One indexed query on `workout_muscles` (plus one for «Cuerpo completo»).
+ */
+async function rankByMuscles(
+  db: Database,
+  f: { zones: MuscleZone[]; muscles: string[]; fullBody: boolean },
+): Promise<Ranked> {
+  const all = await db.select({ id: muscles.id, slug: muscles.slug, zone: muscles.zone }).from(muscles);
+  // Each criterion → the muscle ids that meet it.
+  const criteria: Set<string>[] = [
+    ...f.zones.map((z) => new Set(all.filter((m) => m.zone === z).map((m) => m.id))),
+    ...f.muscles.map((slug) => new Set(all.filter((m) => m.slug === slug).map((m) => m.id))),
+  ].filter((c) => c.size);
+  const asked = [...new Set(criteria.flatMap((c) => [...c]))];
+
+  const score = new Map<string, { met: Set<number>; primary: number }>();
+  if (asked.length) {
+    const rows = await db
+      .select({
+        id: workouts.id,
+        ownerProgramId: workouts.ownerProgramId,
+        ownerSkillId: workouts.ownerSkillId,
+        muscleId: workoutMuscles.muscleId,
+        role: workoutMuscles.role,
+      })
+      .from(workoutMuscles)
+      .innerJoin(workouts, eq(workouts.id, workoutMuscles.workoutId))
+      .where(and(inArray(workoutMuscles.muscleId, asked), liveWorkout));
+    for (const r of rows) {
+      const key = targetOf(r);
+      const s = score.get(key) ?? { met: new Set<number>(), primary: 0 };
+      criteria.forEach((c, i) => c.has(r.muscleId) && s.met.add(i));
+      if (r.role === 'primary') s.primary += 1;
+      score.set(key, s);
+    }
+  }
+
+  let keep: Set<string> | null = null;
+  if (f.fullBody) {
+    const zoneOf = new Map(all.map((m) => [m.id, m.zone]));
+    const rows = await db
+      .select({ id: workouts.id, ownerProgramId: workouts.ownerProgramId, ownerSkillId: workouts.ownerSkillId, muscleId: workoutMuscles.muscleId })
+      .from(workoutMuscles)
+      .innerJoin(workouts, eq(workouts.id, workoutMuscles.workoutId))
+      .where(and(eq(workoutMuscles.role, 'primary'), liveWorkout));
+    const zones = new Map<string, Set<MuscleZone>>();
+    for (const r of rows) {
+      const z = zoneOf.get(r.muscleId);
+      if (!z) continue;
+      const key = targetOf(r);
+      zones.set(key, (zones.get(key) ?? new Set()).add(z));
+    }
+    keep = new Set([...zones].filter(([, z]) => z.size >= FULL_BODY_ZONES).map(([k]) => k));
+    // «Cuerpo completo» alone: every full-body piece, ranked by how much it covers.
+    if (!asked.length) for (const k of keep) score.set(k, { met: new Set(), primary: zones.get(k)!.size });
+  }
+
+  const order = [...score]
+    .filter(([k]) => !keep || keep.has(k))
+    .sort(([, a], [, b]) => b.met.size - a.met.size || b.primary - a.primary);
+  const out: Ranked = { workout: [], program: [], skill: [] };
+  for (const [k] of order) {
+    const [type, id] = k.split(':') as ['workout' | 'program' | 'skill', string];
+    out[type].push(id);
+  }
+  return out;
+}
+
+/** Rows in the ranked order (the query returns them in any order). */
+const inRank = <T extends { id: string }>(rows: T[], ids: string[] | undefined) =>
+  ids ? [...rows].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)) : rows;
 
 /** Load published content of the requested types as display cards. */
 async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
@@ -322,11 +410,12 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   const wantPrograms = f.types.includes('program');
   const wantSkills = f.types.includes('skill');
   const like = f.q ? `%${f.q}%` : undefined;
-  // Tag filters narrow rutinas to a set of ids; free text also matches the
-  // tag names ("pierna" finds every rutina that works legs).
-  const byTags = wantWorkouts ? await workoutIdsByTags(db, { muscle: f.muscle, equipment: f.equipment }) : null;
+  // The equipment filter narrows rutinas to a set of ids; free text also
+  // matches the muscle names ("glúteos" finds every rutina that works them).
+  const byTags = wantWorkouts ? await workoutIdsByTags(db, { equipment: f.equipment }) : null;
   const byText = wantWorkouts && f.q ? await workoutIdsByTags(db, { q: f.q }) : null;
-  const noneByTags = byTags !== null && byTags.length === 0;
+  const rank = f.ranked;
+  const noneByTags = (byTags !== null && byTags.length === 0) || (rank !== undefined && rank.workout.length === 0);
 
   const [wRows, pRows, sRows] = await Promise.all([
     wantWorkouts && !noneByTags
@@ -340,6 +429,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               isNull(workouts.variantOfId),
               isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId),
               byTags ? inArray(workouts.id, byTags) : undefined,
+              rank ? inArray(workouts.id, rank.workout.slice(0, f.limit)) : undefined,
               f.video ? eq(workouts.hasVideo, true) : undefined,
               f.guided ? eq(workouts.isGuided, true) : undefined,
               like
@@ -352,7 +442,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
           .orderBy(desc(workouts.createdAt))
           .limit(f.limit)
       : Promise.resolve([] as WorkoutRow[]),
-    wantPrograms
+    wantPrograms && (!rank || rank.program.length)
       ? db
           .select()
           .from(programs)
@@ -360,13 +450,14 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
             and(
               eq(programs.status, 'published'),
               isNull(programs.deletedAt),
+              rank ? inArray(programs.id, rank.program.slice(0, f.limit)) : undefined,
               like ? ilike(programs.name, like) : undefined,
             ),
           )
           .orderBy(desc(programs.createdAt))
           .limit(f.limit)
       : Promise.resolve([] as ProgramRow[]),
-    wantSkills
+    wantSkills && (!rank || rank.skill.length)
       ? db
           .select()
           .from(skills)
@@ -374,6 +465,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
             and(
               eq(skills.status, 'published'),
               isNull(skills.deletedAt),
+              rank ? inArray(skills.id, rank.skill.slice(0, f.limit)) : undefined,
               like ? ilike(skills.name, like) : undefined,
             ),
           )
@@ -417,12 +509,12 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   ]);
 
   return {
-    workouts: wRows.map((w) => ({
+    workouts: inRank(wRows, rank?.workout).map((w) => ({
       ...workoutCard(w, url(media, w.thumbnailAssetId)),
       ...(wTags.get(w.id) ?? { muscles: [], equipment: [] }),
     })),
-    programs: pRows.map((p) => programCard(p, url(media, p.thumbnailAssetId), dayCountBy.get(p.id) ?? 0)),
-    skills: sRows.map((s) => skillCard(s, url(media, s.thumbnailAssetId), levelCountBy.get(s.id) ?? 0, unlockedBy.get(s.id) ?? 1)),
+    programs: inRank(pRows, rank?.program).map((p) => programCard(p, url(media, p.thumbnailAssetId), dayCountBy.get(p.id) ?? 0)),
+    skills: inRank(sRows, rank?.skill).map((s) => skillCard(s, url(media, s.thumbnailAssetId), levelCountBy.get(s.id) ?? 0, unlockedBy.get(s.id) ?? 1)),
   };
 }
 
@@ -466,20 +558,18 @@ appRoute.get('/home', async (c) => {
   return c.json({ hero, rows });
 });
 
-// GET /api/app/filters — the tags the app can filter rutinas by: only muscles
-// and equipment that at least one published rutina actually carries.
+// GET /api/app/filters — what the app can browse by: the body zones with their
+// muscles, and the equipment, only those some published content actually has;
+// and whether any of it is «Cuerpo completo».
 appRoute.get('/filters', async (c) => {
   const db = c.get('db');
-  const live = and(eq(workouts.status, 'published'), isNull(workouts.deletedAt), isNull(workouts.variantOfId), isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId));
-  const [g, e] = await Promise.all([
+  const [g, e, fb] = await Promise.all([
     db
-      .selectDistinct({ slug: muscles.slug, name: muscles.name, position: muscles.position })
-      .from(workoutItems)
-      .innerJoin(workoutBlocks, eq(workoutBlocks.id, workoutItems.blockId))
-      .innerJoin(workouts, eq(workouts.id, workoutBlocks.workoutId))
-      .innerJoin(exerciseMuscles, eq(exerciseMuscles.exerciseId, workoutItems.exerciseId))
-      .innerJoin(muscles, eq(muscles.id, exerciseMuscles.muscleId))
-      .where(live),
+      .selectDistinct({ slug: muscles.slug, name: muscles.name, zone: muscles.zone, position: muscles.position })
+      .from(workoutMuscles)
+      .innerJoin(workouts, eq(workouts.id, workoutMuscles.workoutId))
+      .innerJoin(muscles, eq(muscles.id, workoutMuscles.muscleId))
+      .where(liveWorkout),
     db
       .selectDistinct({ slug: equipment.slug, name: equipment.name, position: equipment.position })
       .from(workoutItems)
@@ -487,31 +577,42 @@ appRoute.get('/filters', async (c) => {
       .innerJoin(workouts, eq(workouts.id, workoutBlocks.workoutId))
       .innerJoin(exerciseEquipment, eq(exerciseEquipment.exerciseId, workoutItems.exerciseId))
       .innerJoin(equipment, eq(equipment.id, exerciseEquipment.equipmentId))
-      .where(live),
+      .where(and(liveWorkout, isNull(workouts.ownerSkillId), isNull(workouts.ownerProgramId))),
+    db.select({ id: workouts.id }).from(workouts).where(and(liveWorkout, eq(workouts.fullBody, true))).limit(1),
   ]);
-  const sorted = (xs: { slug: string; name: string; position: number }[]) =>
+  const sorted = <T extends { slug: string; name: string; position: number }>(xs: T[]) =>
     [...xs].sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)).map(({ slug, name }) => ({ slug, name }));
-  return c.json({ muscles: sorted(g), equipment: sorted(e) });
+  const zones = MUSCLE_ZONE.map((zone) => ({ zone, name: MUSCLE_ZONE_LABEL[zone], muscles: sorted(g.filter((m) => m.zone === zone)) })).filter(
+    (z) => z.muscles.length,
+  );
+  return c.json({ zones, fullBody: fb.length > 0, equipment: sorted(e) });
 });
 
-// GET /api/app/browse?q=&type=&muscle=&equipment=&video=1&guided=1 — search / browse published content.
-// `muscle` / `equipment` are taxonomy slugs; they, `video` (has a video class)
-// and `guided` (has a written rutina the app guides) only apply to rutinas.
+// GET /api/app/browse?q=&type=&zones=arms,back&muscles=biceps&fullBody=1&equipment=&video=1&guided=1
+// Search / browse published content. `zones` (body zones) and `muscles`
+// (slugs) rank rutinas, programs and skills by how many of them they work;
+// `fullBody` keeps those working four zones or more. `equipment`, `video` and
+// `guided` only apply to rutinas.
 appRoute.get('/browse', async (c) => {
   const q = c.req.query('q')?.trim() || undefined;
   const type = c.req.query('type');
-  const muscle = c.req.query('muscle')?.trim() || undefined;
+  const list = (k: string) => (c.req.query(k) ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const zones = list('zones').filter((z): z is MuscleZone => (MUSCLE_ZONE as readonly string[]).includes(z));
+  const muscleSlugs = list('muscles');
+  const fullBody = c.req.query('fullBody') === '1';
   const equipmentSlug = c.req.query('equipment')?.trim() || undefined;
   const video = c.req.query('video') === '1';
   const guided = c.req.query('guided') === '1';
   const types: Array<'workout' | 'program' | 'skill'> =
     type === 'workout' || type === 'program' || type === 'skill'
       ? [type]
-      : muscle || equipmentSlug || video || guided
+      : equipmentSlug || video || guided
         ? ['workout']
         : ['workout', 'program', 'skill'];
 
-  const cat = await loadCatalog(c.get('db'), c.env, { userId: c.get('user')!.id, q, types, limit: 30, muscle, equipment: equipmentSlug, video, guided });
+  const db = c.get('db');
+  const ranked = zones.length || muscleSlugs.length || fullBody ? await rankByMuscles(db, { zones, muscles: muscleSlugs, fullBody }) : undefined;
+  const cat = await loadCatalog(db, c.env, { userId: c.get('user')!.id, q, types, limit: 30, equipment: equipmentSlug, video, guided, ranked });
   const rows = [
     { title: 'Rutinas', layout: 'row', items: cat.workouts },
     { title: 'Programas', layout: 'poster', items: cat.programs },
@@ -557,7 +658,7 @@ appRoute.get('/workouts/:id', async (c) => {
     : [];
 
   const exIds = [...new Set(items.map((it) => it.exerciseId).filter((id): id is string => Boolean(id)))];
-  const tags = await tagsForExercises(db, exIds);
+  const [tags, worked] = await Promise.all([tagsForExercises(db, exIds), workoutTags(db, [w.id])]);
   const exRows = exIds.length
     ? await db.select().from(exercises).where(inArray(exercises.id, exIds))
     : [];
@@ -646,7 +747,8 @@ appRoute.get('/workouts/:id', async (c) => {
     variantOfId: w.variantOfId,
     variantLabel: w.variantLabel,
     variants: variantRows.map((v) => ({ id: v.id, label: v.label ?? '' })),
-    muscles: tags.muscles.map((t) => t.name),
+    // What it works (primary first), stored on save: also set by hand on a rutina that is only a video.
+    muscles: worked.get(w.id)?.muscles ?? [],
     equipment: tags.equipment.map((t) => t.name),
     lastLog: lastLog
       ? {
