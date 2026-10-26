@@ -1568,8 +1568,14 @@ export function RutinaForm({
             </div>
             {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
                 class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
-            {editorReady && classVideoSlot && videos[activeSection] && (
-              <div data-tour="class-video" className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
+            {/* The section's video sits above its written rutina: the slim bar once there is one, a quiet «+ Agregar…» line until then. */}
+            {editorReady && classVideoSlot && (
+              <div
+                data-tour="class-video"
+                className={cn('flex-none border-b border-line', videos[activeSection] ? 'bg-surface-2 px-3 py-2' : 'bg-surface px-2 py-1.5')}
+              >
+                {classVideo}
+              </div>
             )}
             <div ref={editorHost} data-tour="editor" className="min-h-0 flex-1">
               {!editorReady ? (
@@ -1601,9 +1607,6 @@ export function RutinaForm({
                 />
               )}
             </div>
-            {editorReady && classVideoSlot && !videos[activeSection] && (
-              <div data-tour="class-video" className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
-            )}
           </div>
             )}
           </div>
@@ -1830,8 +1833,14 @@ export function RutinaForm({
             </div>
             {/* A section is guided (its written rutina, each exercise with its own demo video) and may also have a
                 class video the user can follow instead. The class shows above when there is one; else an optional line sits below. */}
-            {editorReady && classVideoSlot && videos[activeSection] && (
-              <div data-tour="class-video" className="flex-none border-b border-line bg-surface-2 px-3 py-2">{classVideo}</div>
+            {/* The section's video sits above its written rutina: the slim bar once there is one, a quiet «+ Agregar…» line until then. */}
+            {editorReady && classVideoSlot && (
+              <div
+                data-tour="class-video"
+                className={cn('flex-none border-b border-line', videos[activeSection] ? 'bg-surface-2 px-3 py-2' : 'bg-surface px-2 py-1.5')}
+              >
+                {classVideo}
+              </div>
             )}
             <div ref={editorHost} data-tour="editor" className="min-h-0 flex-1">
               {!editorReady ? (
@@ -1863,9 +1872,6 @@ export function RutinaForm({
                 />
               )}
             </div>
-            {editorReady && classVideoSlot && !videos[activeSection] && (
-              <div data-tour="class-video" className="flex-none border-t border-line bg-surface px-2 py-1.5">{classVideo}</div>
-            )}
           </div>
         )}
           {/* Right: live athlete-facing preview */}
