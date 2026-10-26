@@ -165,6 +165,12 @@ const dayKindLabel = (d: DayState) => {
 };
 const dayLabel = (i: number) => `${es.programs.day} ${i + 1}`;
 // Programs are written in whole weeks that start on Monday.
+/** The class video's name per section: «+ Agregar calentamiento en video», «Estiramiento en video · 6:41». */
+const SECTION_VIDEO_LABEL: Record<VideoSection, string> = {
+  main: 'Rutina en video',
+  warmup: 'Calentamiento en video',
+  cooldown: 'Estiramiento en video',
+};
 const WEEKDAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const WEEKDAY_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 const HATCH = 'repeating-linear-gradient(135deg,#f0ece4 0 5px,#e6e1d7 5px 10px)';
@@ -739,7 +745,7 @@ export function RutinaForm({
       key={`${programMode ? `day-${activeDay}` : 'rutina'}-${activeSection}`}
       variant="bar"
       kind="video"
-      label="Clase en video"
+      label={SECTION_VIDEO_LABEL[activeSection as VideoSection]}
       value={videos[activeSection as VideoSection]}
       onChange={(id) => setVideo(activeSection as VideoSection, id)}
       onDuration={(secs) => setVideoDuration(activeSection as VideoSection, secs)}

@@ -795,7 +795,7 @@ For time cap 20 min
           <p className="text-[13px] leading-relaxed text-ink-2">
             Aparte, cada sección puede tener una <strong className="font-semibold">clase en video</strong>: una clase completa,
             grabada de principio a fin, que el usuario sigue en lugar de la versión guiada. Es opcional; se agrega con
-            «+ Agregar clase en video» encima del editor, en cada pestaña (Rutina, Calentamiento y Estiramiento).
+            la línea encima del editor de cada pestaña: «+ Agregar rutina en video», «+ Agregar calentamiento en video» o «+ Agregar estiramiento en video».
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
             Una sección puede tener la rutina escrita, la clase en video o las dos. Con las dos, al empezar el usuario elige
