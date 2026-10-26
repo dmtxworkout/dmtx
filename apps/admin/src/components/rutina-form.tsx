@@ -39,7 +39,7 @@ import { ExerciseMediaContext, RutinaPreview, previewFrom, type ExerciseMedia } 
 import { KindIcon } from '@/components/kind-icon';
 import { Tour, type TourStep } from '@/components/ui/tour';
 import { RutinaGuide } from '@/components/rutina-guide';
-import { SkillGoals, rutinaExercises } from '@/components/skill-goals';
+import { SkillGoals, goalProblem, rutinaExercises } from '@/components/skill-goals';
 
 const FORMAT_LABEL: Record<WorkoutFormat, string> = {
   amrap: 'AMRAP',
@@ -1238,16 +1238,16 @@ export function RutinaForm({
       for (let i = 0; i < all.length; i += 1) {
         const level = parseRutina(joinSections(all[i]!.sections), { catalog });
         const goals = goalsFrom(level);
-        // A goal must be about an exercise the level trains (one removed from its rutina since).
-        const inRutina = new Set(rutinaExercises(level).map((e) => e.exerciseId));
-        const stray = goals.find((g) => !inRutina.has(g.exerciseId));
+        // A goal must be about an exercise the level trains, in a mark its rutina measures (either may have changed since).
+        const exercises = rutinaExercises(level);
+        const stray = goals.find((g) => goalProblem(g, exercises));
         if (stray) {
           setActiveTab(i);
           setActiveSection('goal');
           toast(
             <>
               El objetivo de <strong className="font-extrabold">{all[i]!.label || `Nivel ${i + 1}`}</strong> pide{' '}
-              <strong className="font-extrabold">{stray.exerciseName}</strong>, que ya no está en su rutina. Quítalo o vuelve a ponerlo en la rutina.
+              <strong className="font-extrabold">{stray.exerciseName}</strong>, pero {goalProblem(stray, exercises)}. Corrígelo en su pestaña Objetivo.
             </>,
             'error',
           );

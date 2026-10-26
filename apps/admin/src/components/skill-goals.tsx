@@ -19,33 +19,77 @@ const METRIC_LABEL: Record<SkillGoalMetric, string> = {
   load_kg: 'kg',
 };
 
-/** A first guess at the goal for an exercise, from how the rutina prescribes it. */
-function suggestion(it: ParsedItem): Pick<SkillGoal, 'metric' | 'value' | 'reps'> {
-  const load = it.loadPrescription;
-  if (load && load.type === 'absolute' && load.value > 0) {
-    const kg = load.unit === 'lb' ? Math.round(load.value * 0.45359237 * 10) / 10 : load.value;
-    return { metric: 'load_kg', value: kg, reps: it.reps ?? 1 };
-  }
-  if (it.workSeconds) return { metric: 'time_seconds', value: it.workSeconds, reps: null };
-  if (it.distanceMeters) return { metric: 'distance_meters', value: it.distanceMeters, reps: null };
-  return { metric: 'reps', value: it.reps ?? 1, reps: null };
+/** The marks a rutina line measures: «10 sentadillas» counts reps, «30s plancha» seconds, «400 m» metres, «8 @45 lb» reps and load. */
+function metricsOf(it: ParsedItem): SkillGoalMetric[] {
+  const out: SkillGoalMetric[] = [];
+  if (it.reps) out.push('reps');
+  if (it.workSeconds) out.push('time_seconds');
+  if (it.distanceMeters) out.push('distance_meters');
+  if (it.loadPrescription?.type === 'absolute' && it.loadPrescription.value > 0) out.push('load_kg');
+  if (out.length) return out;
+  // A bare name: the exercise's own measure.
+  return [it.measure === 'time' ? 'time_seconds' : it.measure === 'distance' ? 'distance_meters' : 'reps'];
 }
 
+/** A first guess at the goal for an exercise, from how the rutina prescribes it. */
+function suggestion(it: ParsedItem): Pick<SkillGoal, 'metric' | 'value' | 'reps'> {
+  const metric = metricsOf(it)[0]!;
+  if (metric === 'time_seconds') return { metric, value: it.workSeconds ?? 30, reps: null };
+  if (metric === 'distance_meters') return { metric, value: it.distanceMeters ?? 100, reps: null };
+  if (metric === 'load_kg') return { metric, ...loadGoal(it) };
+  return { metric, value: it.reps ?? 1, reps: null };
+}
+
+/** The load in kg (and the reps done with it) a line prescribes. */
+function loadGoal(it: ParsedItem): { value: number; reps: number } {
+  const load = it.loadPrescription;
+  const v = load?.type === 'absolute' ? load.value : 0;
+  const kg = load?.type === 'absolute' && load.unit === 'lb' ? Math.round(v * 0.45359237 * 10) / 10 : v;
+  return { value: kg || 1, reps: it.reps ?? 1 };
+}
+
+/** An exercise of the level's rutina: its suggested goal and the marks the rutina measures it by. */
+export type RutinaExercise = SkillGoal & { metrics: SkillGoalMetric[]; item: ParsedItem };
+
 /** The exercises of the level's main section, in order, once each, with a suggested goal. */
-export function rutinaExercises(parsed: ParsedRutina): SkillGoal[] {
-  const out = new Map<string, SkillGoal>();
+export function rutinaExercises(parsed: ParsedRutina): RutinaExercise[] {
+  const out = new Map<string, RutinaExercise>();
   const walk = (blocks: ParsedBlock[]) => {
     for (const b of blocks) {
       if (b.section !== 'main') continue;
       for (const it of b.items) {
-        if (it.kind === 'exercise' && it.match && !out.has(it.match.id))
-          out.set(it.match.id, { exerciseId: it.match.id, exerciseName: it.match.name, ...suggestion(it) });
+        if (it.kind !== 'exercise' || !it.match) continue;
+        const seen = out.get(it.match.id);
+        if (!seen) {
+          out.set(it.match.id, { exerciseId: it.match.id, exerciseName: it.match.name, ...suggestion(it), metrics: metricsOf(it), item: it });
+        } else {
+          // The same exercise written twice (different sets): any mark either line measures.
+          for (const m of metricsOf(it)) if (!seen.metrics.includes(m)) seen.metrics.push(m);
+          if (!seen.item.loadPrescription && it.loadPrescription) seen.item = it;
+        }
       }
       if (b.children) walk(b.children);
     }
   };
   walk(parsed.blocks);
   return [...out.values()];
+}
+
+/** Why a goal no longer fits the level's rutina, or null when it does. */
+export function goalProblem(g: SkillGoal, exercises: RutinaExercise[]): string | null {
+  const e = exercises.find((x) => x.exerciseId === g.exerciseId);
+  if (!e) return 'ya no está en su rutina';
+  if (!e.metrics.includes(g.metric)) return `su rutina ya no lo mide en ${METRIC_LABEL[g.metric]}`;
+  return null;
+}
+
+/** The goal when the admin switches its unit: the rutina's own number for that unit. */
+function switchTo(e: RutinaExercise, metric: SkillGoalMetric): Pick<SkillGoal, 'metric' | 'value' | 'reps'> {
+  const it = e.item;
+  if (metric === 'load_kg') return { metric, ...loadGoal(it) };
+  if (metric === 'time_seconds') return { metric, value: it.workSeconds ?? 30, reps: null };
+  if (metric === 'distance_meters') return { metric, value: it.distanceMeters ?? 100, reps: null };
+  return { metric, value: it.reps ?? 1, reps: null };
 }
 
 /** A positive number typed in Spanish or English style ("2,5" or "2.5"); null while it is not one. */
@@ -109,8 +153,12 @@ export function SkillGoals({
   // Goals about an exercise the rutina no longer has: shown so they can be removed (saving refuses them).
   const orphans = goals.filter((g) => !inRutina.has(g.exerciseId));
 
-  const toggle = (e: SkillGoal, on: boolean) =>
-    onChange(on ? [...goals, e] : goals.filter((g) => g.exerciseId !== e.exerciseId));
+  const toggle = (e: RutinaExercise, on: boolean) =>
+    onChange(
+      on
+        ? [...goals, { exerciseId: e.exerciseId, exerciseName: e.exerciseName, metric: e.metric, value: e.value, reps: e.reps }]
+        : goals.filter((g) => g.exerciseId !== e.exerciseId),
+    );
   const update = (id: string, patch: Partial<SkillGoal>) =>
     onChange(goals.map((g) => (g.exerciseId === id ? { ...g, ...patch } : g)));
 
@@ -151,21 +199,26 @@ export function SkillGoals({
                         integer={g.metric !== 'load_kg'}
                         onChange={(value) => update(e.exerciseId, { value })}
                       />
-                      <select
-                        aria-label={`Unidad de ${e.exerciseName}`}
-                        value={g.metric}
-                        onChange={(ev) => {
-                          const metric = ev.target.value as SkillGoalMetric;
-                          update(e.exerciseId, { metric, reps: metric === 'load_kg' ? (g.reps ?? 1) : null });
-                        }}
-                        className="h-8 rounded-md border border-line-2 bg-surface px-2 text-[12.5px] text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
-                      >
-                        {(Object.keys(METRIC_LABEL) as SkillGoalMetric[]).map((m) => (
-                          <option key={m} value={m}>
-                            {METRIC_LABEL[m]}
-                          </option>
-                        ))}
-                      </select>
+                      {e.metrics.length > 1 || !e.metrics.includes(g.metric) ? (
+                        <select
+                          aria-label={`Unidad de ${e.exerciseName}`}
+                          value={g.metric}
+                          onChange={(ev) => update(e.exerciseId, switchTo(e, ev.target.value as SkillGoalMetric))}
+                          className={cn(
+                            'h-8 rounded-md border bg-surface px-2 text-[12.5px] text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/20',
+                            e.metrics.includes(g.metric) ? 'border-line-2' : 'border-accent',
+                          )}
+                        >
+                          {/* Only the marks the rutina measures this exercise by (plus a stale one, to switch away from). */}
+                          {[...e.metrics, ...(e.metrics.includes(g.metric) ? [] : [g.metric])].map((m) => (
+                            <option key={m} value={m} disabled={!e.metrics.includes(m)}>
+                              {METRIC_LABEL[m]}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span className="text-ink-2">{METRIC_LABEL[g.metric]}</span>
+                      )}
                       {g.metric === 'load_kg' && (
                         <>
                           ×
@@ -179,6 +232,11 @@ export function SkillGoals({
                         </>
                       )}
                     </div>
+                  )}
+                  {g && !e.metrics.includes(g.metric) && (
+                    <p className="w-full pl-8 text-[12px] font-medium text-accent-dark">
+                      La rutina ya no lo mide en {METRIC_LABEL[g.metric]}: elige otra unidad.
+                    </p>
                   )}
                 </li>
               );
