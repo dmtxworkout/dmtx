@@ -124,55 +124,6 @@ export const skills: { name: string; meta: string; badge: string; tone: BadgeTon
   },
 ];
 
-// --- Colecciones -------------------------------------------------------------
-export const collections: {
-  title: string;
-  tag: string;
-  count: string;
-  badge: string;
-  tone: BadgeTone;
-  items: { kind: string; name: string; meta: string }[];
-}[] = [
-  {
-    title: 'Empieza aquí',
-    tag: 'FILA 1',
-    count: '6 ítems',
-    badge: 'Publicado',
-    tone: 'published',
-    items: [
-      { kind: 'Rutina', name: 'Full body express', meta: 'AMRAP · 10 min' },
-      { kind: 'Programa', name: 'Empieza aquí', meta: '12 videos' },
-      { kind: 'Rutina', name: 'Movilidad matutina', meta: 'Video · 14 min' },
-      { kind: 'Rutina', name: 'Core diario', meta: 'Tabata · 12 min' },
-    ],
-  },
-  {
-    title: 'Menos de 15 minutos',
-    tag: 'FILA 3',
-    count: '11 ítems',
-    badge: 'Publicado',
-    tone: 'published',
-    items: [
-      { kind: 'Rutina', name: 'Sprint & core', meta: 'AMRAP · 15 min' },
-      { kind: 'Rutina', name: 'Full body express', meta: 'AMRAP · 10 min' },
-      { kind: 'Rutina', name: 'Handstand drills', meta: 'Video · 9 min' },
-      { kind: 'Rutina', name: 'Core diario', meta: 'Tabata · 12 min' },
-    ],
-  },
-  {
-    title: 'Nuevo en agosto',
-    tag: 'BORRADOR',
-    count: '3 ítems',
-    badge: 'Borrador',
-    tone: 'draft',
-    items: [
-      { kind: 'Rutina', name: 'Tirón explosivo · S3', meta: 'AMRAP · 18 min' },
-      { kind: 'Rutina', name: 'Piernas unilateral', meta: 'EMOM · 20 min' },
-      { kind: 'Programa', name: 'Verano corto', meta: '21 días' },
-    ],
-  },
-];
-
 // --- Taxonomía ---------------------------------------------------------------
 export const muscleGroups: { name: string; n: number; active?: boolean }[] = [
   { name: 'Pecho', n: 9 },

@@ -295,6 +295,13 @@
       "when": 1792850825996,
       "tag": "0041_clear_deleted_media_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1793031735138,
+      "tag": "0042_drop_collections",
+      "breakpoints": true
     }
   ]
 }

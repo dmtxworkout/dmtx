@@ -18,7 +18,6 @@ const groups = [
       { href: '/ejercicios', label: es.nav.exercises },
       { href: '/programas', label: es.nav.programs },
       { href: '/habilidades', label: es.nav.skills },
-      { href: '/colecciones', label: es.nav.collections },
     ],
   },
   {

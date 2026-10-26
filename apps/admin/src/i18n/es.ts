@@ -32,7 +32,6 @@ export const es = {
     reusableBlocks: 'Bloques reutilizables',
     programs: 'Programas',
     skills: 'Habilidades',
-    collections: 'Colecciones',
     muscles: 'Músculos',
     equipment: 'Equipos',
     media: 'Biblioteca',

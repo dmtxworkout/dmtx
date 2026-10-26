@@ -10,7 +10,6 @@ Code identifiers are English; UI copy is Spanish. All Spanish strings live in `a
 | workout | rutina |
 | program | programa |
 | skill | habilidad |
-| collection | colección |
 | muscle / muscle group | músculo / grupo muscular |
 | equipment | equipo |
 | subscription | suscripción |

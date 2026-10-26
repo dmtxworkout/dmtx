@@ -1,6 +1,6 @@
 # CLAUDE.md — DMTX
 
-DMTX is the **"Netflix of workouts"**: a Spanish-language fitness platform with an **admin portal** (`apps/admin`, built first) where admins build content — exercises → workouts/rutinas → programs → skills, plus taxonomy and Netflix-style collections — and a **mobile app** (`apps/mobile`, Expo, later) where subscribers browse, play, and download workouts. UI copy is in **Spanish**; code identifiers are English.
+DMTX is the **"Netflix of workouts"**: a Spanish-language fitness platform with an **admin portal** (`apps/admin`, built first) where admins build content — exercises → workouts/rutinas → programs → skills, plus taxonomy — and a **mobile app** (`apps/mobile`, Expo, later) where subscribers browse, play, and download workouts. UI copy is in **Spanish**; code identifiers are English.
 
 ## Read next (docs/)
 

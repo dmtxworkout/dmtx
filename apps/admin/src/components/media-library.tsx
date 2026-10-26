@@ -114,7 +114,7 @@ function UsageCell({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
-  const groups = (['program', 'workout', 'exercise', 'skill', 'skillLevel', 'collection'] as const)
+  const groups = (['program', 'workout', 'exercise', 'skill', 'skillLevel'] as const)
     .map((type) => [type, usage.filter((u) => u.type === type)] as const)
     .filter(([, items]) => items.length);
   return (

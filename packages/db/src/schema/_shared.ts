@@ -5,7 +5,6 @@ import {
   BLOCK_KIND,
   BLOCK_SECTION,
   BLOCK_TYPE,
-  COLLECTION_LAYOUT,
   ITEM_KIND,
   CONTENT_STATUS,
   DIFFICULTY,
@@ -30,7 +29,6 @@ export const blockTypeEnum = pgEnum('block_type', BLOCK_TYPE);
 export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);
 export const blockSectionEnum = pgEnum('block_section', BLOCK_SECTION);
 export const itemKindEnum = pgEnum('item_kind', ITEM_KIND);
-export const collectionLayoutEnum = pgEnum('collection_layout', COLLECTION_LAYOUT);
 export const mediaKindEnum = pgEnum('media_kind', MEDIA_KIND);
 export const mediaProcessingStatusEnum = pgEnum('media_processing_status', MEDIA_PROCESSING_STATUS);
 export const subscriptionStatusEnum = pgEnum('subscription_status', SUBSCRIPTION_STATUS);
