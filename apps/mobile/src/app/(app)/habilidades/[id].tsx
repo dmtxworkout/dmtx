@@ -102,6 +102,11 @@ export default function HabilidadDetalle() {
                   <Text className="font-mono-medium text-[10px] uppercase tracking-wider text-ink-3">
                     {i === s.levels.length - 1 ? 'Objetivo' : 'Para pasar al siguiente nivel'}
                   </Text>
+                  {l.completed ? null : (
+                    <Text className="font-sans text-[12px] text-ink-3">
+                      {l.unlockGoals.length > 1 ? 'Cúmplelos todos en una misma sesión de este nivel.' : 'Cúmplelo en una sesión de este nivel.'}
+                    </Text>
+                  )}
                   {l.unlockGoals.map((g, j) => (
                     <View key={j} className="flex-row items-center justify-between gap-3">
                       <Text className={`font-sans text-[13px] ${g.met ? 'text-ink-3 line-through' : 'text-ink'}`}>{goalLabel(g)}</Text>

@@ -894,7 +894,7 @@ For time cap 20 min
             La pestaña Objetivo no se escribe: lista los ejercicios de la rutina de ese nivel y marcas los que el usuario tiene
             que lograr, cada uno con su marca. La marca se mide como lo pide la rutina: «10 sentadillas» en repeticiones,
             «30s plancha» en segundos, «400 m trote» en metros, y «10 sentadillas @45 lb» en repeticiones o en kg. Así el
-            objetivo siempre es algo que el nivel entrena. Para pasar al siguiente nivel hay que cumplirlos todos.
+            objetivo siempre es algo que el nivel entrena. Para pasar al siguiente nivel hay que cumplirlos todos en una misma sesión de la rutina de ese nivel.
           </p>
           <p className="text-[13px] leading-relaxed text-ink-2">
             Si quitas de la rutina un ejercicio que era objetivo, aparece tachado con «Ya no está en la rutina de este nivel» y no

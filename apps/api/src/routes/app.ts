@@ -106,13 +106,21 @@ function skillCard(s: SkillRow, thumb: string | null, levels: number, unlocked =
 // --- Skill goals: the user's best marks and what they unlock ------------------
 
 type Marks = { reps: number; seconds: number; distance: number; loads: { kg: number; reps: number }[] };
+/** One logged session's best marks per exercise. */
+type Session = Map<string, Marks>;
 
-/** The user's best marks per exercise, over every session they logged. */
-async function bestMarks(db: Database, userId: string, exerciseIds: string[]): Promise<Map<string, Marks>> {
-  const out = new Map<string, Marks>();
-  if (!exerciseIds.length) return out;
+/**
+ * The user's sessions of each of these workouts (a skill level's rutina), each
+ * with its best mark per exercise. A level's goals count only when they are all
+ * met in one session of the level's own rutina.
+ */
+async function levelSessions(db: Database, userId: string, workoutIds: string[]): Promise<Map<string, Session[]>> {
+  const out = new Map<string, Session[]>();
+  if (!workoutIds.length) return out;
   const rows = await db
     .select({
+      logId: workoutLogs.id,
+      workoutId: workoutLogs.workoutId,
       exerciseId: setResults.exerciseId,
       reps: setResults.reps,
       seconds: setResults.seconds,
@@ -121,22 +129,26 @@ async function bestMarks(db: Database, userId: string, exerciseIds: string[]): P
     })
     .from(setResults)
     .innerJoin(workoutLogs, eq(workoutLogs.id, setResults.workoutLogId))
-    .where(and(eq(workoutLogs.userId, userId), inArray(setResults.exerciseId, exerciseIds)));
+    .where(and(eq(workoutLogs.userId, userId), inArray(workoutLogs.workoutId, workoutIds)));
+  const byLog = new Map<string, { workoutId: string; session: Session }>();
   for (const r of rows) {
-    if (!r.exerciseId) continue;
-    const m = out.get(r.exerciseId) ?? { reps: 0, seconds: 0, distance: 0, loads: [] };
+    if (!r.exerciseId || !r.workoutId) continue;
+    const log = byLog.get(r.logId) ?? { workoutId: r.workoutId, session: new Map() };
+    byLog.set(r.logId, log);
+    const m = log.session.get(r.exerciseId) ?? { reps: 0, seconds: 0, distance: 0, loads: [] };
     if (r.reps) m.reps = Math.max(m.reps, r.reps);
     if (r.seconds) m.seconds = Math.max(m.seconds, r.seconds);
     if (r.distance) m.distance = Math.max(m.distance, r.distance);
     if (r.loadKg) m.loads.push({ kg: r.loadKg, reps: r.reps ?? 1 });
-    out.set(r.exerciseId, m);
+    log.session.set(r.exerciseId, m);
   }
+  for (const { workoutId, session } of byLog.values()) out.set(workoutId, [...(out.get(workoutId) ?? []), session]);
   return out;
 }
 
-/** The best the user has done towards a goal, in the goal's own metric (null = never tried). */
-function bestFor(goal: SkillGoal, marks: Map<string, Marks>): number | null {
-  const m = marks.get(goal.exerciseId);
+/** The best the user did towards a goal in a session, in the goal's own metric (null = not tried). */
+function bestFor(goal: SkillGoal, session: Session | undefined): number | null {
+  const m = session?.get(goal.exerciseId);
   if (!m) return null;
   switch (goal.metric) {
     case 'reps':
@@ -152,7 +164,23 @@ function bestFor(goal: SkillGoal, marks: Map<string, Marks>): number | null {
   }
 }
 
-const goalMet = (goal: SkillGoal, marks: Map<string, Marks>) => (bestFor(goal, marks) ?? 0) >= goal.value;
+const goalMet = (goal: SkillGoal, session: Session | undefined) => (bestFor(goal, session) ?? 0) >= goal.value;
+
+/** A session in which every goal of the level was met, if any. */
+const passingSession = (goals: SkillGoal[], sessions: Session[]) =>
+  goals.length ? sessions.find((s) => goals.every((g) => goalMet(g, s))) : undefined;
+
+/**
+ * The session to show the user's progress from: the passing one, else the one
+ * that met the most goals (then got closest to the rest).
+ */
+function bestSession(goals: SkillGoal[], sessions: Session[]): Session | undefined {
+  const score = (s: Session) =>
+    goals.reduce((n, g) => n + (goalMet(g, s) ? 1000 : Math.min(1, (bestFor(g, s) ?? 0) / g.value)), 0);
+  let best: Session | undefined;
+  for (const s of sessions) if (!best || score(s) > score(best)) best = s;
+  return best;
+}
 
 /** Levels of a skill the user has unlocked (1 = only the first). */
 async function unlockedLevels(db: Database, userId: string, skillId: string): Promise<number> {
@@ -165,12 +193,10 @@ async function unlockedLevels(db: Database, userId: string, skillId: string): Pr
 }
 
 /**
- * After a session: every published skill whose current level has a goal on an
- * exercise just logged gets re-checked; while the current level's goals are
- * all met, the next one unlocks.
+ * After a session of a skill level's rutina: while the user's current level has
+ * a session in which all its goals were met, the next one unlocks.
  */
-async function advanceSkills(db: Database, userId: string, exerciseIds: string[]) {
-  if (!exerciseIds.length) return;
+async function advanceSkills(db: Database, userId: string, workoutId: string) {
   const levels = await db
     .select({ level: skillLevels })
     .from(skillLevels)
@@ -179,15 +205,14 @@ async function advanceSkills(db: Database, userId: string, exerciseIds: string[]
     .orderBy(skillLevels.skillId, skillLevels.position);
   const bySkill = new Map<string, (typeof levels)[number]['level'][]>();
   for (const { level } of levels) bySkill.set(level.skillId, [...(bySkill.get(level.skillId) ?? []), level]);
-  const touched = new Set(exerciseIds);
   for (const [skillId, lvls] of bySkill) {
-    if (!lvls.some((l) => l.unlockGoals.some((g) => touched.has(g.exerciseId)))) continue;
+    if (!lvls.some((l) => l.workoutId === workoutId)) continue;
     let unlocked = await unlockedLevels(db, userId, skillId);
-    const marks = await bestMarks(db, userId, [...new Set(lvls.flatMap((l) => l.unlockGoals.map((g) => g.exerciseId)))]);
+    const sessions = await levelSessions(db, userId, lvls.map((l) => l.workoutId));
     let advanced = false;
     while (unlocked < lvls.length) {
       const current = lvls[unlocked - 1]!;
-      if (!current.unlockGoals.length || !current.unlockGoals.every((g) => goalMet(g, marks))) break;
+      if (!passingSession(current.unlockGoals, sessions.get(current.workoutId) ?? [])) break;
       unlocked += 1;
       advanced = true;
     }
@@ -754,7 +779,7 @@ appRoute.get('/skills/:id', async (c) => {
   ]);
   const userId = c.get('user')!.id;
   const unlocked = await unlockedLevels(db, userId, s.id);
-  const marks = await bestMarks(db, userId, [...new Set(levels.flatMap((l) => l.unlockGoals.map((g) => g.exerciseId)))]);
+  const sessions = await levelSessions(db, userId, levels.map((l) => l.workoutId));
 
   return c.json({
     id: s.id,
@@ -766,13 +791,15 @@ appRoute.get('/skills/:id', async (c) => {
     unlockedLevels: unlocked,
     levels: levels.map((l, i) => {
       const w = wBy.get(l.workoutId);
+      const goals = l.unlockGoals ?? [];
+      const shown = bestSession(goals, sessions.get(l.workoutId) ?? []);
       return {
         id: l.id,
         position: l.position,
         name: l.name,
         description: l.description,
-        // Goals carry the user's best mark so the app can show "7 de 10".
-        unlockGoals: (l.unlockGoals ?? []).map((g) => ({ ...g, best: bestFor(g, marks), met: goalMet(g, marks) })),
+        // Goals carry the user's marks from their best session of this level so the app can show "7 de 10".
+        unlockGoals: goals.map((g) => ({ ...g, best: bestFor(g, shown), met: goalMet(g, shown) })),
         locked: i >= unlocked,
         completed: i < unlocked - 1,
         thumbnailUrl: url(media, l.thumbnailAssetId),
@@ -824,7 +851,7 @@ appRoute.post('/logs', async (c) => {
         loadKg: r.loadKg != null ? Math.round(r.loadKg) : null,
       })),
     );
-    await advanceSkills(db, user.id, [...new Set(input.results.map((r) => r.exerciseId))]);
+    if (input.workoutId) await advanceSkills(db, user.id, input.workoutId);
   }
 
   return c.json({ id: log.id }, 201);

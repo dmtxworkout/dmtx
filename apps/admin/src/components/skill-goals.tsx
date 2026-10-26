@@ -169,7 +169,7 @@ export function SkillGoals({
         <p className="mt-1 text-[13px] leading-relaxed text-ink-3">
           {isLast
             ? 'Es el último nivel: no desbloquea otro. Si quieres, marca la meta que corona la habilidad; es opcional.'
-            : 'Marca los ejercicios de la rutina de este nivel que el usuario tiene que lograr, y la marca a alcanzar. Para desbloquear el siguiente nivel tiene que cumplirlos todos.'}
+            : 'Marca los ejercicios de la rutina de este nivel que el usuario tiene que lograr, y la marca a alcanzar. Para desbloquear el siguiente nivel tiene que cumplirlos todos en una misma sesión de esta rutina.'}
         </p>
 
         {exercises.length === 0 && orphans.length === 0 ? (
