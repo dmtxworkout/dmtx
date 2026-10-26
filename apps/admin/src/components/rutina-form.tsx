@@ -368,9 +368,10 @@ function WeekStrip({
             title={`${WEEKDAYS[j]} · ${dayLabel(i)} · ${d.isRestDay ? es.programs.restDay.toLowerCase() : !has ? 'vacío' : uploadingVideo(d) ? 'video subiendo…' : dayKindLabel(d)}`}
             className={cn(
               'flex h-9 w-12 shrink-0 flex-col items-center justify-center overflow-hidden rounded-md border font-mono text-[11px] leading-none',
-              // The cell names its weekday; dashed = empty, hatched = rest.
-              isActive ? 'border-accent font-semibold text-accent-dark' : d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
-              isActive ? (d.isRestDay ? '' : 'bg-accent-tint') : 'hover:border-line-3 hover:text-ink',
+              // The cell names its weekday; dashed = empty, hatched = rest, filled = has content.
+              d.isRestDay ? 'border-line-2 text-muted' : has ? 'border-line-3 bg-surface-3 text-ink' : 'border-dashed border-line-2 bg-surface text-faint-2',
+              // Selected: the same accent border and ring on any kind of day, which keeps its own fill.
+              isActive ? 'border-solid border-accent font-semibold text-ink ring-2 ring-accent/25' : 'hover:border-line-3 hover:text-ink',
               uploadingVideo(d) && 'animate-pulse',
               over === i && dragFrom.current !== i && 'ring-2 ring-accent/40',
             )}

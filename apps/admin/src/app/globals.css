@@ -44,11 +44,14 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Tailwind v4 defaults borders to currentColor; anchor them to the warm line. */
-*,
-::before,
-::after {
-  border-color: var(--color-line);
+/* Tailwind v4 defaults borders to currentColor; anchor them to the warm line.
+   In the base layer, so a border-colour utility (border-accent, border-ink…) still wins. */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
 }
 
 /* Tailwind v4 sets buttons to cursor:default; restore pointer for clickables. */
