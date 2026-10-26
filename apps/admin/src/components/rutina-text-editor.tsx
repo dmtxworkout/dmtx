@@ -1092,7 +1092,8 @@ const WARN_MARK =
 
 const theme = EditorView.theme({
   '&': { height: '100%', fontSize: '13.5px', backgroundColor: 'var(--color-surface)', color: 'var(--color-ink)' },
-  '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.7', overflow: 'auto' },
+  // A size container, so the placeholder can be capped at the visible width (cqw) below.
+  '.cm-scroller': { fontFamily: 'var(--font-mono)', lineHeight: '1.7', overflow: 'auto', containerType: 'inline-size' },
   '.cm-content': { padding: '10px 16px 40vh 8px', caretColor: 'var(--color-accent)' },
   '.cm-line': { padding: '0 2px' },
   '&.cm-focused': { outline: 'none' },
@@ -1103,8 +1104,9 @@ const theme = EditorView.theme({
   '.cm-activeLine': { backgroundColor: 'rgba(0,0,0,0.03)' },
   '.rt-line-error': { backgroundColor: 'rgba(229, 20, 0, 0.06)' },
   '.rt-line-warn': { backgroundColor: 'rgba(191, 136, 3, 0.07)' },
+  // Opaque: the gutter stays put while a long line scrolls sideways under it.
   '.cm-gutters': {
-    backgroundColor: 'transparent',
+    backgroundColor: 'var(--color-surface)',
     border: 'none',
     color: 'var(--color-faint)',
     fontFamily: 'var(--font-mono)',
@@ -1117,7 +1119,18 @@ const theme = EditorView.theme({
   '.rt-mark': { width: '13px', height: '13px', marginTop: '5px', backgroundSize: '13px 13px', cursor: 'pointer' },
   '.rt-mark-error': { backgroundImage: ERROR_MARK },
   '.rt-mark-warning': { backgroundImage: WARN_MARK },
-  '.cm-placeholder': { color: 'var(--color-faint)', fontStyle: 'normal' },
+  // The hint never widens the empty editor (no wrapping): it is cut with an ellipsis at the edge.
+  '.cm-placeholder': {
+    color: 'var(--color-faint)',
+    fontStyle: 'normal',
+    display: 'inline-block',
+    // The visible width less the gutter and the content's padding.
+    maxWidth: 'calc(100cqw - 100px)',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    verticalAlign: 'top',
+  },
   // line kinds (VS Code Light+ palette)
   '.rt-format': { color: '#0451a5', fontWeight: '600' },
   '.rt-section': { color: 'var(--color-accent)', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.08em' },
@@ -1680,7 +1693,8 @@ export function RutinaTextEditor({
           diagLineField,
           lineKindPlugin,
           theme,
-          EditorView.lineWrapping,
+          // No wrapping: a long line scrolls sideways instead of breaking (a code editor's way),
+          // so each line stays one row and the gutter's marks line up with it, even on a narrow screen.
           cmPlaceholder(placeholder ?? ''),
           closeBrackets(),
           autocompletion({

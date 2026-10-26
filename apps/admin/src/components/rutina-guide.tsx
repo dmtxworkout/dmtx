@@ -114,7 +114,14 @@ function Row({ n, children, marker, hover }: { n: number; children: ReactNode; m
   return (
     <div className={cn('flex h-7 items-center font-mono text-[12.5px]', hover && 'bg-surface-2')}>
       <span className="flex w-5 shrink-0 items-center justify-center text-[11px]">
-        {marker === 'plus' && <span className="rounded-[4px] bg-accent-tint px-1 text-[12px] font-bold text-accent-dark">+</span>}
+        {/* The editor's gutter «+»: a small bordered button with a drawn plus. */}
+        {marker === 'plus' && (
+          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border border-line-2 bg-surface text-ink-2 shadow-[0_1px_2px_rgba(0,0,0,0.06)]">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" className="h-[11px] w-[11px]" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </span>
+        )}
         {marker === 'error' && <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#e51400] text-[9px] font-bold text-white">✕</span>}
         {marker === 'warning' && <span className="text-[12px] text-[#bf8803]">▲</span>}
       </span>
