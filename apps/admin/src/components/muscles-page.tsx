@@ -62,15 +62,20 @@ export function MusclesPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <PageHeader title="Músculos" subtitle={data ? `${all.length} en total` : undefined}>
-        <div className="flex h-9 w-[300px] items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
-          <span className="text-muted-2">⌕</span>
-          <input
-            value={search}
-            disabled={!!editing}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o sinónimo"
-            className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none disabled:opacity-50"
-          />
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line-2 bg-surface px-2.5">
+            <span className="text-muted-2">⌕</span>
+            <input
+              value={search}
+              disabled={!!editing}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por nombre o sinónimo"
+              className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none disabled:opacity-50"
+            />
+          </div>
+          <Button type="button" disabled={!!editing} onClick={() => startEditing({ muscle: null })}>
+            + Agregar músculo
+          </Button>
         </div>
       </PageHeader>
 
@@ -129,11 +134,8 @@ export function MusclesPage() {
             <div className="p-8 text-center text-sm text-accent-dark">{es.app.error}</div>
           ) : q || open ? (
             <>
-              <div className="flex items-center justify-between gap-3 border-b border-line-3 px-5 py-3.5">
+              <div className="border-b border-line-3 px-5 py-3.5">
                 <h2 className="truncate text-[15px] font-semibold text-ink">{q ? `Resultados para «${search.trim()}»` : zoneLabel(open!)}</h2>
-                <Button type="button" size="sm" onClick={() => startEditing({ muscle: null })}>
-                  + Agregar
-                </Button>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto" onMouseLeave={() => setPreview(null)}>
                 {rows.length === 0 ? (
@@ -164,11 +166,8 @@ export function MusclesPage() {
               </div>
             </>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
-              <p className="text-sm text-ink-3">Elige una zona en el cuerpo para ver sus músculos, agregar otros y editar sus sinónimos.</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => startEditing({ muscle: null })}>
-                + Agregar músculo
-              </Button>
+            <div className="flex flex-1 items-center justify-center p-8 text-center">
+              <p className="text-sm text-ink-3">Elige una zona en el cuerpo para ver sus músculos y editar sus sinónimos.</p>
             </div>
           )}
         </aside>
