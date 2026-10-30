@@ -115,14 +115,14 @@ taxonomyRoute.openapi(
     request: { body: { content: { 'application/json': { schema: createMuscleSchema } } } },
     responses: {
       201: { description: 'Músculo creado', content: { 'application/json': { schema: muscleSchema } } },
-      409: { description: 'Un sinónimo es el nombre de otro músculo', content: { 'application/json': { schema: errorSchema } } },
+      409: { description: 'Un alias es el nombre de otro músculo', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
     const clean = await cleanAliases(db, input.aliases ?? []);
-    if (clean.taken) return c.json({ error: `«${clean.taken}» ya es un músculo: no puede ser un sinónimo.` }, 409);
+    if (clean.taken) return c.json({ error: `«${clean.taken}» ya es un músculo: no puede ser un alias.` }, 409);
     const slug = await freeSlug(
       async (s) => (await db.select({ id: muscles.id }).from(muscles).where(eq(muscles.slug, s))).length > 0,
       input.name,
@@ -153,7 +153,7 @@ taxonomyRoute.openapi(
     responses: {
       200: { description: 'Músculo', content: { 'application/json': { schema: muscleSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
-      409: { description: 'Un sinónimo es el nombre de otro músculo', content: { 'application/json': { schema: errorSchema } } },
+      409: { description: 'Un alias es el nombre de otro músculo', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
@@ -161,7 +161,7 @@ taxonomyRoute.openapi(
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
     const clean = input.aliases ? await cleanAliases(db, input.aliases, id) : null;
-    if (clean?.taken) return c.json({ error: `«${clean.taken}» ya es un músculo: no puede ser un sinónimo.` }, 409);
+    if (clean?.taken) return c.json({ error: `«${clean.taken}» ya es un músculo: no puede ser un alias.` }, 409);
     const [row] = await db
       .update(muscles)
       .set({

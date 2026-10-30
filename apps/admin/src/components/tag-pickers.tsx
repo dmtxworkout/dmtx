@@ -40,11 +40,13 @@ interface TagPopoverProps {
   onToggle: (id: string) => void;
   /** Creates a tag named `name` and ticks it. */
   onCreate: (name: string) => Promise<void>;
+  /** Why the typed text can't be created, if it can't. */
+  refuse?: (text: string) => string | null;
   /** The chosen tags, rendered inside the field in front of the opener. */
   chips?: ReactNode;
 }
 
-function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCreate, chips }: TagPopoverProps) {
+export function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCreate, refuse, chips }: TagPopoverProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,9 +84,13 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
     };
   }, [open]);
 
+  // The panel appears once it has its place: only then is there an input to focus.
+  const placed = !!place;
+  useEffect(() => {
+    if (open && placed) input.current?.focus();
+  }, [open, placed]);
   useEffect(() => {
     if (!open) return;
-    input.current?.focus();
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (!box.current?.contains(t) && !panel.current?.contains(t)) setOpen(false);
@@ -118,7 +124,8 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
   const total = visible.reduce((n, s) => n + s.items.length, 0);
   // Another name of a tag is that tag: it must not offer to create a duplicate.
   const exact = sections.some((s) => s.items.some((o) => terms(o).includes(q)));
-  const canCreate = q.length > 0 && !exact;
+  const refused = q.length > 0 && !exact && refuse ? refuse(query.trim()) : null;
+  const canCreate = q.length > 0 && !exact && !refused;
 
   const create = async () => {
     const name = query.trim();
@@ -198,7 +205,8 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
                   Agregar <strong className="font-semibold">{query.trim()}</strong>
                 </button>
               )}
-              {total === 0 && !canCreate && <p className="px-2.5 py-2 text-[13px] text-muted">Sin resultados.</p>}
+              {refused && <p className="px-2.5 py-2 text-[13px] text-accent-dark">{refused}</p>}
+              {total === 0 && !canCreate && !refused && <p className="px-2.5 py-2 text-[13px] text-muted">Sin resultados.</p>}
               {total === 0 && canCreate && <p className="px-2.5 pb-1 pt-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-muted">0 resultados</p>}
               {visible.map((s, i) => (
                 <div key={s.title ?? i}>
@@ -237,7 +245,7 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
   );
 }
 
-function Chip({ children, className }: { children: ReactNode; className?: string }) {
+export function Chip({ children, className }: { children: ReactNode; className?: string }) {
   return <span className={cn('inline-flex h-7 items-center gap-1 rounded-full border py-0.5 pl-2.5 pr-1 text-[13px]', className)}>{children}</span>;
 }
 

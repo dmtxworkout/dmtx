@@ -69,7 +69,7 @@ export function MusclesPage() {
               value={search}
               disabled={!!editing}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre o sinónimo"
+              placeholder="Buscar por nombre o alias"
               className="h-full flex-1 bg-transparent text-sm text-ink placeholder:text-muted-2 focus:outline-none disabled:opacity-50"
             />
           </div>
@@ -158,7 +158,7 @@ export function MusclesPage() {
                       </span>
                       <span className={cn('truncate text-[12px]', m.aliases.length ? 'text-ink-3' : 'text-muted-2')}>
                         {q && m.zone ? `${MUSCLE_ZONE_LABEL[m.zone]} · ` : ''}
-                        {m.aliases.length ? m.aliases.join(', ') : 'Sin sinónimos'}
+                        {m.aliases.length ? m.aliases.join(', ') : 'Sin alias'}
                       </span>
                     </button>
                   ))
@@ -167,7 +167,7 @@ export function MusclesPage() {
             </>
           ) : (
             <div className="flex flex-1 items-center justify-center p-8 text-center">
-              <p className="text-sm text-ink-3">Elige una zona en el cuerpo para ver sus músculos y editar sus sinónimos.</p>
+              <p className="text-sm text-ink-3">Elige una zona en el cuerpo para ver sus músculos y editar sus alias.</p>
             </div>
           )}
         </aside>
