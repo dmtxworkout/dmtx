@@ -1,6 +1,6 @@
 import { createRoute, z } from '@hono/zod-openapi';
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
-import { exercises, mediaAssets, mediaFolders, programs, skillLevels, skills, workouts } from '@dmtx/db';
+import { exercises, mediaAssets, mediaFolders, muscles, programs, skillLevels, skills, workouts } from '@dmtx/db';
 import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx/schemas';
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
@@ -12,7 +12,7 @@ import { requireAdmin } from '../middleware/auth';
 const kindEnum = z.enum(['video', 'image']);
 const usageItem = z.object({
   /** What references the asset, and the field it is used as. */
-  type: z.enum(['exercise', 'workout', 'program', 'skill', 'skillLevel']),
+  type: z.enum(['exercise', 'workout', 'program', 'skill', 'skillLevel', 'muscle']),
   id: z.uuid(),
   name: z.string(),
   field: z.enum(['video', 'thumbnail']),
@@ -109,7 +109,7 @@ async function usageForMany(db: Database, ids: string[]): Promise<Map<string, Us
     if (!list.some((x) => x.type === item.type && x.id === item.id && x.field === item.field)) list.push(item);
     map.set(assetId, list);
   };
-  const [ex, wo, pr, sk, lv] = await Promise.all([
+  const [ex, wo, pr, sk, lv, mu] = await Promise.all([
     db
       .select({ id: exercises.id, name: exercises.name, video: exercises.demoVideoAssetId, thumb: exercises.thumbnailAssetId })
       .from(exercises)
@@ -142,6 +142,7 @@ async function usageForMany(db: Database, ids: string[]): Promise<Map<string, Us
     db.select({ id: programs.id, name: programs.name, thumb: programs.thumbnailAssetId }).from(programs).where(and(isNull(programs.deletedAt), inArray(programs.thumbnailAssetId, ids))),
     db.select({ id: skills.id, name: skills.name, thumb: skills.thumbnailAssetId }).from(skills).where(and(isNull(skills.deletedAt), inArray(skills.thumbnailAssetId, ids))),
     db.select({ id: skillLevels.skillId, name: skillLevels.name, thumb: skillLevels.thumbnailAssetId }).from(skillLevels).where(inArray(skillLevels.thumbnailAssetId, ids)),
+    db.select({ id: muscles.id, name: muscles.name, image: muscles.imageAssetId }).from(muscles).where(inArray(muscles.imageAssetId, ids)),
   ]);
   for (const r of ex) {
     add(r.video, { type: 'exercise', id: r.id, name: r.name, field: 'video' });
@@ -159,6 +160,7 @@ async function usageForMany(db: Database, ids: string[]): Promise<Map<string, Us
   for (const r of pr) add(r.thumb, { type: 'program', id: r.id, name: r.name, field: 'thumbnail' });
   for (const r of sk) add(r.thumb, { type: 'skill', id: r.id, name: r.name, field: 'thumbnail' });
   for (const r of lv) add(r.thumb, { type: 'skillLevel', id: r.id, name: r.name, field: 'thumbnail' });
+  for (const r of mu) add(r.image, { type: 'muscle', id: r.id, name: r.name, field: 'thumbnail' });
   return map;
 }
 const usageOf = async (db: Database, id: string) => (await usageForMany(db, [id])).get(id) ?? [];

@@ -14,6 +14,9 @@ export const muscleSchema = z.object({
   name: z.string(),
   zone: muscleZoneSchema.nullable(),
   aliases: z.array(z.string()),
+  /** The picture marking the muscle on a body, for the app. */
+  imageAssetId: uuidSchema.nullable(),
+  imageUrl: z.string().nullable(),
   position: z.number().int(),
   exerciseCount: z.number().int(),
 });
@@ -34,15 +37,20 @@ export const taxonomySchema = z.object({
 });
 export type Taxonomy = z.infer<typeof taxonomySchema>;
 
+const muscleAliasesSchema = z.array(z.string().trim().min(1).max(100)).max(30);
+
 export const createMuscleSchema = z.object({
   name: z.string().min(1).max(100),
   zone: muscleZoneSchema.nullish(),
+  aliases: muscleAliasesSchema.optional(),
+  imageAssetId: uuidSchema.nullish(),
 });
 export type CreateMuscleInput = z.infer<typeof createMuscleSchema>;
 export const updateMuscleSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   zone: muscleZoneSchema.nullish(),
-  aliases: z.array(z.string().trim().min(1).max(100)).max(30).optional(),
+  aliases: muscleAliasesSchema.optional(),
+  imageAssetId: uuidSchema.nullish(),
   position: z.number().int().optional(),
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;

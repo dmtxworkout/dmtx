@@ -20,7 +20,7 @@ import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/toast';
 import { fileType } from '@/components/media-library';
 import { useImageEditor } from '@/components/image-editor';
-import { USAGE_LABEL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
+import { USAGE_LABEL, usageHref, usageFieldLabel } from '@/lib/media-usage';
 import { formatBytes, isUploadDeclined, startUpload, uploadPct, useUploads } from '@/lib/uploads';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -346,7 +346,7 @@ export function MediaViewer({ id }: { id: string }) {
                   {used.map((u) => (
                     <li key={`${u.type}-${u.id}-${u.field}`}>
                       <Link
-                        href={`${USAGE_PATH[u.type]}/${u.id}`}
+                        href={usageHref(u)}
                         className="group/use flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-2"
                       >
                         <span className="flex h-8 w-8 flex-none items-center justify-center rounded-md border border-line-2 bg-surface-3 text-ink-3">
@@ -392,7 +392,7 @@ export function MediaViewer({ id }: { id: string }) {
                 {used.map((u) => (
                   <li key={`${u.type}-${u.id}-${u.field}`} className="text-[13px]">
                     <Link
-                      href={`${USAGE_PATH[u.type]}/${u.id}`}
+                      href={usageHref(u)}
                       className="font-medium text-accent hover:text-accent-dark"
                     >
                       {u.name}

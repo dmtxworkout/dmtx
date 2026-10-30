@@ -4,8 +4,8 @@
 // an add row, inline rename, and bulk select → delete. Deleting a tag simply
 // takes it off the exercises that carried it. Muscles also show their body
 // zone (the app browses by zone): filtered by it beside the search, and
-// assigned in bulk from the selection bar; and the other names people search
-// them by, edited inline.
+// assigned in bulk from the selection bar. A muscle is added and edited in a
+// dialog (name, zone, other names, picture); equipment inline.
 import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -17,9 +17,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { ActionsMenu } from '@/components/ui/actions-menu';
+import { MuscleDialog } from '@/components/muscle-dialog';
 import { MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type MuscleZone } from '@dmtx/schemas';
 
-type Row = { id: string; name: string; exerciseCount: number; zone?: MuscleZone | null; aliases?: string[] };
+type Row = { id: string; name: string; exerciseCount: number; zone?: MuscleZone | null; aliases?: string[]; imageUrl?: string | null };
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -34,8 +35,6 @@ interface Kind {
   rename: (id: string, name: string) => Promise<unknown>;
   /** Muscles: puts the given rows in a zone (null = «Sin zona»). */
   setZone?: (ids: string[], zone: MuscleZone | null) => Promise<unknown>;
-  /** Muscles: the other names a row is searched by. */
-  setAliases?: (id: string, aliases: string[]) => Promise<unknown>;
   remove: (id: string) => Promise<unknown>;
 }
 
@@ -48,7 +47,6 @@ export const MUSCLES: Kind = {
   create: (name) => api.taxonomy.createMuscle({ name }),
   rename: (id, name) => api.taxonomy.updateMuscle(id, { name }),
   setZone: (ids, zone) => api.taxonomy.setMuscleZone({ ids, zone }),
-  setAliases: (id, aliases) => api.taxonomy.updateMuscle(id, { aliases }),
   remove: (id) => api.taxonomy.removeMuscle(id),
 };
 
@@ -77,7 +75,8 @@ export function TagTable({ kind }: { kind: Kind }) {
   // Names being created right now: shown as ghost rows until the list refetches.
   const [adding, setAdding] = useState<string[]>([]);
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null);
-  const [editingAliases, setEditingAliases] = useState<{ id: string; text: string } | null>(null);
+  // Muscles: the one open in the dialog ('new' = adding).
+  const [dialog, setDialog] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
   // Muscles: only those of a zone ('none' = «Sin zona»; null = all).
@@ -129,20 +128,6 @@ export function TagTable({ kind }: { kind: Kind }) {
     if (!row || !name.trim() || name.trim() === row.name) return;
     try {
       await kind.rename(id, name.trim());
-      await refresh();
-    } catch (e) {
-      fail(e);
-    }
-  };
-  const submitAliases = async () => {
-    if (!editingAliases) return;
-    const { id, text } = editingAliases;
-    setEditingAliases(null);
-    const row = all.find((r) => r.id === id);
-    const aliases = text.split(',').map((a) => a.trim()).filter(Boolean);
-    if (!row || aliases.join() === (row.aliases ?? []).join()) return;
-    try {
-      await kind.setAliases!(id, aliases);
       await refresh();
     } catch (e) {
       fail(e);
@@ -302,14 +287,24 @@ export function TagTable({ kind }: { kind: Kind }) {
 
           {/* The add row opens the list: type a name, Enter, and keep typing the next one. */}
           <div className={`grid ${COLS} items-center border-b border-line-4 py-2`}>
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => onKey(e, () => void add())}
-              placeholder={`+ ${kind.singular === 'equipo' ? 'Equipo' : 'Músculo'} (Enter para agregar)`}
-              aria-label={kind.singular === 'equipo' ? 'Nuevo equipo' : 'Nuevo músculo'}
-              className="col-span-2 h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
-            />
+            {zoned ? (
+              <button
+                type="button"
+                onClick={() => setDialog('new')}
+                className="col-span-2 h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-left text-[13px] text-muted-2 hover:border-ink hover:text-ink"
+              >
+                + Agregar músculo
+              </button>
+            ) : (
+              <input
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => onKey(e, () => void add())}
+                placeholder="+ Equipo (Enter para agregar)"
+                aria-label="Nuevo equipo"
+                className="col-span-2 h-[30px] min-w-0 rounded-[7px] border border-dashed border-line-2 bg-surface-3 px-2.5 text-[13px] text-ink placeholder:text-muted-2 focus:border-accent focus:outline-none"
+              />
+            )}
             {zoned && <span />}
             {zoned && <span />}
             <span />
@@ -362,7 +357,20 @@ export function TagTable({ kind }: { kind: Kind }) {
                     }
                     label={`Seleccionar ${r.name}`}
                   />
-                  {editing?.id === r.id ? (
+                  {zoned ? (
+                    <button
+                      type="button"
+                      onClick={() => setDialog(r.id)}
+                      title="Clic para editar"
+                      className="flex min-w-0 items-center gap-2.5 text-left text-sm font-semibold text-ink"
+                    >
+                      {r.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={r.imageUrl} alt="" className="h-7 w-7 shrink-0 rounded-md border border-line object-cover" />
+                      )}
+                      <span className="truncate">{r.name}</span>
+                    </button>
+                  ) : editing?.id === r.id ? (
                     <input
                       autoFocus
                       value={editing.name}
@@ -387,37 +395,11 @@ export function TagTable({ kind }: { kind: Kind }) {
                       {r.name}
                     </button>
                   )}
-                  {zoned &&
-                    (editingAliases?.id === r.id ? (
-                      <input
-                        autoFocus
-                        value={editingAliases.text}
-                        onChange={(e) => setEditingAliases({ id: r.id, text: e.target.value })}
-                        onBlur={() => void submitAliases()}
-                        onKeyDown={(e) =>
-                          onKey(
-                            e,
-                            () => void submitAliases(),
-                            () => setEditingAliases(null),
-                          )
-                        }
-                        placeholder="Separados por coma"
-                        aria-label={`Otros nombres de ${r.name}`}
-                        className="h-[30px] min-w-0 rounded-[7px] border border-accent bg-surface px-2 text-[13px] text-ink placeholder:text-muted-2 focus:outline-none"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setEditingAliases({ id: r.id, text: (r.aliases ?? []).join(', ') })}
-                        title={r.aliases?.length ? r.aliases.join(', ') : 'Clic para agregar'}
-                        className={cn(
-                          'min-w-0 truncate text-left text-[13px]',
-                          r.aliases?.length ? 'text-ink-3' : 'text-muted-2 hover:text-ink-3',
-                        )}
-                      >
-                        {r.aliases?.length ? r.aliases.join(', ') : '+ Agregar'}
-                      </button>
-                    ))}
+                  {zoned && (
+                    <span title={r.aliases?.join(', ')} className="truncate text-[13px] text-ink-3">
+                      {r.aliases?.join(', ')}
+                    </span>
+                  )}
                   {zoned && (
                     <span
                       className={cn('truncate text-[13px]', r.zone ? 'text-ink-2' : 'text-muted-2')}
@@ -434,6 +416,15 @@ export function TagTable({ kind }: { kind: Kind }) {
           )}
         </div>
       </div>
+
+      {dialog && (
+        <MuscleDialog
+          key={dialog}
+          muscle={data?.muscles.find((m) => m.id === dialog) ?? null}
+          onClose={() => setDialog(null)}
+          onSaved={refresh}
+        />
+      )}
 
       <Dialog
         open={confirm}

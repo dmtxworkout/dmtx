@@ -13,7 +13,9 @@ import {
   updateEquipmentSchema,
   updateMuscleSchema,
 } from '@dmtx/schemas';
+import { resolveMediaUrls } from '../lib/media';
 import { syncWorkoutMuscles, workoutsWorking } from '../lib/workout-muscles';
+import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
 
@@ -43,12 +45,29 @@ async function usage(db: Database) {
   };
 }
 
-async function loadAll(db: Database) {
+/** A muscle row as the admin sees it. */
+async function muscleOut(db: Database, env: Env, m: typeof muscles.$inferSelect, exerciseCount: number) {
+  const media = await resolveMediaUrls(db, env, [m.imageAssetId]);
+  return {
+    id: m.id,
+    slug: m.slug,
+    name: m.name,
+    zone: m.zone,
+    aliases: m.aliases,
+    imageAssetId: m.imageAssetId,
+    imageUrl: m.imageAssetId ? (media.get(m.imageAssetId)?.url ?? null) : null,
+    position: m.position,
+    exerciseCount,
+  };
+}
+
+async function loadAll(db: Database, env: Env) {
   const [ms, eq_, use] = await Promise.all([
     db.select().from(muscles).orderBy(asc(muscles.position), asc(muscles.name)),
     db.select().from(equipment).orderBy(asc(equipment.position), asc(equipment.name)),
     usage(db),
   ]);
+  const media = await resolveMediaUrls(db, env, ms.map((m) => m.imageAssetId));
   return {
     muscles: ms.map((m) => ({
       id: m.id,
@@ -56,6 +75,8 @@ async function loadAll(db: Database) {
       name: m.name,
       zone: m.zone,
       aliases: m.aliases,
+      imageAssetId: m.imageAssetId,
+      imageUrl: m.imageAssetId ? (media.get(m.imageAssetId)?.url ?? null) : null,
       position: m.position,
       exerciseCount: use.muscle.get(m.id) ?? 0,
     })),
@@ -89,7 +110,7 @@ taxonomyRoute.openapi(
       200: { description: 'Músculos y equipo', content: { 'application/json': { schema: taxonomySchema } } },
     },
   }),
-  async (c) => c.json(await loadAll(c.get('db')), 200),
+  async (c) => c.json(await loadAll(c.get('db'), c.env), 200),
 );
 
 // --- Muscles -----------------------------------------------------------------
@@ -113,10 +134,17 @@ taxonomyRoute.openapi(
     const [agg] = await db.select({ pos: max(muscles.position) }).from(muscles);
     const [row] = await db
       .insert(muscles)
-      .values({ slug, name: input.name.trim(), zone: input.zone ?? null, position: (agg?.pos ?? 0) + 1 })
+      .values({
+        slug,
+        name: input.name.trim(),
+        zone: input.zone ?? null,
+        aliases: [...new Set(input.aliases ?? [])],
+        imageAssetId: input.imageAssetId ?? null,
+        position: (agg?.pos ?? 0) + 1,
+      })
       .returning();
     if (!row) throw new Error('No se pudo crear el músculo');
-    return c.json({ ...row, exerciseCount: 0 }, 201);
+    return c.json(await muscleOut(db, c.env, row, 0), 201);
   },
 );
 
@@ -161,6 +189,7 @@ taxonomyRoute.openapi(
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
         ...(input.zone !== undefined ? { zone: input.zone ?? null } : {}),
         ...(input.aliases !== undefined ? { aliases: [...new Set(input.aliases)] } : {}),
+        ...(input.imageAssetId !== undefined ? { imageAssetId: input.imageAssetId ?? null } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
       })
       .where(eq(muscles.id, id))
@@ -169,7 +198,7 @@ taxonomyRoute.openapi(
     // Another zone can change which rutinas count as «Cuerpo completo».
     if (input.zone !== undefined) await syncWorkoutMuscles(db, await workoutsWorking(db, id));
     const use = await usage(db);
-    return c.json({ ...row, exerciseCount: use.muscle.get(row.id) ?? 0 }, 200);
+    return c.json(await muscleOut(db, c.env, row, use.muscle.get(row.id) ?? 0), 200);
   },
 );
 

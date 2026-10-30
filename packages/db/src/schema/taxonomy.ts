@@ -10,6 +10,7 @@ export const muscles = pgTable('muscles', {
   zone: muscleZoneEnum(),
   // Other names people search it by ("isquios"); only the name is ever shown.
   aliases: jsonb().$type<string[]>().notNull().default([]),
+  imageAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
   position: integer().notNull().default(0),
   ...timestamps,
 });

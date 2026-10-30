@@ -175,6 +175,7 @@ function Biblioteca() {
     program: 'programa',
     skill: 'habilidad',
     skillLevel: 'nivel',
+    muscle: 'músculo',
   };
 
   return (
