@@ -12,10 +12,11 @@ export const muscleSchema = z.object({
   id: uuidSchema,
   slug: z.string(),
   name: z.string(),
+  /** Follows from `bodyPart`; null only while a muscle has none. */
   zone: muscleZoneSchema.nullable(),
   aliases: z.array(z.string()),
   /** What lights up on the drawn body when something works this muscle. */
-  bodyParts: z.array(bodyPartSchema),
+  bodyPart: bodyPartSchema.nullable(),
   position: z.number().int(),
   exerciseCount: z.number().int(),
 });
@@ -40,16 +41,14 @@ const muscleAliasesSchema = z.array(z.string().trim().min(1).max(100)).max(30);
 
 export const createMuscleSchema = z.object({
   name: z.string().min(1).max(100),
-  zone: muscleZoneSchema.nullish(),
   aliases: muscleAliasesSchema.optional(),
-  bodyParts: z.array(bodyPartSchema).optional(),
+  bodyPart: bodyPartSchema.nullish(),
 });
 export type CreateMuscleInput = z.infer<typeof createMuscleSchema>;
 export const updateMuscleSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  zone: muscleZoneSchema.nullish(),
   aliases: muscleAliasesSchema.optional(),
-  bodyParts: z.array(bodyPartSchema).optional(),
+  bodyPart: bodyPartSchema.nullish(),
   position: z.number().int().optional(),
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;

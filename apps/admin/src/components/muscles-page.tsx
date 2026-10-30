@@ -2,7 +2,8 @@
 
 // The Músculos page: the body is the way in. A click on a part picks its zone
 // and the panel beside it lists that zone's muscles; opening one, or adding
-// one, turns the body into what that muscle lights up.
+// one, turns the body into the one part that muscle lights up, and its zone
+// follows from that part.
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { BODY_PART, BODY_PART_LABEL, BODY_PART_ZONE, MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type BodyPart, type Muscle, type MuscleZone } from '@dmtx/schemas';
@@ -27,9 +28,9 @@ export function MusclesPage() {
   const [open, setOpen] = useState<Open | null>(null);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [parts, setParts] = useState<BodyPart[]>([]);
-  // A row being hovered shows just that muscle on the body.
-  const [preview, setPreview] = useState<BodyPart[] | null>(null);
+  const [part, setPart] = useState<BodyPart | null>(null);
+  // A row being hovered shows that muscle on the body.
+  const [preview, setPreview] = useState<Muscle | null>(null);
 
   const all = data?.muscles ?? [];
   const inZone = (z: Open) => all.filter((m) => (m.zone ?? 'none') === z);
@@ -40,18 +41,23 @@ export function MusclesPage() {
 
   const startEditing = (next: Editing) => {
     setEditing(next);
-    setParts(next.muscle?.bodyParts ?? []);
+    setPart(next.muscle?.bodyPart ?? null);
     setPreview(null);
   };
   const pickZone = (z: Open) => {
     setSearch('');
     setOpen(z);
   };
-  const onPart = (part: BodyPart) => {
-    if (editing) setParts(parts.includes(part) ? parts.filter((p) => p !== part) : [...parts, part]);
-    else pickZone(BODY_PART_ZONE[part]);
+  const onPart = (clicked: BodyPart) => {
+    if (editing) setPart(part === clicked ? null : clicked);
+    else pickZone(BODY_PART_ZONE[clicked]);
   };
-  const lit = editing ? parts : (preview ?? (!q && open ? BODY_PART.filter((p) => BODY_PART_ZONE[p] === open) : []));
+  const partsOf = (z: Open | null) => BODY_PART.filter((p) => BODY_PART_ZONE[p] === z);
+  // The zone stays visible: the muscle's part in the accent, the rest of its zone fainter.
+  const focus = editing ? part : preview?.bodyPart;
+  const shownZone: Open | null = editing ? (part ? BODY_PART_ZONE[part] : editing.zone) : preview ? (preview.zone ?? 'none') : !q ? open : null;
+  const lit = focus ? [focus] : editing || preview ? [] : partsOf(shownZone);
+  const soft = partsOf(shownZone).filter((p) => !lit.includes(p));
   const refresh = () => qc.invalidateQueries({ queryKey: ['taxonomy'] });
 
   return (
@@ -73,7 +79,7 @@ export function MusclesPage() {
         <div className="flex min-w-0 flex-col gap-4 overflow-y-auto px-8 py-5">
           <div className="flex flex-wrap gap-1.5">
             {zones.map((z) => {
-              const on = !q && open === z;
+              const on = (editing || !q) && shownZone === z;
               return (
                 <button
                   key={z}
@@ -94,9 +100,10 @@ export function MusclesPage() {
           </div>
           <BodyFigure
             lit={lit}
+            soft={soft}
             onPart={onPart}
             describe={(p) => (editing ? BODY_PART_LABEL[p] : `${BODY_PART_LABEL[p]} · ${MUSCLE_ZONE_LABEL[BODY_PART_ZONE[p]]}`)}
-            hint={editing ? 'Haz clic en lo que se ilumina cuando se trabaja este músculo.' : 'Haz clic en el cuerpo para ver los músculos de esa zona.'}
+            hint={editing ? 'Elige la parte que trabaja este músculo: la zona se asigna sola.' : 'Haz clic en el cuerpo para ver los músculos de esa zona.'}
           />
         </div>
 
@@ -105,14 +112,13 @@ export function MusclesPage() {
             <MuscleEditor
               key={editing.muscle?.id ?? 'new'}
               muscle={editing.muscle}
-              initialZone={editing.zone}
               all={all}
-              bodyParts={parts}
+              bodyPart={part}
               onCancel={() => setEditing(null)}
               onSaved={async (zone) => {
                 await refresh();
                 setEditing(null);
-                if (zone) pickZone(zone);
+                pickZone(zone);
               }}
               onDeleted={async () => {
                 await refresh();
@@ -140,8 +146,8 @@ export function MusclesPage() {
                       key={m.id}
                       type="button"
                       onClick={() => startEditing({ muscle: m, zone: m.zone })}
-                      onMouseEnter={() => setPreview(m.bodyParts)}
-                      onFocus={() => setPreview(m.bodyParts)}
+                      onMouseEnter={() => setPreview(m)}
+                      onFocus={() => setPreview(m)}
                       className="flex w-full flex-col gap-0.5 border-b border-line-4 px-5 py-2.5 text-left last:border-0 hover:bg-surface-2/60"
                     >
                       <span className="flex items-baseline justify-between gap-3">

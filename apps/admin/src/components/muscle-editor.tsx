@@ -1,15 +1,15 @@
 'use client';
 
-// The panel's form for a muscle: its name, zone and the other names people
-// search it by; what it lights up is marked on the page's body. While typing another
+// The panel's form for a muscle: its name and the other names people search it
+// by. The one part it lights up is picked on the page's body, and its zone
+// follows from that part. While typing another
 // name it lists those already in use that start the same, so the data stays
 // consistent: one is reused only by choosing it, and another muscle's name
 // can't be one.
 import { useState, type FormEvent, type KeyboardEvent } from 'react';
-import { BODY_PART_LABEL, MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type BodyPart, type Muscle, type MuscleZone } from '@dmtx/schemas';
+import { BODY_PART_LABEL, BODY_PART_ZONE, MUSCLE_ZONE_LABEL, type BodyPart, type Muscle, type MuscleZone } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
-import { ActionsMenu } from '@/components/ui/actions-menu';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -20,25 +20,22 @@ const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 export function MuscleEditor({
   muscle,
-  initialZone,
   all,
-  bodyParts,
+  bodyPart,
   onCancel,
   onSaved,
   onDeleted,
 }: {
   /** The muscle to edit; null adds a new one. */
   muscle: Muscle | null;
-  initialZone: MuscleZone | null;
   all: Muscle[];
-  /** What it lights up, marked on the page's body. */
-  bodyParts: BodyPart[];
+  /** What it lights up, picked on the page's body. */
+  bodyPart: BodyPart | null;
   onCancel: () => void;
   onSaved: (zone: MuscleZone) => Promise<unknown>;
   onDeleted: () => Promise<unknown>;
 }) {
   const [name, setName] = useState(muscle?.name ?? '');
-  const [zone, setZone] = useState<MuscleZone | null>(initialZone);
   const [aliases, setAliases] = useState<string[]>(muscle?.aliases ?? []);
   const [draft, setDraft] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -72,13 +69,13 @@ export function MuscleEditor({
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !zone) return;
+    if (!name.trim() || !bodyPart) return;
     setSaving(true);
     try {
-      const input = { name: name.trim(), zone, aliases: addable ? [...aliases, draft.trim().toLowerCase()] : aliases, bodyParts };
+      const input = { name: name.trim(), aliases: addable ? [...aliases, draft.trim().toLowerCase()] : aliases, bodyPart };
       if (muscle) await api.taxonomy.updateMuscle(muscle.id, input);
       else await api.taxonomy.createMuscle(input);
-      await onSaved(zone);
+      await onSaved(BODY_PART_ZONE[bodyPart]);
       toast(muscle ? 'Músculo guardado' : 'Músculo agregado');
     } catch (err) {
       toast(err instanceof Error ? err.message : es.app.error, 'error');
@@ -113,23 +110,6 @@ export function MuscleEditor({
           <span className={fieldLabel}>Nombre</span>
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="p. ej. Femorales" />
         </label>
-        <div>
-          <span className={fieldLabel}>Zona</span>
-          <ActionsMenu
-            align="left"
-            label={zone ? MUSCLE_ZONE_LABEL[zone] : <span className="text-muted-2">Elegir zona</span>}
-            items={MUSCLE_ZONE.map((z) => ({
-              label: (
-                <span className="flex w-full items-center gap-2">
-                  <span className="w-3 text-ink">{zone === z ? '✓' : ''}</span>
-                  {MUSCLE_ZONE_LABEL[z]}
-                </span>
-              ),
-              onSelect: () => setZone(z),
-            }))}
-          />
-        </div>
-
         <div>
           <label htmlFor="muscle-aliases" className={fieldLabel}>
             También se busca como
@@ -185,10 +165,14 @@ export function MuscleEditor({
         </div>
 
         <div>
-          <span className={fieldLabel}>Se ilumina en el cuerpo</span>
-          <p className="text-[13px] leading-5 text-ink-3">
-            {bodyParts.length ? bodyParts.map((p) => BODY_PART_LABEL[p]).join(', ') : 'Nada: márcalo en el cuerpo, o déjalo así si no se ve desde afuera.'}
-          </p>
+          <span className={fieldLabel}>Parte del cuerpo</span>
+          {bodyPart ? (
+            <p className="text-[13px] leading-5 text-ink-2">
+              {BODY_PART_LABEL[bodyPart]} <span className="text-ink-3">· zona {MUSCLE_ZONE_LABEL[BODY_PART_ZONE[bodyPart]]}</span>
+            </p>
+          ) : (
+            <p className="text-[13px] leading-5 text-ink-3">Elige una en el cuerpo: la zona se asigna sola.</p>
+          )}
         </div>
       </div>
 
@@ -204,7 +188,7 @@ export function MuscleEditor({
           <Button type="button" variant="outline" onClick={onCancel}>
             {es.app.cancel}
           </Button>
-          <Button type="submit" disabled={saving || !name.trim() || !zone}>
+          <Button type="submit" disabled={saving || !name.trim() || !bodyPart}>
             {saving ? es.app.saving : muscle ? 'Guardar' : 'Agregar'}
           </Button>
         </div>

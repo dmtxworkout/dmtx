@@ -3,6 +3,7 @@ import { and, asc, countDistinct, eq, inArray, isNull, max } from 'drizzle-orm';
 import { equipment, exerciseEquipment, exerciseMuscles, exercises, muscles } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import {
+  BODY_PART_ZONE,
   createEquipmentSchema,
   createMuscleSchema,
   equipmentSchema,
@@ -68,7 +69,7 @@ async function loadAll(db: Database) {
       name: m.name,
       zone: m.zone,
       aliases: m.aliases,
-      bodyParts: m.bodyParts,
+      bodyPart: m.bodyPart,
       position: m.position,
       exerciseCount: use.muscle.get(m.id) ?? 0,
     })),
@@ -132,9 +133,9 @@ taxonomyRoute.openapi(
       .values({
         slug,
         name: input.name.trim(),
-        zone: input.zone ?? null,
+        bodyPart: input.bodyPart ?? null,
+        zone: input.bodyPart ? BODY_PART_ZONE[input.bodyPart] : null,
         aliases: clean.aliases,
-        bodyParts: [...new Set(input.bodyParts ?? [])],
         position: (agg?.pos ?? 0) + 1,
       })
       .returning();
@@ -165,16 +166,17 @@ taxonomyRoute.openapi(
       .update(muscles)
       .set({
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
-        ...(input.zone !== undefined ? { zone: input.zone ?? null } : {}),
+        ...(input.bodyPart !== undefined
+          ? { bodyPart: input.bodyPart ?? null, zone: input.bodyPart ? BODY_PART_ZONE[input.bodyPart] : null }
+          : {}),
         ...(clean ? { aliases: clean.aliases } : {}),
-        ...(input.bodyParts !== undefined ? { bodyParts: [...new Set(input.bodyParts)] } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
       })
       .where(eq(muscles.id, id))
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
     // Another zone can change which rutinas count as «Cuerpo completo».
-    if (input.zone !== undefined) await syncWorkoutMuscles(db, await workoutsWorking(db, id));
+    if (input.bodyPart !== undefined) await syncWorkoutMuscles(db, await workoutsWorking(db, id));
     const use = await usage(db);
     return c.json({ ...row, exerciseCount: use.muscle.get(row.id) ?? 0 }, 200);
   },

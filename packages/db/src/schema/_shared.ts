@@ -14,6 +14,7 @@ import {
   MEDIA_KIND,
   MEDIA_PROCESSING_STATUS,
   MUSCLE_ROLE,
+  BODY_PART,
   MUSCLE_ZONE,
   PAYMENT_STATUS,
   SUBSCRIPTION_STATUS,
@@ -32,6 +33,7 @@ export const blockKindEnum = pgEnum('block_kind', BLOCK_KIND);
 export const blockSectionEnum = pgEnum('block_section', BLOCK_SECTION);
 export const itemKindEnum = pgEnum('item_kind', ITEM_KIND);
 export const muscleZoneEnum = pgEnum('muscle_zone', MUSCLE_ZONE);
+export const bodyPartEnum = pgEnum('body_part', BODY_PART);
 export const muscleRoleEnum = pgEnum('muscle_role', MUSCLE_ROLE);
 export const mediaKindEnum = pgEnum('media_kind', MEDIA_KIND);
 export const mediaProcessingStatusEnum = pgEnum('media_processing_status', MEDIA_PROCESSING_STATUS);

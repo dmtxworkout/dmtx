@@ -1,0 +1,2 @@
+CREATE TYPE "public"."body_part" AS ENUM('chest', 'deltoids', 'biceps', 'triceps', 'forearm', 'abs', 'obliques', 'trapezius', 'upper-back', 'lower-back', 'gluteal', 'quadriceps', 'adductors', 'hamstring', 'calves', 'tibialis');--> statement-breakpoint
+ALTER TABLE "muscles" ADD COLUMN "body_part" "body_part";

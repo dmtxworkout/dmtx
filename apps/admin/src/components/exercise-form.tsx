@@ -150,7 +150,7 @@ export function ExerciseForm({
   const [muscleIds, setMuscleIds] = useState<string[]>(exercise?.muscleIds ?? []);
   const { data: taxonomy } = useTaxonomy();
   // What the chosen muscles light up on the body, as the app will show it.
-  const bodyParts = [...new Set((taxonomy?.muscles ?? []).filter((m) => muscleIds.includes(m.id)).flatMap((m) => m.bodyParts))];
+  const bodyParts = [...new Set((taxonomy?.muscles ?? []).filter((m) => muscleIds.includes(m.id)).flatMap((m) => (m.bodyPart ? [m.bodyPart] : [])))];
   const [equipmentIds, setEquipmentIds] = useState<string[]>(exercise?.equipmentIds ?? []);
 
   const form = useForm<FormValues>({

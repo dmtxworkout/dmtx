@@ -1,0 +1,1 @@
+ALTER TABLE "muscles" DROP COLUMN "body_parts";
