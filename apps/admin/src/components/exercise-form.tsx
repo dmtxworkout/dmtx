@@ -415,9 +415,9 @@ export function ExerciseForm({
               <CardHeader className="rounded-t-[11px]">
                 <CardTitle>Músculos</CardTitle>
               </CardHeader>
-              <CardContent className="flex flex-col gap-4 py-4">
+              <CardContent className="flex flex-col gap-4 rounded-b-[11px] bg-paper py-4">
                 <MusclePicker value={muscleIds} onChange={setMuscleIds} />
-                {bodyParts.length > 0 && <BodyFigure size="sm" lit={bodyParts} hint="Lo que trabaja" />}
+                {bodyParts.length > 0 && <BodyFigure size="sm" lit={bodyParts} />}
               </CardContent>
             </Card>
             <Card className="overflow-visible">

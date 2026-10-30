@@ -1,7 +1,8 @@
 'use client';
 
-// The drawn body, front and back: what's lit shows in the accent, a hovered part
-// names itself, and a click is the page's to read (without `onPart` it only shows).
+// The drawn body, front and back: what's lit shows in the accent. With `onPart`
+// a hovered part names itself and a click is the page's to read; without it the
+// body only shows.
 // The man and the woman share the parts, so the figure is only a way of looking.
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { BODY_FIGURES, type BodyFigureKind, type BodyView } from '@dmtx/core/body-map';
@@ -28,7 +29,7 @@ export function BodyFigure({
   /** What a hovered part is called. */
   describe?: (part: BodyPart) => ReactNode;
   /** Shown under the body while nothing is hovered. */
-  hint: ReactNode;
+  hint?: ReactNode;
   onPart?: (part: BodyPart) => void;
   /** `sm` fits a form's side column. */
   size?: 'sm' | 'lg';
@@ -56,6 +57,10 @@ export function BodyFigure({
                     <g
                       key={part}
                       {...(onPart && {
+                        onMouseEnter: () => setHovered(part),
+                        onMouseLeave: () => setHovered(null),
+                        onFocus: () => setHovered(part),
+                        onBlur: () => setHovered(null),
                         role: 'button',
                         'aria-pressed': on,
                         'aria-label': BODY_PART_LABEL[part],
@@ -67,10 +72,6 @@ export function BodyFigure({
                           onPart(part);
                         },
                       })}
-                      onMouseEnter={() => setHovered(part)}
-                      onMouseLeave={() => setHovered(null)}
-                      onFocus={() => setHovered(part)}
-                      onBlur={() => setHovered(null)}
                       className={cn(
                         'outline-none transition-colors',
                         onPart && 'cursor-pointer',
@@ -90,10 +91,12 @@ export function BodyFigure({
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-4">
-        <p className="min-h-5 min-w-0 text-[13px] leading-5 text-ink-3">
-          {hovered ? <strong className="font-semibold text-ink">{describe(hovered)}</strong> : hint}
-        </p>
+      <div className={cn('flex items-center gap-4', onPart ? 'justify-between' : 'justify-end')}>
+        {onPart && (
+          <p className="min-h-5 min-w-0 text-[13px] leading-5 text-ink-3">
+            {hovered ? <strong className="font-semibold text-ink">{describe(hovered)}</strong> : hint}
+          </p>
+        )}
         <div role="group" aria-label="Figura" className="flex shrink-0 overflow-hidden rounded-lg border border-line-2">
           {FIGURES.map(({ kind, label }) => (
             <button
