@@ -19,8 +19,8 @@ const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 
 /** Which zone is open: 'none' holds the muscles created without one. */
 type Open = MuscleZone | 'none';
-/** The muscle in the panel's form: an existing one, or a new one in a zone. */
-type Editing = { muscle: Muscle | null; zone: MuscleZone | null };
+/** The muscle in the panel's form: an existing one, or null for a new one. */
+type Editing = { muscle: Muscle | null };
 
 export function MusclesPage() {
   const qc = useQueryClient();
@@ -53,11 +53,10 @@ export function MusclesPage() {
     else pickZone(BODY_PART_ZONE[clicked]);
   };
   const partsOf = (z: Open | null) => BODY_PART.filter((p) => BODY_PART_ZONE[p] === z);
-  // The zone stays visible: the muscle's part in the accent, the rest of its zone fainter.
+  // A muscle shows only its part; with none open, the open zone shows whole.
   const focus = editing ? part : preview?.bodyPart;
-  const shownZone: Open | null = editing ? (part ? BODY_PART_ZONE[part] : editing.zone) : preview ? (preview.zone ?? 'none') : !q ? open : null;
+  const shownZone: Open | null = editing ? (part ? BODY_PART_ZONE[part] : null) : !q ? open : null;
   const lit = focus ? [focus] : editing || preview ? [] : partsOf(shownZone);
-  const soft = partsOf(shownZone).filter((p) => !lit.includes(p));
   const refresh = () => qc.invalidateQueries({ queryKey: ['taxonomy'] });
 
   return (
@@ -100,7 +99,6 @@ export function MusclesPage() {
           </div>
           <BodyFigure
             lit={lit}
-            soft={soft}
             onPart={onPart}
             describe={(p) => (editing ? BODY_PART_LABEL[p] : `${BODY_PART_LABEL[p]} · ${MUSCLE_ZONE_LABEL[BODY_PART_ZONE[p]]}`)}
             hint={editing ? 'Elige la parte que trabaja este músculo: la zona se asigna sola.' : 'Haz clic en el cuerpo para ver los músculos de esa zona.'}
@@ -133,7 +131,7 @@ export function MusclesPage() {
             <>
               <div className="flex items-center justify-between gap-3 border-b border-line-3 px-5 py-3.5">
                 <h2 className="truncate text-[15px] font-semibold text-ink">{q ? `Resultados para «${search.trim()}»` : zoneLabel(open!)}</h2>
-                <Button type="button" size="sm" onClick={() => startEditing({ muscle: null, zone: !q && open && open !== 'none' ? open : null })}>
+                <Button type="button" size="sm" onClick={() => startEditing({ muscle: null })}>
                   + Agregar
                 </Button>
               </div>
@@ -145,7 +143,7 @@ export function MusclesPage() {
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => startEditing({ muscle: m, zone: m.zone })}
+                      onClick={() => startEditing({ muscle: m })}
                       onMouseEnter={() => setPreview(m)}
                       onFocus={() => setPreview(m)}
                       className="flex w-full flex-col gap-0.5 border-b border-line-4 px-5 py-2.5 text-left last:border-0 hover:bg-surface-2/60"
@@ -168,7 +166,7 @@ export function MusclesPage() {
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center">
               <p className="text-sm text-ink-3">Elige una zona en el cuerpo para ver sus músculos, agregar otros y editar sus sinónimos.</p>
-              <Button type="button" variant="outline" size="sm" onClick={() => startEditing({ muscle: null, zone: null })}>
+              <Button type="button" variant="outline" size="sm" onClick={() => startEditing({ muscle: null })}>
                 + Agregar músculo
               </Button>
             </div>

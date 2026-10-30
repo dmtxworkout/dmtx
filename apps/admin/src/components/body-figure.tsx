@@ -1,7 +1,6 @@
 'use client';
 
-// The drawn body, front and back: what's lit shows in the accent, what's around
-// it (the rest of its zone) fainter, a hovered part
+// The drawn body, front and back: what's lit shows in the accent, a hovered part
 // names itself, and a click is the page's to read (without `onPart` it only shows).
 // The man and the woman share the parts, so the figure is only a way of looking.
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -20,15 +19,12 @@ const FIGURES: { kind: BodyFigureKind; label: string }[] = [
 
 export function BodyFigure({
   lit,
-  soft = [],
   describe = (part) => BODY_PART_LABEL[part],
   hint,
   onPart,
   size = 'lg',
 }: {
   lit: BodyPart[];
-  /** Shown fainter, as the zone around what's lit. */
-  soft?: BodyPart[];
   /** What a hovered part is called. */
   describe?: (part: BodyPart) => ReactNode;
   /** Shown under the body while nothing is hovered. */
@@ -78,7 +74,7 @@ export function BodyFigure({
                       className={cn(
                         'outline-none transition-colors',
                         onPart && 'cursor-pointer',
-                        hovered === part ? (on ? 'fill-accent-dark' : 'fill-[#587089]') : on ? 'fill-accent' : soft.includes(part) ? 'fill-accent/35' : 'fill-[#7d93ab]',
+                        hovered === part ? (on ? 'fill-accent-dark' : 'fill-[#587089]') : on ? 'fill-accent' : 'fill-[#7d93ab]',
                       )}
                     >
                       {shapes.map((d, i) => (
