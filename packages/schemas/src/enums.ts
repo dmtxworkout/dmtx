@@ -77,6 +77,26 @@ export const BODY_PART_LABEL: Record<BodyPart, string> = {
   tibialis: 'Tibial',
 };
 
+/** The zone a part of the drawn body belongs to: clicking it opens that zone. */
+export const BODY_PART_ZONE: Record<BodyPart, MuscleZone> = {
+  chest: 'chest',
+  deltoids: 'shoulders',
+  biceps: 'arms',
+  triceps: 'arms',
+  forearm: 'arms',
+  abs: 'core',
+  obliques: 'core',
+  trapezius: 'back',
+  'upper-back': 'back',
+  'lower-back': 'back',
+  gluteal: 'legs',
+  quadriceps: 'legs',
+  adductors: 'legs',
+  hamstring: 'legs',
+  calves: 'legs',
+  tibialis: 'legs',
+};
+
 /** Other names people search a zone by; the app only ever shows the label. */
 export const MUSCLE_ZONE_ALIASES: Record<MuscleZone, string[]> = {
   chest: ['pectorales', 'tren superior'],

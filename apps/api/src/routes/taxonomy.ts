@@ -6,7 +6,6 @@ import {
   createEquipmentSchema,
   createMuscleSchema,
   equipmentSchema,
-  setMuscleZoneSchema,
   muscleSchema,
   slugify,
   taxonomySchema,
@@ -141,26 +140,6 @@ taxonomyRoute.openapi(
       .returning();
     if (!row) throw new Error('No se pudo crear el músculo');
     return c.json({ ...row, exerciseCount: 0 }, 201);
-  },
-);
-
-taxonomyRoute.openapi(
-  createRoute({
-    method: 'post',
-    path: '/muscles/zone',
-    tags: ['taxonomy'],
-    request: { body: { content: { 'application/json': { schema: setMuscleZoneSchema } } } },
-    responses: { 204: { description: 'Zona asignada' } },
-  }),
-  async (c) => {
-    const db = c.get('db');
-    const { ids, zone } = c.req.valid('json');
-    await db.update(muscles).set({ zone }).where(inArray(muscles.id, ids));
-    // The rutinas working these muscles may gain or lose «Cuerpo completo».
-    const affected = new Set<string>();
-    for (const id of ids) for (const w of await workoutsWorking(db, id)) affected.add(w);
-    await syncWorkoutMuscles(db, [...affected]);
-    return c.body(null, 204);
   },
 );
 

@@ -21,7 +21,8 @@ import { MediaField } from '@/components/media-field';
 import { toast } from '@/components/ui/toast';
 import { useUnsavedChanges } from '@/components/unsaved-changes';
 import { ActionsMenu } from '@/components/ui/actions-menu';
-import { EquipmentPicker, MusclePicker } from '@/components/tag-pickers';
+import { BodyFigure } from '@/components/body-figure';
+import { EquipmentPicker, MusclePicker, useTaxonomy } from '@/components/tag-pickers';
 import { Dialog } from '@/components/ui/dialog';
 
 const formSchema = z.object({
@@ -147,6 +148,9 @@ export function ExerciseForm({
   const [cues, setCues] = useState<string[]>(exercise?.cues ?? []);
   const [aliases, setAliases] = useState<string[]>(exercise?.aliases ?? []);
   const [muscleIds, setMuscleIds] = useState<string[]>(exercise?.muscleIds ?? []);
+  const { data: taxonomy } = useTaxonomy();
+  // What the chosen muscles light up on the body, as the app will show it.
+  const bodyParts = [...new Set((taxonomy?.muscles ?? []).filter((m) => muscleIds.includes(m.id)).flatMap((m) => m.bodyParts))];
   const [equipmentIds, setEquipmentIds] = useState<string[]>(exercise?.equipmentIds ?? []);
 
   const form = useForm<FormValues>({
@@ -411,8 +415,9 @@ export function ExerciseForm({
               <CardHeader className="rounded-t-[11px]">
                 <CardTitle>Músculos</CardTitle>
               </CardHeader>
-              <CardContent className="py-4">
+              <CardContent className="flex flex-col gap-4 py-4">
                 <MusclePicker value={muscleIds} onChange={setMuscleIds} />
+                {bodyParts.length > 0 && <BodyFigure size="sm" lit={bodyParts} hint="Lo que trabaja" />}
               </CardContent>
             </Card>
             <Card className="overflow-visible">

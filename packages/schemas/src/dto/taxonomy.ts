@@ -54,13 +54,6 @@ export const updateMuscleSchema = z.object({
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;
 
-/** Several muscles put in one zone at once (null = «Sin zona»). */
-export const setMuscleZoneSchema = z.object({
-  ids: z.array(uuidSchema).min(1).max(500),
-  zone: muscleZoneSchema.nullable(),
-});
-export type SetMuscleZoneInput = z.infer<typeof setMuscleZoneSchema>;
-
 export const createEquipmentSchema = z.object({ name: z.string().min(1).max(100) });
 export type CreateEquipmentInput = z.infer<typeof createEquipmentSchema>;
 export const updateEquipmentSchema = z.object({

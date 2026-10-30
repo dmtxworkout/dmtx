@@ -1,7 +1,7 @@
 'use client';
 
-import { MUSCLES, TagTable } from '@/components/tag-table';
+import { MusclesPage } from '@/components/muscles-page';
 
 export default function MusculosPage() {
-  return <TagTable kind={MUSCLES} />;
+  return <MusclesPage />;
 }
