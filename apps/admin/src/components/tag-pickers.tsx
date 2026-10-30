@@ -28,7 +28,7 @@ function useTaxonomyCache() {
   };
 }
 
-type Option = { id: string; name: string };
+type Option = { id: string; name: string; aliases?: string[] };
 type Section = { title?: string; items: Option[] };
 
 interface TagPopoverProps {
@@ -107,15 +107,17 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
   }, [open]);
 
   const q = fold(query.trim());
+  const terms = (o: Option) => [o.name, ...(o.aliases ?? [])].map(fold);
   const visible = useMemo(
     () =>
       sections
-        .map((s) => ({ ...s, items: s.items.filter((o) => !q || fold(o.name).includes(q)) }))
+        .map((s) => ({ ...s, items: s.items.filter((o) => !q || terms(o).some((t) => t.includes(q))) }))
         .filter((s) => s.items.length > 0),
     [sections, q],
   );
   const total = visible.reduce((n, s) => n + s.items.length, 0);
-  const exact = sections.some((s) => s.items.some((o) => fold(o.name) === q));
+  // Another name of a tag is that tag: it must not offer to create a duplicate.
+  const exact = sections.some((s) => s.items.some((o) => terms(o).includes(q)));
   const canCreate = q.length > 0 && !exact;
 
   const create = async () => {
@@ -169,7 +171,7 @@ function TagPopover({ addLabel, placeholder, sections, selected, onToggle, onCre
                 if (e.key !== 'Enter') return;
                 e.preventDefault();
                 const only = total === 1 ? visible[0]?.items[0] : undefined;
-                if (only && (!canCreate || fold(only.name).startsWith(q))) onToggle(only.id);
+                if (only && (!canCreate || terms(only).some((t) => t.startsWith(q)))) onToggle(only.id);
                 else if (canCreate) void create();
               }}
               placeholder={placeholder}

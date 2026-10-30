@@ -1,4 +1,4 @@
-import { and, count, desc, eq, ilike, inArray, isNull, or } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
 import {
   equipment,
   exerciseEquipment,
@@ -17,7 +17,7 @@ import {
   workouts,
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
-import { MUSCLE_ZONE, MUSCLE_ZONE_LABEL, createWorkoutLogSchema } from '@dmtx/schemas';
+import { MUSCLE_ZONE, MUSCLE_ZONE_ALIASES, MUSCLE_ZONE_LABEL, createWorkoutLogSchema } from '@dmtx/schemas';
 import type { MuscleZone, SkillGoal } from '@dmtx/schemas';
 import { FULL_BODY_ZONES } from '@dmtx/core';
 import { createApp } from '../lib/openapi';
@@ -292,16 +292,8 @@ async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<stri
   return out;
 }
 
-/** Ids of rutinas needing an equipment slug, or matching free text over the muscle names. */
-async function workoutIdsByTags(db: Database, f: { equipment?: string; q?: string }): Promise<string[] | null> {
-  if (f.q) {
-    const rows = await db
-      .selectDistinct({ workoutId: workoutMuscles.workoutId })
-      .from(workoutMuscles)
-      .innerJoin(muscles, eq(muscles.id, workoutMuscles.muscleId))
-      .where(ilike(muscles.name, `%${f.q}%`));
-    return rows.map((r) => r.workoutId); // a hint, merged with the name match by the caller
-  }
+/** Ids of rutinas needing an equipment slug. */
+async function workoutIdsByTags(db: Database, f: { equipment?: string }): Promise<string[] | null> {
   if (f.equipment) {
     const rows = await db
       .selectDistinct({ workoutId: workoutBlocks.workoutId })
@@ -326,6 +318,37 @@ const liveWorkout = and(eq(workouts.status, 'published'), isNull(workouts.delete
 /** What a rutina counts for: itself, or the program / skill that owns it. */
 const targetOf = (w: { id: string; ownerProgramId: string | null; ownerSkillId: string | null }) =>
   w.ownerProgramId ? `program:${w.ownerProgramId}` : w.ownerSkillId ? `skill:${w.ownerSkillId}` : `workout:${w.id}`;
+
+const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+/** Whether a word of `term` starts with `q`: «isquios» but not «tibial» finds «isquiotibiales». */
+const startsWord = (term: string, q: string) => ` ${fold(term)}`.includes(` ${fold(q)}`);
+
+/**
+ * The content working what free text names: a muscle or a zone, by its name or
+ * any of its other names («abdomen» is Core, «isquios» is Femorales), ignoring
+ * accents and case. A hint, merged with the name match by the caller.
+ */
+async function contentWorkingText(db: Database, q: string): Promise<Ranked> {
+  const zones = MUSCLE_ZONE.filter((z) => [MUSCLE_ZONE_LABEL[z], ...MUSCLE_ZONE_ALIASES[z]].some((t) => startsWord(t, q)));
+  const all = await db.select({ id: muscles.id, name: muscles.name, aliases: muscles.aliases, zone: muscles.zone }).from(muscles);
+  const ids = all
+    .filter((m) => [m.name, ...m.aliases].some((t) => startsWord(t, q)) || (m.zone && zones.includes(m.zone)))
+    .map((m) => m.id);
+  const found = { workout: new Set<string>(), program: new Set<string>(), skill: new Set<string>() };
+  if (ids.length) {
+    const rows = await db
+      .selectDistinct({ id: workouts.id, ownerProgramId: workouts.ownerProgramId, ownerSkillId: workouts.ownerSkillId })
+      .from(workoutMuscles)
+      .innerJoin(workouts, eq(workouts.id, workoutMuscles.workoutId))
+      .where(and(liveWorkout, inArray(workoutMuscles.muscleId, ids)));
+    for (const r of rows) {
+      const [type, id] = targetOf(r).split(':') as ['workout' | 'program' | 'skill', string];
+      found[type].add(id);
+    }
+  }
+  return { workout: [...found.workout], program: [...found.program], skill: [...found.skill] };
+}
 
 /**
  * Rank rutinas, programs and skills by what they work. Each asked zone or
@@ -411,9 +434,14 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   const wantSkills = f.types.includes('skill');
   const like = f.q ? `%${f.q}%` : undefined;
   // The equipment filter narrows rutinas to a set of ids; free text also
-  // matches the muscle names ("glúteos" finds every rutina that works them).
+  // matches what content works ("glúteos" finds everything that works them).
   const byTags = wantWorkouts ? await workoutIdsByTags(db, { equipment: f.equipment }) : null;
-  const byText = wantWorkouts && f.q ? await workoutIdsByTags(db, { q: f.q }) : null;
+  const byText = f.q ? await contentWorkingText(db, f.q) : null;
+  const matchesText = (name: AnyColumn, id: AnyColumn, ids: string[] = []) => {
+    if (!like) return undefined;
+    const byName = sql`unaccent(${name}) ilike unaccent(${like})`;
+    return ids.length ? or(byName, inArray(id, ids)) : byName;
+  };
   const rank = f.ranked;
   const noneByTags = (byTags !== null && byTags.length === 0) || (rank !== undefined && rank.workout.length === 0);
 
@@ -432,11 +460,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               rank ? inArray(workouts.id, rank.workout.slice(0, f.limit)) : undefined,
               f.video ? eq(workouts.hasVideo, true) : undefined,
               f.guided ? eq(workouts.isGuided, true) : undefined,
-              like
-                ? byText?.length
-                  ? or(ilike(workouts.name, like), inArray(workouts.id, byText))
-                  : ilike(workouts.name, like)
-                : undefined,
+              matchesText(workouts.name, workouts.id, byText?.workout),
             ),
           )
           .orderBy(desc(workouts.createdAt))
@@ -451,7 +475,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               eq(programs.status, 'published'),
               isNull(programs.deletedAt),
               rank ? inArray(programs.id, rank.program.slice(0, f.limit)) : undefined,
-              like ? ilike(programs.name, like) : undefined,
+              matchesText(programs.name, programs.id, byText?.program),
             ),
           )
           .orderBy(desc(programs.createdAt))
@@ -466,7 +490,7 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
               eq(skills.status, 'published'),
               isNull(skills.deletedAt),
               rank ? inArray(skills.id, rank.skill.slice(0, f.limit)) : undefined,
-              like ? ilike(skills.name, like) : undefined,
+              matchesText(skills.name, skills.id, byText?.skill),
             ),
           )
           .orderBy(desc(skills.createdAt))

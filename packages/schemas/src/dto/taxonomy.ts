@@ -13,6 +13,7 @@ export const muscleSchema = z.object({
   slug: z.string(),
   name: z.string(),
   zone: muscleZoneSchema.nullable(),
+  aliases: z.array(z.string()),
   position: z.number().int(),
   exerciseCount: z.number().int(),
 });
@@ -41,6 +42,7 @@ export type CreateMuscleInput = z.infer<typeof createMuscleSchema>;
 export const updateMuscleSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   zone: muscleZoneSchema.nullish(),
+  aliases: z.array(z.string().trim().min(1).max(100)).max(30).optional(),
   position: z.number().int().optional(),
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;

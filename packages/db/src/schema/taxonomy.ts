@@ -1,4 +1,4 @@
-import { integer, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import { integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
 import { muscleZoneEnum, primaryId, timestamps } from './_shared';
 import { mediaAssets } from './media';
 
@@ -8,6 +8,8 @@ export const muscles = pgTable('muscles', {
   slug: text().notNull().unique(),
   name: text().notNull(),
   zone: muscleZoneEnum(),
+  // Other names people search it by ("isquios"); only the name is ever shown.
+  aliases: jsonb().$type<string[]>().notNull().default([]),
   position: integer().notNull().default(0),
   ...timestamps,
 });

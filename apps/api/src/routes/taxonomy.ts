@@ -55,6 +55,7 @@ async function loadAll(db: Database) {
       slug: m.slug,
       name: m.name,
       zone: m.zone,
+      aliases: m.aliases,
       position: m.position,
       exerciseCount: use.muscle.get(m.id) ?? 0,
     })),
@@ -159,6 +160,7 @@ taxonomyRoute.openapi(
       .set({
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
         ...(input.zone !== undefined ? { zone: input.zone ?? null } : {}),
+        ...(input.aliases !== undefined ? { aliases: [...new Set(input.aliases)] } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
       })
       .where(eq(muscles.id, id))

@@ -1,0 +1,1 @@
+ALTER TABLE "muscles" ADD COLUMN "aliases" jsonb DEFAULT '[]'::jsonb NOT NULL;

@@ -36,6 +36,16 @@ export const MUSCLE_ZONE_LABEL: Record<MuscleZone, string> = {
   legs: 'Piernas',
 };
 
+/** Other names people search a zone by; the app only ever shows the label. */
+export const MUSCLE_ZONE_ALIASES: Record<MuscleZone, string[]> = {
+  chest: ['pectorales', 'tren superior'],
+  back: ['tren superior'],
+  shoulders: ['deltoides', 'tren superior'],
+  arms: ['tren superior'],
+  core: ['abdomen', 'abdominales', 'zona abdominal', 'zona media', 'abs'],
+  legs: ['muslos', 'tren inferior'],
+};
+
 /** How much a rutina works a muscle: most of its exercises (primary) or a few (secondary). */
 export const MUSCLE_ROLE = ['primary', 'secondary'] as const;
 export const muscleRoleSchema = enumOf(MUSCLE_ROLE);
