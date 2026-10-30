@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Loading, Thumb } from '../../../components/ui';
+import { BodyMap } from '../../../components/body-map';
 import { DownloadButton } from '../../../components/download-button';
 import { api } from '../../../lib/api';
 import { sectionVideos, useDownload } from '../../../lib/downloads';
@@ -207,6 +208,10 @@ export default function RutinaDetalle() {
 
           {base.description ? (
             <Text className="font-sans text-[14px] leading-6 text-ink-2">{base.description}</Text>
+          ) : null}
+
+          {w.bodyParts?.primary.length || w.bodyParts?.secondary.length ? (
+            <BodyMap primary={w.bodyParts.primary} secondary={w.bodyParts.secondary} />
           ) : null}
 
           {levels.length > 0 ? (

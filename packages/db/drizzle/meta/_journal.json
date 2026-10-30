@@ -344,6 +344,27 @@
       "when": 1793397674698,
       "tag": "0048_muscle_image",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1793401257945,
+      "tag": "0049_muscle_drop_image",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1793401258434,
+      "tag": "0050_muscle_body_parts",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1793401258880,
+      "tag": "0051_muscle_body_parts_seed",
+      "breakpoints": true
     }
   ]
 }

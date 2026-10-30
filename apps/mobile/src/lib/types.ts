@@ -2,7 +2,7 @@
  * Response shapes from the consumer API (`/api/app/*`). Hand-written to mirror
  * apps/api/src/routes/app.ts (these endpoints aren't in the OpenAPI client).
  */
-import type { Difficulty, Goal, LoadPrescription, SkillGoal, Tempo, WorkoutFormat } from '@dmtx/schemas';
+import type { BodyPart, Difficulty, Goal, LoadPrescription, SkillGoal, Tempo, WorkoutFormat } from '@dmtx/schemas';
 
 export type ContentKind = 'workout' | 'program' | 'skill';
 
@@ -152,6 +152,8 @@ export interface WorkoutDetail {
   cooldownVideoDurationSeconds: number | null;
   /** Tags derived from the exercises: muscle groups worked (primary) and equipment needed. */
   muscles: string[];
+  /** What lights up on the drawn body. Absent on a rutina downloaded before it existed. */
+  bodyParts?: { primary: BodyPart[]; secondary: BodyPart[] };
   equipment: string[];
   /** Timing of the part being played; null on the rutina itself (parts carry it). */
   formatConfig: unknown;

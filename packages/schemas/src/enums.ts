@@ -36,6 +36,47 @@ export const MUSCLE_ZONE_LABEL: Record<MuscleZone, string> = {
   legs: 'Piernas',
 };
 
+/** The parts of the drawn body a muscle can light up. */
+export const BODY_PART = [
+  'chest',
+  'deltoids',
+  'biceps',
+  'triceps',
+  'forearm',
+  'abs',
+  'obliques',
+  'trapezius',
+  'upper-back',
+  'lower-back',
+  'gluteal',
+  'quadriceps',
+  'adductors',
+  'hamstring',
+  'calves',
+  'tibialis',
+] as const;
+export const bodyPartSchema = enumOf(BODY_PART);
+export type BodyPart = z.infer<typeof bodyPartSchema>;
+
+export const BODY_PART_LABEL: Record<BodyPart, string> = {
+  chest: 'Pecho',
+  deltoids: 'Hombros',
+  biceps: 'Bíceps',
+  triceps: 'Tríceps',
+  forearm: 'Antebrazo',
+  abs: 'Abdomen',
+  obliques: 'Oblicuos',
+  trapezius: 'Trapecio',
+  'upper-back': 'Espalda alta',
+  'lower-back': 'Espalda baja',
+  gluteal: 'Glúteos',
+  quadriceps: 'Cuádriceps',
+  adductors: 'Aductores',
+  hamstring: 'Femorales',
+  calves: 'Pantorrillas',
+  tibialis: 'Tibial',
+};
+
 /** Other names people search a zone by; the app only ever shows the label. */
 export const MUSCLE_ZONE_ALIASES: Record<MuscleZone, string[]> = {
   chest: ['pectorales', 'tren superior'],

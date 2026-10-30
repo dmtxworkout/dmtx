@@ -54,7 +54,7 @@ export interface CreateUploadResult {
 }
 
 export interface MediaUsageItem {
-  type: 'exercise' | 'workout' | 'program' | 'skill' | 'skillLevel' | 'muscle';
+  type: 'exercise' | 'workout' | 'program' | 'skill' | 'skillLevel';
   id: string;
   name: string;
   field: 'video' | 'thumbnail';

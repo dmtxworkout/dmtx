@@ -13,9 +13,7 @@ import {
   updateEquipmentSchema,
   updateMuscleSchema,
 } from '@dmtx/schemas';
-import { resolveMediaUrls } from '../lib/media';
 import { syncWorkoutMuscles, workoutsWorking } from '../lib/workout-muscles';
-import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
 import { requireAdmin } from '../middleware/auth';
 
@@ -45,29 +43,25 @@ async function usage(db: Database) {
   };
 }
 
-/** A muscle row as the admin sees it. */
-async function muscleOut(db: Database, env: Env, m: typeof muscles.$inferSelect, exerciseCount: number) {
-  const media = await resolveMediaUrls(db, env, [m.imageAssetId]);
-  return {
-    id: m.id,
-    slug: m.slug,
-    name: m.name,
-    zone: m.zone,
-    aliases: m.aliases,
-    imageAssetId: m.imageAssetId,
-    imageUrl: m.imageAssetId ? (media.get(m.imageAssetId)?.url ?? null) : null,
-    position: m.position,
-    exerciseCount,
-  };
+/**
+ * A muscle's other names as stored: lower case, trimmed, once each, and none
+ * that is the name of a muscle. Null with the offending name in `taken`.
+ */
+async function cleanAliases(db: Database, aliases: string[], ownId?: string) {
+  const fold = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const names = await db.select({ id: muscles.id, name: muscles.name }).from(muscles);
+  const seen = new Map<string, string>();
+  for (const a of aliases) if (!seen.has(fold(a))) seen.set(fold(a), a.toLowerCase());
+  const taken = names.find((m) => m.id !== ownId && seen.has(fold(m.name)));
+  return taken ? { taken: taken.name } : { aliases: [...seen.values()] };
 }
 
-async function loadAll(db: Database, env: Env) {
+async function loadAll(db: Database) {
   const [ms, eq_, use] = await Promise.all([
     db.select().from(muscles).orderBy(asc(muscles.position), asc(muscles.name)),
     db.select().from(equipment).orderBy(asc(equipment.position), asc(equipment.name)),
     usage(db),
   ]);
-  const media = await resolveMediaUrls(db, env, ms.map((m) => m.imageAssetId));
   return {
     muscles: ms.map((m) => ({
       id: m.id,
@@ -75,8 +69,7 @@ async function loadAll(db: Database, env: Env) {
       name: m.name,
       zone: m.zone,
       aliases: m.aliases,
-      imageAssetId: m.imageAssetId,
-      imageUrl: m.imageAssetId ? (media.get(m.imageAssetId)?.url ?? null) : null,
+      bodyParts: m.bodyParts,
       position: m.position,
       exerciseCount: use.muscle.get(m.id) ?? 0,
     })),
@@ -110,7 +103,7 @@ taxonomyRoute.openapi(
       200: { description: 'Músculos y equipo', content: { 'application/json': { schema: taxonomySchema } } },
     },
   }),
-  async (c) => c.json(await loadAll(c.get('db'), c.env), 200),
+  async (c) => c.json(await loadAll(c.get('db')), 200),
 );
 
 // --- Muscles -----------------------------------------------------------------
@@ -122,11 +115,14 @@ taxonomyRoute.openapi(
     request: { body: { content: { 'application/json': { schema: createMuscleSchema } } } },
     responses: {
       201: { description: 'Músculo creado', content: { 'application/json': { schema: muscleSchema } } },
+      409: { description: 'Un sinónimo es el nombre de otro músculo', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const input = c.req.valid('json');
+    const clean = await cleanAliases(db, input.aliases ?? []);
+    if (clean.taken) return c.json({ error: `«${clean.taken}» ya es un músculo: no puede ser un sinónimo.` }, 409);
     const slug = await freeSlug(
       async (s) => (await db.select({ id: muscles.id }).from(muscles).where(eq(muscles.slug, s))).length > 0,
       input.name,
@@ -138,13 +134,13 @@ taxonomyRoute.openapi(
         slug,
         name: input.name.trim(),
         zone: input.zone ?? null,
-        aliases: [...new Set(input.aliases ?? [])],
-        imageAssetId: input.imageAssetId ?? null,
+        aliases: clean.aliases,
+        bodyParts: [...new Set(input.bodyParts ?? [])],
         position: (agg?.pos ?? 0) + 1,
       })
       .returning();
     if (!row) throw new Error('No se pudo crear el músculo');
-    return c.json(await muscleOut(db, c.env, row, 0), 201);
+    return c.json({ ...row, exerciseCount: 0 }, 201);
   },
 );
 
@@ -177,19 +173,22 @@ taxonomyRoute.openapi(
     responses: {
       200: { description: 'Músculo', content: { 'application/json': { schema: muscleSchema } } },
       404: { description: 'No encontrado', content: { 'application/json': { schema: errorSchema } } },
+      409: { description: 'Un sinónimo es el nombre de otro músculo', content: { 'application/json': { schema: errorSchema } } },
     },
   }),
   async (c) => {
     const db = c.get('db');
     const { id } = c.req.valid('param');
     const input = c.req.valid('json');
+    const clean = input.aliases ? await cleanAliases(db, input.aliases, id) : null;
+    if (clean?.taken) return c.json({ error: `«${clean.taken}» ya es un músculo: no puede ser un sinónimo.` }, 409);
     const [row] = await db
       .update(muscles)
       .set({
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
         ...(input.zone !== undefined ? { zone: input.zone ?? null } : {}),
-        ...(input.aliases !== undefined ? { aliases: [...new Set(input.aliases)] } : {}),
-        ...(input.imageAssetId !== undefined ? { imageAssetId: input.imageAssetId ?? null } : {}),
+        ...(clean ? { aliases: clean.aliases } : {}),
+        ...(input.bodyParts !== undefined ? { bodyParts: [...new Set(input.bodyParts)] } : {}),
         ...(input.position !== undefined ? { position: input.position } : {}),
       })
       .where(eq(muscles.id, id))
@@ -198,7 +197,7 @@ taxonomyRoute.openapi(
     // Another zone can change which rutinas count as «Cuerpo completo».
     if (input.zone !== undefined) await syncWorkoutMuscles(db, await workoutsWorking(db, id));
     const use = await usage(db);
-    return c.json(await muscleOut(db, c.env, row, use.muscle.get(row.id) ?? 0), 200);
+    return c.json({ ...row, exerciseCount: use.muscle.get(row.id) ?? 0 }, 200);
   },
 );
 

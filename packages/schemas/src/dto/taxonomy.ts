@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { uuidSchema } from '../common';
-import { muscleZoneSchema } from '../enums';
+import { bodyPartSchema, muscleZoneSchema } from '../enums';
 
 /**
  * Muscles and equipment: the tags an exercise carries so the app can search
@@ -14,9 +14,8 @@ export const muscleSchema = z.object({
   name: z.string(),
   zone: muscleZoneSchema.nullable(),
   aliases: z.array(z.string()),
-  /** The picture marking the muscle on a body, for the app. */
-  imageAssetId: uuidSchema.nullable(),
-  imageUrl: z.string().nullable(),
+  /** What lights up on the drawn body when something works this muscle. */
+  bodyParts: z.array(bodyPartSchema),
   position: z.number().int(),
   exerciseCount: z.number().int(),
 });
@@ -43,14 +42,14 @@ export const createMuscleSchema = z.object({
   name: z.string().min(1).max(100),
   zone: muscleZoneSchema.nullish(),
   aliases: muscleAliasesSchema.optional(),
-  imageAssetId: uuidSchema.nullish(),
+  bodyParts: z.array(bodyPartSchema).optional(),
 });
 export type CreateMuscleInput = z.infer<typeof createMuscleSchema>;
 export const updateMuscleSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   zone: muscleZoneSchema.nullish(),
   aliases: muscleAliasesSchema.optional(),
-  imageAssetId: uuidSchema.nullish(),
+  bodyParts: z.array(bodyPartSchema).optional(),
   position: z.number().int().optional(),
 });
 export type UpdateMuscleInput = z.infer<typeof updateMuscleSchema>;

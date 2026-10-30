@@ -1,4 +1,5 @@
 import { integer, jsonb, pgTable, text, uuid } from 'drizzle-orm/pg-core';
+import type { BodyPart } from '@dmtx/schemas';
 import { muscleZoneEnum, primaryId, timestamps } from './_shared';
 import { mediaAssets } from './media';
 
@@ -10,7 +11,8 @@ export const muscles = pgTable('muscles', {
   zone: muscleZoneEnum(),
   // Other names people search it by ("isquios"); only the name is ever shown.
   aliases: jsonb().$type<string[]>().notNull().default([]),
-  imageAssetId: uuid().references(() => mediaAssets.id, { onDelete: 'set null' }),
+  // What lights up on the drawn body when something works it.
+  bodyParts: jsonb().$type<BodyPart[]>().notNull().default([]),
   position: integer().notNull().default(0),
   ...timestamps,
 });

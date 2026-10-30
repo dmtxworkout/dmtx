@@ -5,7 +5,7 @@
 // takes it off the exercises that carried it. Muscles also show their body
 // zone (the app browses by zone): filtered by it beside the search, and
 // assigned in bulk from the selection bar. A muscle is added and edited in a
-// dialog (name, zone, other names, picture); equipment inline.
+// dialog (name, zone, other names, what it lights up on the body); equipment inline.
 import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -20,7 +20,7 @@ import { ActionsMenu } from '@/components/ui/actions-menu';
 import { MuscleDialog } from '@/components/muscle-dialog';
 import { MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type MuscleZone } from '@dmtx/schemas';
 
-type Row = { id: string; name: string; exerciseCount: number; zone?: MuscleZone | null; aliases?: string[]; imageUrl?: string | null };
+type Row = { id: string; name: string; exerciseCount: number; zone?: MuscleZone | null; aliases?: string[] };
 
 const fold = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
@@ -362,13 +362,9 @@ export function TagTable({ kind }: { kind: Kind }) {
                       type="button"
                       onClick={() => setDialog(r.id)}
                       title="Clic para editar"
-                      className="flex min-w-0 items-center gap-2.5 text-left text-sm font-semibold text-ink"
+                      className="min-w-0 truncate text-left text-sm font-semibold text-ink"
                     >
-                      {r.imageUrl && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={r.imageUrl} alt="" className="h-7 w-7 shrink-0 rounded-md border border-line object-cover" />
-                      )}
-                      <span className="truncate">{r.name}</span>
+                      {r.name}
                     </button>
                   ) : editing?.id === r.id ? (
                     <input
@@ -421,6 +417,7 @@ export function TagTable({ kind }: { kind: Kind }) {
         <MuscleDialog
           key={dialog}
           muscle={data?.muscles.find((m) => m.id === dialog) ?? null}
+          all={data?.muscles ?? []}
           onClose={() => setDialog(null)}
           onSaved={refresh}
         />

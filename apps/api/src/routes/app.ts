@@ -292,6 +292,18 @@ async function workoutTags(db: Database, workoutIds: string[]): Promise<Map<stri
   return out;
 }
 
+/** What lights up on the drawn body for a rutina; a part some muscle works as primary counts as primary. */
+async function bodyPartsOf(db: Database, workoutId: string) {
+  const rows = await db
+    .select({ role: workoutMuscles.role, bodyParts: muscles.bodyParts })
+    .from(workoutMuscles)
+    .innerJoin(muscles, eq(muscles.id, workoutMuscles.muscleId))
+    .where(eq(workoutMuscles.workoutId, workoutId));
+  const primary = new Set(rows.filter((r) => r.role === 'primary').flatMap((r) => r.bodyParts));
+  const secondary = new Set(rows.flatMap((r) => r.bodyParts).filter((p) => !primary.has(p)));
+  return { primary: [...primary], secondary: [...secondary] };
+}
+
 /** Ids of rutinas needing an equipment slug. */
 async function workoutIdsByTags(db: Database, f: { equipment?: string }): Promise<string[] | null> {
   if (f.equipment) {
@@ -773,6 +785,7 @@ appRoute.get('/workouts/:id', async (c) => {
     variants: variantRows.map((v) => ({ id: v.id, label: v.label ?? '' })),
     // What it works (primary first), stored on save: also set by hand on a rutina that is only a video.
     muscles: worked.get(w.id)?.muscles ?? [],
+    bodyParts: await bodyPartsOf(db, w.id),
     equipment: tags.equipment.map((t) => t.name),
     lastLog: lastLog
       ? {

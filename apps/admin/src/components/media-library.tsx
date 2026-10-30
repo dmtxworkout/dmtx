@@ -24,7 +24,7 @@ import {
   useUploads,
   type UploadEntry,
 } from '@/lib/uploads';
-import { USAGE_LABEL_PLURAL, usageHref, usageFieldLabel } from '@/lib/media-usage';
+import { USAGE_LABEL_PLURAL, USAGE_PATH, usageFieldLabel } from '@/lib/media-usage';
 import { FolderIcon } from '@/components/folder-picker';
 import { IconButton } from '@/components/ui/icon-button';
 import { Popover } from '@/components/ui/popover';
@@ -114,7 +114,7 @@ function UsageCell({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
-  const groups = (['program', 'workout', 'exercise', 'skill', 'skillLevel', 'muscle'] as const)
+  const groups = (['program', 'workout', 'exercise', 'skill', 'skillLevel'] as const)
     .map((type) => [type, usage.filter((u) => u.type === type)] as const)
     .filter(([, items]) => items.length);
   return (
@@ -157,7 +157,7 @@ function UsageCell({
                 {items.map((u) => (
                   <Link
                     key={`${u.id}-${u.field}`}
-                    href={usageHref(u)}
+                    href={`${USAGE_PATH[u.type]}/${u.id}`}
                     className="flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-[13px] text-ink hover:bg-surface-2"
                   >
                     <span className="truncate font-medium">{u.name}</span>
