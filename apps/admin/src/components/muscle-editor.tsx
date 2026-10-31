@@ -94,8 +94,10 @@ export function MuscleEditor({
     <form onSubmit={(e) => void save(e)} className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-[59px] items-center gap-2 border-b border-line-3 px-5 py-3">
         {!dirty && (
-          <button type="button" onClick={onCancel} aria-label="Volver a la lista" className="text-muted hover:text-ink">
-            ←
+          <button type="button" onClick={onCancel} aria-label="Volver a la lista" className="-ml-1 text-muted hover:text-ink">
+            <svg aria-hidden viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="M10 3.5 5.5 8l4.5 4.5" />
+            </svg>
           </button>
         )}
         <h2 className="min-w-0 truncate text-[15px] font-semibold text-ink">{muscle ? muscle.name : 'Agregar músculo'}</h2>
