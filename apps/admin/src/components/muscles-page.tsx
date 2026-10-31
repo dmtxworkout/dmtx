@@ -6,7 +6,7 @@
 // follows from that part.
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { BODY_PART, BODY_PART_LABEL, BODY_PART_ZONE, MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type BodyPart, type Muscle, type MuscleZone } from '@dmtx/schemas';
+import { BODY_PART, BODY_PART_ZONE, MUSCLE_ZONE, MUSCLE_ZONE_LABEL, type BodyPart, type Muscle, type MuscleZone } from '@dmtx/schemas';
 import { es } from '@/i18n/es';
 import { cn } from '@/lib/utils';
 import { BodyFigure } from '@/components/body-figure';
@@ -77,41 +77,35 @@ export function MusclesPage() {
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex min-w-0 flex-col gap-4 overflow-y-auto px-8 py-5">
-          <div className="flex flex-wrap gap-1.5">
-            {zones.map((z) => {
-              const on = (editing || !q) && shownZone === z;
-              return (
-                <button
-                  key={z}
-                  type="button"
-                  disabled={!!editing}
-                  aria-pressed={on}
-                  onClick={() => pickZone(z)}
-                  className={cn(
-                    'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold transition-colors disabled:opacity-50',
-                    on ? 'border-ink bg-ink text-surface' : 'border-line-2 bg-surface text-ink-2 hover:border-ink',
-                  )}
-                >
-                  {zoneLabel(z)}
-                  <span className={cn('font-mono text-[11px] font-normal', on ? 'text-surface/70' : 'text-muted')}>{inZone(z).length}</span>
-                </button>
-              );
-            })}
-          </div>
           <BodyFigure
             lit={lit}
             attention={attention && !part}
             onPart={onPart}
             // Browsing picks a zone, so hovering shows the whole zone; a muscle's form picks one part.
             hoverGroup={editing ? undefined : (p) => partsOf(BODY_PART_ZONE[p])}
-            describe={(p) => (editing ? BODY_PART_LABEL[p] : MUSCLE_ZONE_LABEL[BODY_PART_ZONE[p]])}
-            hint={editing ? (
-              part ? (
-                'Elige otra parte para cambiarla, o la misma para quitarla.'
-              ) : (
-                <strong className="font-semibold text-accent-dark">Haz clic en la parte del cuerpo que trabaja este músculo.</strong>
-              )
-            ) : 'Haz clic en el cuerpo para ver los músculos de esa zona.'}
+            header={
+              <div className="flex flex-wrap gap-1.5">
+                {zones.map((z) => {
+                  const on = (editing || !q) && shownZone === z;
+                  return (
+                    <button
+                      key={z}
+                      type="button"
+                      disabled={!!editing}
+                      aria-pressed={on}
+                      onClick={() => pickZone(z)}
+                      className={cn(
+                        'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold transition-colors disabled:opacity-50',
+                        on ? 'border-ink bg-ink text-surface' : 'border-line-2 bg-surface text-ink-2 hover:border-ink',
+                      )}
+                    >
+                      {zoneLabel(z)}
+                      <span className={cn('font-mono text-[11px] font-normal', on ? 'text-surface/70' : 'text-muted')}>{inZone(z).length}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            }
           />
         </div>
 

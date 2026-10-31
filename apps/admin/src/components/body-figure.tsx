@@ -1,8 +1,8 @@
 'use client';
 
 // The drawn body, front and back: what's lit shows in the accent. With `onPart`
-// a hovered part names itself and a click is the page's to read; without it the
-// body only shows.
+// a hovered part darkens and a click is the page's to read; without it the body
+// only shows.
 // The man and the woman share the parts, so the figure is only a way of looking.
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { BODY_FIGURES, type BodyFigureKind, type BodyView } from '@dmtx/core/body-map';
@@ -13,17 +13,34 @@ const VIEWS: { view: BodyView; label: string }[] = [
   { view: 'front', label: 'Frente' },
   { view: 'back', label: 'Espalda' },
 ];
-const FIGURES: { kind: BodyFigureKind; label: string }[] = [
-  { kind: 'male', label: 'Hombre' },
-  { kind: 'female', label: 'Mujer' },
+const FIGURES: { kind: BodyFigureKind; label: string; symbol: ReactNode }[] = [
+  {
+    kind: 'male',
+    label: 'Hombre',
+    symbol: (
+      <>
+        <circle cx="6.5" cy="9.5" r="4" />
+        <path d="M9.5 6.5 14 2M10 2h4v4" />
+      </>
+    ),
+  },
+  {
+    kind: 'female',
+    label: 'Mujer',
+    symbol: (
+      <>
+        <circle cx="8" cy="5.5" r="4" />
+        <path d="M8 9.5V15M5.5 12.5h5" />
+      </>
+    ),
+  },
 ];
 
 export function BodyFigure({
   lit,
   attention = false,
   hoverGroup,
-  describe = (part) => BODY_PART_LABEL[part],
-  hint,
+  header,
   onPart,
   size = 'lg',
 }: {
@@ -32,10 +49,8 @@ export function BodyFigure({
   attention?: boolean;
   /** What a hovered part darkens with it (by default, only itself). */
   hoverGroup?: (part: BodyPart) => BodyPart[];
-  /** What a hovered part is called. */
-  describe?: (part: BodyPart) => ReactNode;
-  /** Shown under the body while nothing is hovered. */
-  hint?: ReactNode;
+  /** Beside the figure toggle, above the body. */
+  header?: ReactNode;
   onPart?: (part: BodyPart) => void;
   /** `sm` fits a form's side column. */
   size?: 'sm' | 'lg';
@@ -46,6 +61,26 @@ export function BodyFigure({
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">{header}</div>
+        <div role="group" aria-label="Figura" className="flex shrink-0 overflow-hidden rounded-lg border border-line-2">
+          {FIGURES.map(({ kind, label, symbol }) => (
+            <button
+              key={kind}
+              type="button"
+              aria-label={label}
+              title={label}
+              aria-pressed={figure === kind}
+              onClick={() => setFigure(kind)}
+              className={cn('flex h-8 w-9 items-center justify-center', figure === kind ? 'bg-ink text-surface' : 'bg-surface text-ink-3 hover:text-ink')}
+            >
+              <svg aria-hidden viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                {symbol}
+              </svg>
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-4">
         {VIEWS.map(({ view, label }) => {
           const f = BODY_FIGURES[figure][view];
@@ -97,27 +132,6 @@ export function BodyFigure({
             </figure>
           );
         })}
-      </div>
-
-      <div className={cn('flex items-center gap-4', onPart ? 'justify-between' : 'justify-end')}>
-        {onPart && (
-          <p className="min-h-5 min-w-0 text-[13px] leading-5 text-ink-3">
-            {hovered ? <strong className="font-semibold text-ink">{describe(hovered)}</strong> : hint}
-          </p>
-        )}
-        <div role="group" aria-label="Figura" className="flex shrink-0 overflow-hidden rounded-lg border border-line-2">
-          {FIGURES.map(({ kind, label }) => (
-            <button
-              key={kind}
-              type="button"
-              aria-pressed={figure === kind}
-              onClick={() => setFigure(kind)}
-              className={cn('px-2.5 py-1 text-[12px] font-semibold', figure === kind ? 'bg-ink text-surface' : 'bg-surface text-ink-3 hover:text-ink')}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );
