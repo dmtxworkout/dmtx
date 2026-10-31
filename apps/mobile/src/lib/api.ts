@@ -41,6 +41,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   me: () => req<Me>('/app/me'),
+  sendEmailCode: () => req<{ sent: true }>('/app/me/email-code', { method: 'POST' }),
   updateProfile: (input: UpdateProfileInput) =>
     req<Profile>('/app/me/profile', { method: 'PATCH', body: JSON.stringify(input) }),
   home: () => req<Home>('/app/home'),

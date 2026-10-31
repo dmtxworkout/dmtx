@@ -6,6 +6,8 @@ import { createDb } from '@dmtx/db';
 import { Resend } from 'resend';
 import { ac, roles } from './permissions';
 
+const DEFAULT_FROM = 'DMTX <no-reply@dmtx.app>';
+
 export interface AuthEnv {
   DATABASE_URL: string;
   BETTER_AUTH_SECRET: string;
@@ -28,7 +30,7 @@ export interface AuthEnv {
 export function createAuth(env: AuthEnv) {
   const db = createDb(env.DATABASE_URL);
   const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
-  const from = env.EMAIL_FROM ?? 'DMTX <no-reply@dmtx.app>';
+  const from = env.EMAIL_FROM ?? DEFAULT_FROM;
 
   const trustedOrigins = [
     ...(env.TRUSTED_ORIGINS?.split(',').map((s) => s.trim()) ?? []),
@@ -43,6 +45,16 @@ export function createAuth(env: AuthEnv) {
     secret: env.BETTER_AUTH_SECRET,
     trustedOrigins: trustedOrigins.length ? trustedOrigins : undefined,
     database: drizzleAdapter(db, { provider: 'pg' }),
+    disabledPaths: [
+      '/email-otp/send-verification-otp',
+      '/email-otp/check-verification-otp',
+      '/sign-in/email-otp',
+      '/email-otp/request-password-reset',
+      '/forget-password/email-otp',
+      '/email-otp/reset-password',
+      '/email-otp/request-email-change',
+      '/email-otp/change-email',
+    ],
     emailAndPassword: {
       enabled: true,
       // Sign-in stays open so an unverified member can come back to the code step;
@@ -82,28 +94,33 @@ export function createAuth(env: AuthEnv) {
       // Mobile app support: trusted-origin handling for the app scheme and
       // SecureStore-backed session cookies from the Expo client.
       expo(),
-      // The six-digit code that proves a new member's email. Only this type is
-      // ever sent: the plugin's sign-in and password flows stay unused.
+      // The six-digit code that proves a new member's email. It's made and sent by
+      // sendEmailCode: this plugin's own send swallows a failed delivery. Its other
+      // flows stay off (disabledPaths above).
       emailOTP({
         otpLength: 6,
         expiresIn: 600,
         storeOTP: 'hashed',
         disableSignUp: true,
-        sendVerificationOTP: async ({ email, otp, type }) => {
-          if (type !== 'email-verification' || !resend) return;
-          const { error } = await resend.emails.send({
-            from,
-            to: email,
-            subject: `${otp} es tu código de DMTX`,
-            html: `<p>Tu código para verificar tu correo es:</p><p style="font-size:28px;font-weight:700;letter-spacing:4px">${otp}</p><p>Vence en 10 minutos. Si no creaste una cuenta en DMTX, ignora este correo.</p>`,
-          });
-          if (error) throw new Error(error.message);
-        },
+        sendVerificationOTP: async () => {},
       }),
     ],
   });
 }
 
 export type Auth = ReturnType<typeof createAuth>;
+
+/** Emails a new six-digit code; any earlier one stops working. Throws if it can't be delivered. */
+export async function sendEmailCode(env: AuthEnv, email: string): Promise<void> {
+  if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not set');
+  const otp = await createAuth(env).api.createVerificationOTP({ body: { email, type: 'email-verification' } });
+  const { error } = await new Resend(env.RESEND_API_KEY).emails.send({
+    from: env.EMAIL_FROM ?? DEFAULT_FROM,
+    to: email,
+    subject: `${otp} es tu código de DMTX`,
+    html: `<p>Tu código para verificar tu correo es:</p><p style="font-size:28px;font-weight:700;letter-spacing:4px">${otp}</p><p>Vence en 10 minutos. Si no creaste una cuenta en DMTX, ignora este correo.</p>`,
+  });
+  if (error) throw new Error(error.message);
+}
 
 export * from './permissions';

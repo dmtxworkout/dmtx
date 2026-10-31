@@ -32,15 +32,6 @@ const CODE_ERRORS: Record<string, string> = {
   TOO_MANY_ATTEMPTS: 'Demasiados intentos. Pide otro código.',
 };
 
-/** Emails a new six-digit code; any earlier one stops working. Returns what went wrong. */
-export async function sendEmailCode(email: string): Promise<string | null> {
-  const { error } = await authClient.$fetch('/email-otp/send-verification-otp', {
-    method: 'POST',
-    body: { email, type: 'email-verification' },
-  });
-  return error ? 'No pudimos enviar el código. Intenta de nuevo en un momento.' : null;
-}
-
 /** Checks the code against the email. Returns what went wrong. */
 export async function verifyEmailCode(email: string, otp: string): Promise<string | null> {
   const { error } = await authClient.$fetch('/email-otp/verify-email', {

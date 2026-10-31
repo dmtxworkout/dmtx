@@ -11,6 +11,7 @@ import {
   skillLevels,
   skillProgress,
   skills,
+  verification,
   workoutBlocks,
   workoutItems,
   workoutLogs,
@@ -18,6 +19,7 @@ import {
   workouts,
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
+import { sendEmailCode } from '@dmtx/auth';
 import { MUSCLE_ZONE, MUSCLE_ZONE_ALIASES, MUSCLE_ZONE_LABEL, createWorkoutLogSchema, updateProfileSchema } from '@dmtx/schemas';
 import type { MuscleZone, SkillGoal } from '@dmtx/schemas';
 import { FULL_BODY_ZONES } from '@dmtx/core';
@@ -556,6 +558,8 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   };
 }
 
+const EMAIL_CODE_GAP_MS = 25_000;
+
 const profileDto = (p: typeof profiles.$inferSelect | undefined) => ({
   gender: p?.gender ?? null,
   dateOfBirth: p?.dateOfBirth ?? null,
@@ -583,6 +587,34 @@ appRoute.get('/me', async (c) => {
     entitlement,
     profile: profileDto(profile),
   });
+});
+
+// POST /api/app/me/email-code — emails the signed-in member the code that proves
+// their address, and says so when it couldn't go out. A code just sent is left
+// alone, so reopening the app can't flood an inbox: 429, and that one still works.
+appRoute.post('/me/email-code', async (c) => {
+  const user = c.get('user')!;
+  if (user.emailVerified) return c.json({ error: 'Tu correo ya está verificado' }, 409);
+  const email = user.email.toLowerCase();
+  const db = c.get('db');
+  const identifier = `email-verification-otp-${email}`;
+  const [last] = await db
+    .select({ updatedAt: verification.updatedAt })
+    .from(verification)
+    .where(eq(verification.identifier, identifier))
+    .limit(1);
+  if (last && Date.now() - last.updatedAt.getTime() < EMAIL_CODE_GAP_MS) {
+    return c.json({ error: 'Ya te enviamos un código hace un momento', code: 'email_code_recent' }, 429);
+  }
+  try {
+    await sendEmailCode(c.env, email);
+  } catch (e) {
+    console.error('Email code not delivered:', e);
+    // It never arrived: this mustn't count as sent, and a retry goes right out.
+    await db.delete(verification).where(eq(verification.identifier, identifier));
+    return c.json({ error: 'No pudimos enviar el código', code: 'email_not_sent' }, 502);
+  }
+  return c.json({ sent: true });
 });
 
 // PATCH /api/app/me/profile — what the member told us about themselves. The
