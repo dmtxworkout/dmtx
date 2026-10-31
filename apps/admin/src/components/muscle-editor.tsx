@@ -9,6 +9,7 @@ import { useState, type FormEvent } from 'react';
 import { BODY_PART_LABEL, BODY_PART_ZONE, MUSCLE_ZONE_LABEL, type BodyPart, type Muscle, type MuscleZone } from '@dmtx/schemas';
 import { api } from '@/lib/api';
 import { es } from '@/i18n/es';
+import { cn } from '@/lib/utils';
 import { Chip, TagPopover } from '@/components/tag-pickers';
 import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
@@ -25,6 +26,7 @@ export function MuscleEditor({
   onCancel,
   onSaved,
   onDeleted,
+  onPartMissing,
 }: {
   /** The muscle to edit; null adds a new one. */
   muscle: Muscle | null;
@@ -34,11 +36,15 @@ export function MuscleEditor({
   onCancel: () => void;
   onSaved: (zone: MuscleZone) => Promise<unknown>;
   onDeleted: () => Promise<unknown>;
+  /** Guardar was pressed with no part: the page draws the eye to the body. */
+  onPartMissing: () => void;
 }) {
   const [name, setName] = useState(muscle?.name ?? '');
   const [aliases, setAliases] = useState<string[]>(muscle?.aliases ?? []);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Guardar stays pressable so it can say what's missing.
+  const [tried, setTried] = useState(false);
 
   const others = all.filter((m) => m.id !== muscle?.id);
   const held = new Set(aliases.map(fold));
@@ -62,7 +68,12 @@ export function MuscleEditor({
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (!dirty || !name.trim() || !bodyPart) return;
+    if (!dirty) return;
+    if (!name.trim() || !bodyPart) {
+      setTried(true);
+      if (!bodyPart) onPartMissing();
+      return;
+    }
     setSaving(true);
     try {
       const input = { name: name.trim(), aliases, bodyPart };
@@ -107,7 +118,7 @@ export function MuscleEditor({
               <Button type="button" variant="outline" size="sm" onClick={onCancel}>
                 {es.app.cancel}
               </Button>
-              <Button type="submit" size="sm" disabled={saving || !name.trim() || !bodyPart}>
+              <Button type="submit" size="sm" disabled={saving}>
                 {saving ? es.app.saving : 'Guardar'}
               </Button>
             </>
@@ -124,6 +135,7 @@ export function MuscleEditor({
         <label>
           <span className={fieldLabel}>Nombre</span>
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="p. ej. Femorales" />
+          {tried && !name.trim() && <span className="mt-1.5 block text-[12px] text-accent-dark">Escribe un nombre.</span>}
         </label>
         <div>
           <span className={fieldLabel}>Alias</span>
@@ -148,13 +160,22 @@ export function MuscleEditor({
         </div>
 
         <div>
-          <span className={fieldLabel}>Parte del cuerpo</span>
+          <span className={fieldLabel}>
+            Parte del cuerpo <span className="font-normal text-ink-3">(obligatoria)</span>
+          </span>
           {bodyPart ? (
             <p className="text-[13px] leading-5 text-ink-2">
               {BODY_PART_LABEL[bodyPart]} <span className="text-ink-3">· zona {MUSCLE_ZONE_LABEL[BODY_PART_ZONE[bodyPart]]}</span>
             </p>
           ) : (
-            <p className="text-[13px] leading-5 text-ink-3">Elige una en el cuerpo: la zona se asigna sola.</p>
+            <p className={cn('flex items-start gap-2 rounded-lg border px-3 py-2.5 text-[13px] leading-5 text-ink-2', tried ? 'border-accent bg-accent-tint' : 'border-line-2 bg-surface-2')}>
+              <svg aria-hidden viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-4 w-4 shrink-0 text-accent-dark">
+                <path d="M13 8H3.5M7.5 4 3.5 8l4 4" />
+              </svg>
+              <span>
+                <strong className="font-semibold text-ink">Haz clic en el cuerpo</strong> para elegir la parte que trabaja. Sin ella no se puede guardar; la zona se asigna sola.
+              </span>
+            </p>
           )}
         </div>
       </div>

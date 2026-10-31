@@ -31,6 +31,7 @@ export function MusclesPage() {
   const [part, setPart] = useState<BodyPart | null>(null);
   // A row being hovered shows that muscle on the body.
   const [preview, setPreview] = useState<Muscle | null>(null);
+  const [attention, setAttention] = useState(false);
 
   const all = data?.muscles ?? [];
   const inZone = (z: Open) => all.filter((m) => (m.zone ?? 'none') === z);
@@ -99,9 +100,16 @@ export function MusclesPage() {
           </div>
           <BodyFigure
             lit={lit}
+            attention={attention && !part}
             onPart={onPart}
             describe={(p) => (editing ? BODY_PART_LABEL[p] : `${BODY_PART_LABEL[p]} · ${MUSCLE_ZONE_LABEL[BODY_PART_ZONE[p]]}`)}
-            hint={editing ? 'Elige la parte que trabaja este músculo: la zona se asigna sola.' : 'Haz clic en el cuerpo para ver los músculos de esa zona.'}
+            hint={editing ? (
+              part ? (
+                'Elige otra parte para cambiarla, o la misma para quitarla.'
+              ) : (
+                <strong className="font-semibold text-accent-dark">Haz clic en la parte del cuerpo que trabaja este músculo.</strong>
+              )
+            ) : 'Haz clic en el cuerpo para ver los músculos de esa zona.'}
           />
         </div>
 
@@ -113,6 +121,10 @@ export function MusclesPage() {
               all={all}
               bodyPart={part}
               onCancel={() => setEditing(null)}
+              onPartMissing={() => {
+                setAttention(true);
+                setTimeout(() => setAttention(false), 2000);
+              }}
               onSaved={async (zone) => {
                 await refresh();
                 setEditing(null);
