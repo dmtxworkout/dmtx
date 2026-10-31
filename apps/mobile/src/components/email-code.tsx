@@ -121,7 +121,9 @@ export function EmailCode({ email }: { email: string }) {
         <ScrollView contentContainerClassName="flex-grow px-6 pb-6" keyboardShouldPersistTaps="handled">
           <StepHeader step={1} total={SIGN_UP_STEPS} />
 
-          <Text className="mt-4 font-extrabold text-[30px] tracking-tight text-ink">Revisa tu correo</Text>
+          <Text className="mt-4 font-extrabold text-[30px] tracking-tight text-ink">
+            {delivery === 'failed' ? 'No se envió el código' : 'Revisa tu correo'}
+          </Text>
           <Text className="mb-7 mt-2 font-sans text-[14px] leading-5 text-ink-3">
             {delivery === 'sending' ? 'Enviando un código de 6 dígitos a ' : delivery === 'sent' ? 'Te enviamos un código de 6 dígitos a ' : 'No pudimos enviar el código a '}
             <Text className="font-semibold text-ink">{email}</Text>
