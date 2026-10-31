@@ -386,6 +386,13 @@
       "when": 1793403184404,
       "tag": "0054_muscle_drop_body_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793406114707,
+      "tag": "0055_body_part_plain",
+      "breakpoints": true
     }
   ]
 }

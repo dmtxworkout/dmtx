@@ -5,7 +5,7 @@
 // body only shows.
 // The man and the woman share the parts, so the figure is only a way of looking.
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
-import { BODY_FIGURES, type BodyFigureKind, type BodyView } from '@dmtx/core/body-map';
+import { BODY_FIGURES, PLAIN_BODY_PARTS, type BodyFigureKind, type BodyView } from '@dmtx/core/body-map';
 import { BODY_PART, BODY_PART_LABEL, type BodyPart } from '@dmtx/schemas';
 import { cn } from '@/lib/utils';
 
@@ -75,11 +75,12 @@ export function BodyFigure({
                           onPart(part);
                         },
                       })}
+                      strokeWidth={2}
                       className={cn(
                         'outline-none transition-colors',
                         attention && 'motion-safe:animate-pulse',
                         onPart && 'cursor-pointer',
-                        hovered === part ? (on ? 'fill-accent-dark' : 'fill-[#587089]') : on ? 'fill-accent' : 'fill-[#7d93ab]',
+                        hovered === part ? (on ? 'fill-accent-dark' : 'fill-[#587089]') : on ? 'fill-accent' : PLAIN_BODY_PARTS.includes(part) ? 'fill-surface stroke-line-2' : 'fill-[#7d93ab]',
                       )}
                     >
                       {shapes.map((d, i) => (

@@ -54,6 +54,9 @@ export const BODY_PART = [
   'hamstring',
   'calves',
   'tibialis',
+  'neck',
+  'hands',
+  'feet',
 ] as const;
 export const bodyPartSchema = enumOf(BODY_PART);
 export type BodyPart = z.infer<typeof bodyPartSchema>;
@@ -75,6 +78,9 @@ export const BODY_PART_LABEL: Record<BodyPart, string> = {
   hamstring: 'Femorales',
   calves: 'Pantorrillas',
   tibialis: 'Tibial',
+  neck: 'Cuello',
+  hands: 'Manos',
+  feet: 'Pies',
 };
 
 /** The zone a part of the drawn body belongs to: clicking it opens that zone. */
@@ -95,6 +101,9 @@ export const BODY_PART_ZONE: Record<BodyPart, MuscleZone> = {
   hamstring: 'legs',
   calves: 'legs',
   tibialis: 'legs',
+  neck: 'back',
+  hands: 'arms',
+  feet: 'legs',
 };
 
 /** Other names people search a zone by; the app only ever shows the label. */

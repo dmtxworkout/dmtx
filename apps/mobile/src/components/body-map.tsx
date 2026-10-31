@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import Svg, { G, Path } from 'react-native-svg';
-import { BODY_FIGURES, type BodyFigureKind, type BodyView } from '@dmtx/core/body-map';
+import { BODY_FIGURES, PLAIN_BODY_PARTS, type BodyFigureKind, type BodyView } from '@dmtx/core/body-map';
 import { BODY_PART, type BodyPart } from '@dmtx/schemas';
 import { colors } from '../theme';
 
@@ -38,7 +38,8 @@ export function BodyMap({ primary, secondary }: { primary: BodyPart[]; secondary
     setFigure(kind);
     void SecureStore.setItemAsync(STORAGE_KEY, kind);
   };
-  const fillOf = (part: BodyPart) => (primary.includes(part) ? colors.accent : secondary.includes(part) ? SECONDARY : MUSCLE);
+  const fillOf = (part: BodyPart) =>
+    primary.includes(part) ? colors.accent : secondary.includes(part) ? SECONDARY : PLAIN_BODY_PARTS.includes(part) ? colors.surface : MUSCLE;
 
   return (
     <View className="gap-3">
@@ -64,7 +65,7 @@ export function BodyMap({ primary, secondary }: { primary: BodyPart[]; secondary
                   <Path key={i} d={d} fill={colors.surface} stroke={colors.line} strokeWidth={2} />
                 ))}
                 {BODY_PART.map((part) => (
-                  <G key={part} fill={fillOf(part)}>
+                  <G key={part} fill={fillOf(part)} stroke={PLAIN_BODY_PARTS.includes(part) ? colors.line : undefined} strokeWidth={2}>
                     {f.parts[part]?.map((d, i) => <Path key={i} d={d} />)}
                   </G>
                 ))}

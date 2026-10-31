@@ -63,12 +63,13 @@ export function MuscleEditor({
     return taken ? `«${taken.name}» ya es un músculo: no puede ser un alias.` : null;
   };
 
-  // Cancelar and Guardar only appear once something changed.
   const dirty = name !== (muscle?.name ?? '') || aliases.join() !== (muscle?.aliases ?? []).join() || bodyPart !== (muscle?.bodyPart ?? null);
+  // A new muscle always has Cancelar and Guardar; an existing one once something changed.
+  const showActions = !muscle || dirty;
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (!dirty) return;
+    if (!showActions) return;
     if (!name.trim() || !bodyPart) {
       setTried(true);
       if (!bodyPart) onPartMissing();
@@ -104,7 +105,7 @@ export function MuscleEditor({
   return (
     <form onSubmit={(e) => void save(e)} className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-[59px] items-center gap-2 border-b border-line-3 px-5 py-3">
-        {!dirty && (
+        {!showActions && (
           <button type="button" onClick={onCancel} aria-label="Volver a la lista" className="-ml-1 text-muted hover:text-ink">
             <svg aria-hidden viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
               <path d="M10 3.5 5.5 8l4.5 4.5" />
@@ -113,7 +114,7 @@ export function MuscleEditor({
         )}
         <h2 className="min-w-0 truncate text-[15px] font-semibold text-ink">{muscle ? muscle.name : 'Agregar músculo'}</h2>
         <div className="ml-auto flex shrink-0 gap-2">
-          {dirty ? (
+          {showActions ? (
             <>
               <Button type="button" variant="outline" size="sm" onClick={onCancel}>
                 {es.app.cancel}
@@ -123,11 +124,9 @@ export function MuscleEditor({
               </Button>
             </>
           ) : (
-            muscle && (
-              <Button type="button" size="sm" onClick={() => setConfirming(true)} disabled={saving}>
-                {es.app.delete}
-              </Button>
-            )
+            <Button type="button" size="sm" onClick={() => setConfirming(true)} disabled={saving}>
+              {es.app.delete}
+            </Button>
           )}
         </div>
       </div>
