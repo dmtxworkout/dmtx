@@ -99,21 +99,24 @@ export function MuscleEditor({
           </button>
         )}
         <h2 className="min-w-0 truncate text-[15px] font-semibold text-ink">{muscle ? muscle.name : 'Agregar músculo'}</h2>
-        {muscle && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setConfirming(true)} disabled={saving}>
-            {es.app.delete}
-          </Button>
-        )}
-        {dirty && (
-          <div className="ml-auto flex shrink-0 gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-              {es.app.cancel}
-            </Button>
-            <Button type="submit" size="sm" disabled={saving || !name.trim() || !bodyPart}>
-              {saving ? es.app.saving : 'Guardar'}
-            </Button>
-          </div>
-        )}
+        <div className="ml-auto flex shrink-0 gap-2">
+          {dirty ? (
+            <>
+              <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+                {es.app.cancel}
+              </Button>
+              <Button type="submit" size="sm" disabled={saving || !name.trim() || !bodyPart}>
+                {saving ? es.app.saving : 'Guardar'}
+              </Button>
+            </>
+          ) : (
+            muscle && (
+              <Button type="button" size="sm" onClick={() => setConfirming(true)} disabled={saving}>
+                {es.app.delete}
+              </Button>
+            )
+          )}
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
         <label>
