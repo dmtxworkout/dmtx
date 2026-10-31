@@ -1,7 +1,10 @@
 import { pgEnum, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { uuidv7 } from 'uuidv7';
 import {
+  ACTIVITY_LEVEL,
   BILLING_INTERVAL_UNIT,
+  BODY_FIGURE,
+  GENDER,
   BLOCK_KIND,
   BLOCK_SECTION,
   BLOCK_TYPE,
@@ -34,6 +37,9 @@ export const blockSectionEnum = pgEnum('block_section', BLOCK_SECTION);
 export const itemKindEnum = pgEnum('item_kind', ITEM_KIND);
 export const muscleZoneEnum = pgEnum('muscle_zone', MUSCLE_ZONE);
 export const bodyPartEnum = pgEnum('body_part', BODY_PART);
+export const genderEnum = pgEnum('gender', GENDER);
+export const bodyFigureEnum = pgEnum('body_figure', BODY_FIGURE);
+export const activityLevelEnum = pgEnum('activity_level', ACTIVITY_LEVEL);
 export const muscleRoleEnum = pgEnum('muscle_role', MUSCLE_ROLE);
 export const mediaKindEnum = pgEnum('media_kind', MEDIA_KIND);
 export const mediaProcessingStatusEnum = pgEnum('media_processing_status', MEDIA_PROCESSING_STATUS);

@@ -228,3 +228,17 @@ export type BillingIntervalUnit = z.infer<typeof billingIntervalUnitSchema>;
 export const CURRENCY = ['usd', 'eur', 'mxn', 'gbp'] as const;
 export const currencySchema = enumOf(CURRENCY);
 export type Currency = z.infer<typeof currencySchema>;
+
+// --- Member profile ----------------------------------------------------------
+export const GENDER = ['male', 'female'] as const;
+export const genderSchema = enumOf(GENDER);
+export type Gender = z.infer<typeof genderSchema>;
+
+/** Which drawn body the app shows. Follows the gender until the member picks one. */
+export const BODY_FIGURE = ['male', 'female'] as const;
+export const bodyFigureSchema = enumOf(BODY_FIGURE);
+export type BodyFigure = z.infer<typeof bodyFigureSchema>;
+
+export const ACTIVITY_LEVEL = ['sedentary', 'light', 'moderate', 'active', 'very_active'] as const;
+export const activityLevelSchema = enumOf(ACTIVITY_LEVEL);
+export type ActivityLevel = z.infer<typeof activityLevelSchema>;

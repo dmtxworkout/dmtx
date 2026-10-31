@@ -400,6 +400,13 @@
       "when": 1793406739546,
       "tag": "0056_body_part_neck_sides",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1793451541509,
+      "tag": "0057_majestic_rictor",
+      "breakpoints": true
     }
   ]
 }

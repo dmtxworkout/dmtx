@@ -42,7 +42,8 @@ PostgreSQL via Drizzle. Schema lives in `packages/db/src/schema/` (one file per 
 ## Users & billing
 
 - Better Auth owns `user` / `session` / `account` / `verification` (`packages/db/src/schema/auth.ts`; `user.role` for the admin gate).
-- **`profiles`** (1:1), **`subscriptions`** (our own billing record), **`discounts`**, **`payments`** (ledger), **`webhook_events`**. See [billing.md](billing.md).
+- **`profiles`** (1:1) also holds what the app asks after sign-up: `dateOfBirth`, `gender`, `weightKg`, `heightCm`, `activityLevel` (`onboardingCompletedAt` is set once all are there), and `bodyFigure`, the body the app draws (null follows the gender). `@dmtx/core` computes the basal and active metabolic rates from them.
+- **`subscriptions`** (our own billing record), **`discounts`**, **`payments`** (ledger), **`webhook_events`**. See [billing.md](billing.md).
 
 ## Cascade rules
 

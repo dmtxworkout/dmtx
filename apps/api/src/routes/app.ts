@@ -4,6 +4,7 @@ import {
   exerciseEquipment,
   exercises,
   muscles,
+  profiles,
   programDays,
   programs,
   setResults,
@@ -17,7 +18,7 @@ import {
   workouts,
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
-import { MUSCLE_ZONE, MUSCLE_ZONE_ALIASES, MUSCLE_ZONE_LABEL, createWorkoutLogSchema } from '@dmtx/schemas';
+import { MUSCLE_ZONE, MUSCLE_ZONE_ALIASES, MUSCLE_ZONE_LABEL, createWorkoutLogSchema, updateProfileSchema } from '@dmtx/schemas';
 import type { MuscleZone, SkillGoal } from '@dmtx/schemas';
 import { FULL_BODY_ZONES } from '@dmtx/core';
 import { createApp } from '../lib/openapi';
@@ -555,17 +556,52 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
   };
 }
 
+const profileDto = (p: typeof profiles.$inferSelect | undefined) => ({
+  gender: p?.gender ?? null,
+  dateOfBirth: p?.dateOfBirth ?? null,
+  heightCm: p?.heightCm ?? null,
+  weightKg: p?.weightKg ?? null,
+  activityLevel: p?.activityLevel ?? null,
+  bodyFigure: p?.bodyFigure ?? null,
+  onboardingCompletedAt: p?.onboardingCompletedAt?.toISOString() ?? null,
+});
+
 export const appRoute = createApp();
 
 // GET /api/app/me — session user + entitlement (does not require access).
 appRoute.use('/me', requireUser);
+appRoute.use('/me/*', requireUser);
 appRoute.get('/me', async (c) => {
   const user = c.get('user')!;
-  const entitlement = await resolveEntitlement(c.get('db'), c.env, user.id);
+  const db = c.get('db');
+  const [entitlement, [profile]] = await Promise.all([
+    resolveEntitlement(db, c.env, user.id),
+    db.select().from(profiles).where(eq(profiles.userId, user.id)).limit(1),
+  ]);
   return c.json({
     user: { id: user.id, email: user.email, name: user.name, image: user.image ?? null },
     entitlement,
+    profile: profileDto(profile),
   });
+});
+
+// PATCH /api/app/me/profile — what the member told us about themselves. The
+// sign-up questions are done once all of it is there.
+appRoute.patch('/me/profile', async (c) => {
+  const userId = c.get('user')!.id;
+  const db = c.get('db');
+  const parsed = updateProfileSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success || Object.keys(parsed.data).length === 0) return c.json({ error: 'Datos inválidos' }, 400);
+
+  const [saved] = await db
+    .insert(profiles)
+    .values({ userId, ...parsed.data })
+    .onConflictDoUpdate({ target: profiles.userId, set: { ...parsed.data, updatedAt: new Date() } })
+    .returning();
+  const complete = saved!.gender && saved!.dateOfBirth && saved!.heightCm && saved!.weightKg && saved!.activityLevel;
+  if (!complete || saved!.onboardingCompletedAt) return c.json(profileDto(saved));
+  const [done] = await db.update(profiles).set({ onboardingCompletedAt: new Date() }).where(eq(profiles.userId, userId)).returning();
+  return c.json(profileDto(done));
 });
 
 // Everything below requires an active entitlement.

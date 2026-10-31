@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { Loading } from '../../components/ui';
+import { Onboarding } from '../../components/onboarding';
 import { Paywall } from '../../components/paywall';
 import { colors } from '../../theme';
 
@@ -21,6 +22,7 @@ export default function AppLayout() {
   if (me.data && !me.data.entitlement.active) {
     return <Paywall entitlement={me.data.entitlement} onRetry={() => void me.refetch()} />;
   }
+  if (me.data && !me.data.profile.onboardingCompletedAt) return <Onboarding profile={me.data.profile} />;
 
   return (
     <Stack

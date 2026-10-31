@@ -1,6 +1,6 @@
-import type { CreateWorkoutLogInput } from '@dmtx/schemas';
+import type { CreateWorkoutLogInput, UpdateProfileInput } from '@dmtx/schemas';
 import { API_URL, getSessionCookie } from './auth';
-import type { Browse, BrowseFilters, Home, Me, ProgramDetail, SkillDetail, WorkoutDetail } from './types';
+import type { Browse, BrowseFilters, Home, Me, Profile, ProgramDetail, SkillDetail, WorkoutDetail } from './types';
 
 export class ApiError extends Error {
   constructor(
@@ -41,6 +41,8 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   me: () => req<Me>('/app/me'),
+  updateProfile: (input: UpdateProfileInput) =>
+    req<Profile>('/app/me/profile', { method: 'PATCH', body: JSON.stringify(input) }),
   home: () => req<Home>('/app/home'),
   filters: () => req<BrowseFilters>('/app/filters'),
   browse: (opts?: {

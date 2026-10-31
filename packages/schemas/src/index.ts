@@ -12,3 +12,4 @@ export * from './dto/skill';
 export * from './dto/progress';
 export * from './dto/reusable-block';
 export * from './dto/taxonomy';
+export * from './dto/profile';

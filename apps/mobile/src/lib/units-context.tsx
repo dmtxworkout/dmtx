@@ -3,12 +3,13 @@ import * as SecureStore from 'expo-secure-store';
 import {
   DEFAULT_UNITS,
   type DistanceUnit,
+  type HeightUnit,
   type Units,
   type WeightUnit,
 } from './units';
 
 /**
- * Device-local unit preference (weight kg/lb, distance km/mi), persisted with
+ * Device-local unit preference (weight kg/lb, distance km/mi, height cm/ft), persisted with
  * SecureStore. Display-only — the API keeps kg/meters. Could later move to the
  * server profile for cross-device sync.
  */
@@ -18,12 +19,14 @@ interface UnitsContextValue {
   units: Units;
   setWeight: (u: WeightUnit) => void;
   setDistance: (u: DistanceUnit) => void;
+  setHeight: (u: HeightUnit) => void;
 }
 
 const UnitsContext = createContext<UnitsContextValue>({
   units: DEFAULT_UNITS,
   setWeight: () => {},
   setDistance: () => {},
+  setHeight: () => {},
 });
 
 export function UnitsProvider({ children }: { children: ReactNode }) {
@@ -39,6 +42,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         setUnits((u) => ({
           weight: p.weight === 'kg' || p.weight === 'lb' ? p.weight : u.weight,
           distance: p.distance === 'km' || p.distance === 'mi' ? p.distance : u.distance,
+          height: p.height === 'cm' || p.height === 'ft' ? p.height : u.height,
         }));
       } catch {
         // ignore malformed storage
@@ -60,6 +64,7 @@ export function UnitsProvider({ children }: { children: ReactNode }) {
         units,
         setWeight: (w) => persist({ ...units, weight: w }),
         setDistance: (d) => persist({ ...units, distance: d }),
+        setHeight: (h) => persist({ ...units, height: h }),
       }}
     >
       {children}

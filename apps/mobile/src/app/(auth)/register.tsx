@@ -58,9 +58,9 @@ export default function Register() {
               <Text className="text-[22px] text-ink">←</Text>
             </Pressable>
             <View className="h-1 flex-1 overflow-hidden rounded-full bg-surface-2">
-              <View className="h-full w-1/3 rounded-full bg-accent" />
+              <View className="h-full w-1/6 rounded-full bg-accent" />
             </View>
-            <Text className="font-mono text-[12px] text-ink-3">1 / 3</Text>
+            <Text className="font-mono text-[12px] text-ink-3">1 / 6</Text>
           </View>
 
           <Text className="mb-7 mt-4 font-extrabold text-[30px] tracking-tight text-ink">

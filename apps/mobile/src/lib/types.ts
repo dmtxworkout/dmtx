@@ -2,7 +2,7 @@
  * Response shapes from the consumer API (`/api/app/*`). Hand-written to mirror
  * apps/api/src/routes/app.ts (these endpoints aren't in the OpenAPI client).
  */
-import type { BodyPart, Difficulty, Goal, LoadPrescription, SkillGoal, Tempo, WorkoutFormat } from '@dmtx/schemas';
+import type { ActivityLevel, BodyFigure, BodyPart, Difficulty, Gender, Goal, LoadPrescription, SkillGoal, Tempo, WorkoutFormat } from '@dmtx/schemas';
 
 export type ContentKind = 'workout' | 'program' | 'skill';
 
@@ -17,6 +17,17 @@ export interface Entitlement {
 export interface Me {
   user: { id: string; email: string; name: string; image: string | null };
   entitlement: Entitlement;
+  profile: Profile;
+}
+
+export interface Profile {
+  gender: Gender | null;
+  dateOfBirth: string | null;
+  heightCm: number | null;
+  weightKg: number | null;
+  activityLevel: ActivityLevel | null;
+  bodyFigure: BodyFigure | null;
+  onboardingCompletedAt: string | null;
 }
 
 /** Card as shown in home/browse rows. */

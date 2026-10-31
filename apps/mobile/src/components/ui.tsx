@@ -120,6 +120,36 @@ export const Field = forwardRef<TextInput, FieldProps>(function Field(
   );
 });
 
+/** Segmented toggle (e.g. kg | lb, or the three download qualities). */
+export function Segmented<T extends string | number>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <View className="flex-row rounded-xl bg-surface-2 p-1">
+      {options.map((o) => {
+        const active = o.value === value;
+        return (
+          <Pressable
+            key={String(o.value)}
+            onPress={() => onChange(o.value)}
+            className={`flex-1 items-center justify-center rounded-lg py-2 ${active ? 'bg-accent' : ''}`}
+          >
+            <Text className={`font-semibold text-[14px] ${active ? 'text-white' : 'text-ink-3'}`}>
+              {o.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 /** Placeholder for media that hasn't loaded (approximates the comp's hatch). */
 export function Placeholder({ className = '' }: { className?: string }) {
   return <View className={`bg-[#1c1c21] ${className}`} />;

@@ -5,15 +5,18 @@
  */
 export type WeightUnit = 'kg' | 'lb';
 export type DistanceUnit = 'km' | 'mi';
+export type HeightUnit = 'cm' | 'ft';
 export interface Units {
   weight: WeightUnit;
   distance: DistanceUnit;
+  height: HeightUnit;
 }
-export const DEFAULT_UNITS: Units = { weight: 'lb', distance: 'km' };
+export const DEFAULT_UNITS: Units = { weight: 'lb', distance: 'km', height: 'cm' };
 
 const KG_PER_LB = 0.45359237;
 const M_PER_KM = 1000;
 const M_PER_MI = 1609.344;
+const CM_PER_IN = 2.54;
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 /** Trim to at most 2 decimals, dropping trailing zeros (0.80 → 0.8, 5.00 → 5). */
@@ -43,4 +46,17 @@ const mToDistance = (m: number, u: DistanceUnit) => (u === 'mi' ? m / M_PER_MI :
 export function formatDistance(m: number | null | undefined, u: DistanceUnit): string {
   if (m == null) return '';
   return `${fmtNum(mToDistance(m, u))} ${u}`;
+}
+
+// ---- Height ---------------------------------------------------------------
+export const cmToFeetInches = (cm: number) => {
+  const inches = Math.round(cm / CM_PER_IN);
+  return { feet: Math.floor(inches / 12), inches: inches % 12 };
+};
+export const feetInchesToCm = (feet: number, inches: number) => Math.round((feet * 12 + inches) * CM_PER_IN);
+/** Canonical cm → display string, e.g. "175 cm" / "5 ft 9 in". */
+export function formatHeight(cm: number, u: HeightUnit): string {
+  if (u === 'cm') return `${cm} cm`;
+  const { feet, inches } = cmToFeetInches(cm);
+  return `${feet} ft ${inches} in`;
 }

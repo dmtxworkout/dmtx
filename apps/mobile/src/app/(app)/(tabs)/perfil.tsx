@@ -1,8 +1,10 @@
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
-import { Button, Loading } from '../../../components/ui';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ACTIVITY_LEVEL_LABEL, ageOn, type BodyFigure } from '@dmtx/schemas';
+import { metabolicRates } from '@dmtx/core';
+import { Button, Loading, Segmented } from '../../../components/ui';
 import { api } from '../../../lib/api';
 import { signOut } from '../../../lib/auth';
 import {
@@ -13,37 +15,9 @@ import {
   useDownloads,
   type DownloadQuality,
 } from '../../../lib/downloads';
+import { figureOf } from '../../../lib/profile';
+import { formatHeight, formatWeight } from '../../../lib/units';
 import { useUnits } from '../../../lib/units-context';
-
-/** Segmented toggle (e.g. kg | lb, or the three download qualities). */
-function Segmented<T extends string | number>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <View className="flex-row rounded-xl bg-surface-2 p-1">
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <Pressable
-            key={String(o.value)}
-            onPress={() => onChange(o.value)}
-            className={`flex-1 items-center justify-center rounded-lg py-2 ${active ? 'bg-accent' : ''}`}
-          >
-            <Text className={`font-semibold text-[14px] ${active ? 'text-white' : 'text-ink-3'}`}>
-              {o.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
 
 function accessLine(entitlement: NonNullable<Awaited<ReturnType<typeof api.me>>>['entitlement']): string {
   if (!entitlement.active) return 'Sin suscripción activa';
@@ -58,11 +32,25 @@ function accessLine(entitlement: NonNullable<Awaited<ReturnType<typeof api.me>>>
   return 'Suscripción activa';
 }
 
+function DataRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center justify-between gap-4">
+      <Text className="font-sans text-[14px] text-ink-3">{label}</Text>
+      <Text className="font-semibold text-[14px] text-ink">{value}</Text>
+    </View>
+  );
+}
+
 export default function Perfil() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const me = useQuery({ queryKey: ['me'], queryFn: api.me });
-  const { units, setWeight, setDistance } = useUnits();
+  const qc = useQueryClient();
+  const { units, setWeight, setDistance, setHeight } = useUnits();
+  const setFigure = useMutation({
+    mutationFn: (bodyFigure: BodyFigure) => api.updateProfile({ bodyFigure }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['me'] }),
+  });
   const quality = useDownloadQuality();
   const downloads = useDownloads();
   const saved = downloads.filter((d) => d.status === 'done');
@@ -73,6 +61,8 @@ export default function Perfil() {
 
   const user = me.data?.user;
   const entitlement = me.data?.entitlement;
+  const profile = me.data?.profile;
+  const rates = profile ? metabolicRates(profile) : null;
 
   return (
     <ScrollView
@@ -108,6 +98,44 @@ export default function Perfil() {
         </View>
       ) : null}
 
+      {profile ? (
+        <View className="mt-6 rounded-2xl border border-line bg-surface p-4">
+          <View className="flex-row items-center justify-between">
+            <Text className="font-mono-medium text-[10px] uppercase tracking-wider text-ink-3">
+              Tus datos
+            </Text>
+            <Pressable onPress={() => router.push('/(app)/mis-datos')} hitSlop={10}>
+              <Text className="font-semibold text-[14px] text-accent">Editar</Text>
+            </Pressable>
+          </View>
+          <View className="mt-3 gap-2">
+            {profile.dateOfBirth ? <DataRow label="Edad" value={`${ageOn(profile.dateOfBirth)} años`} /> : null}
+            {profile.weightKg ? <DataRow label="Peso" value={formatWeight(profile.weightKg, units.weight)} /> : null}
+            {profile.heightCm ? <DataRow label="Altura" value={formatHeight(profile.heightCm, units.height)} /> : null}
+            {profile.activityLevel ? (
+              <DataRow label="Actividad" value={ACTIVITY_LEVEL_LABEL[profile.activityLevel].label} />
+            ) : null}
+            {rates ? (
+              <>
+                <DataRow label="Tasa metabólica basal" value={`${rates.basal} kcal/día`} />
+                <DataRow label="Tasa metabólica activa" value={`${rates.active} kcal/día`} />
+              </>
+            ) : null}
+          </View>
+          <View className="mt-4 gap-1.5">
+            <Text className="font-semibold text-[14px] text-ink">Figura del cuerpo</Text>
+            <Segmented<BodyFigure>
+              value={setFigure.isPending ? setFigure.variables : figureOf(profile)}
+              onChange={(v) => setFigure.mutate(v)}
+              options={[
+                { value: 'male', label: 'Hombre' },
+                { value: 'female', label: 'Mujer' },
+              ]}
+            />
+          </View>
+        </View>
+      ) : null}
+
       <View className="mt-6 rounded-2xl border border-line bg-surface p-4">
         <Text className="font-mono-medium text-[10px] uppercase tracking-wider text-ink-3">
           Unidades
@@ -131,6 +159,17 @@ export default function Perfil() {
             options={[
               { value: 'km', label: 'Kilómetros (km)' },
               { value: 'mi', label: 'Millas (mi)' },
+            ]}
+          />
+        </View>
+        <View className="mt-4 gap-1.5">
+          <Text className="font-semibold text-[14px] text-ink">Altura</Text>
+          <Segmented
+            value={units.height}
+            onChange={setHeight}
+            options={[
+              { value: 'cm', label: 'Centímetros (cm)' },
+              { value: 'ft', label: 'Pies (ft)' },
             ]}
           />
         </View>
