@@ -102,7 +102,9 @@ export function MusclesPage() {
             lit={lit}
             attention={attention && !part}
             onPart={onPart}
-            describe={(p) => (editing ? BODY_PART_LABEL[p] : `${BODY_PART_LABEL[p]} · ${MUSCLE_ZONE_LABEL[BODY_PART_ZONE[p]]}`)}
+            // Browsing picks a zone, so hovering shows the whole zone; a muscle's form picks one part.
+            hoverGroup={editing ? undefined : (p) => partsOf(BODY_PART_ZONE[p])}
+            describe={(p) => (editing ? BODY_PART_LABEL[p] : MUSCLE_ZONE_LABEL[BODY_PART_ZONE[p]])}
             hint={editing ? (
               part ? (
                 'Elige otra parte para cambiarla, o la misma para quitarla.'

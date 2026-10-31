@@ -103,8 +103,8 @@ export const BODY_PART_ZONE: Record<BodyPart, MuscleZone> = {
   hamstring: 'legs',
   calves: 'legs',
   tibialis: 'legs',
-  'neck-front': 'back',
-  'neck-back': 'back',
+  'neck-front': 'shoulders',
+  'neck-back': 'shoulders',
   hands: 'arms',
   feet: 'legs',
 };

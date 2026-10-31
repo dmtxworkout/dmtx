@@ -21,6 +21,7 @@ const FIGURES: { kind: BodyFigureKind; label: string }[] = [
 export function BodyFigure({
   lit,
   attention = false,
+  hoverGroup,
   describe = (part) => BODY_PART_LABEL[part],
   hint,
   onPart,
@@ -29,6 +30,8 @@ export function BodyFigure({
   lit: BodyPart[];
   /** Pulses, to draw the eye when a part must be chosen. */
   attention?: boolean;
+  /** What a hovered part darkens with it (by default, only itself). */
+  hoverGroup?: (part: BodyPart) => BodyPart[];
   /** What a hovered part is called. */
   describe?: (part: BodyPart) => ReactNode;
   /** Shown under the body while nothing is hovered. */
@@ -39,6 +42,7 @@ export function BodyFigure({
 }) {
   const [figure, setFigure] = useState<BodyFigureKind>('male');
   const [hovered, setHovered] = useState<BodyPart | null>(null);
+  const darkened = !hovered ? [] : hoverGroup ? hoverGroup(hovered) : [hovered];
 
   return (
     <div className="flex flex-col gap-3">
@@ -79,7 +83,7 @@ export function BodyFigure({
                         'outline-none transition-colors',
                         attention && 'motion-safe:animate-pulse',
                         onPart && 'cursor-pointer',
-                        hovered === part ? (on ? 'fill-accent-dark' : 'fill-[#587089]') : on ? 'fill-accent' : 'fill-[#7d93ab]',
+                        darkened.includes(part) ? (on ? 'fill-accent-dark' : 'fill-[#587089]') : on ? 'fill-accent' : 'fill-[#7d93ab]',
                       )}
                     >
                       {shapes.map((d, i) => (
