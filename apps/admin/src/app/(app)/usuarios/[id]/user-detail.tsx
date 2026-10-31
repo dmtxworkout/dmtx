@@ -123,7 +123,7 @@ export function UserDetail({ id }: { id: string }) {
           <div className="p-10 text-center text-sm text-accent-dark">Usuario no encontrado.</div>
         ) : (
           <div className="mx-auto grid w-full max-w-[1280px] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
-            <UserActivity data={activity.data} isLoading={activity.isLoading} isError={activity.isError} />
+            <UserActivity userId={id} data={activity.data} isLoading={activity.isLoading} isError={activity.isError} />
 
             <div className="flex min-w-0 flex-col gap-5">
             {/* Datos */}

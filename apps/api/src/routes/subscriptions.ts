@@ -4,7 +4,7 @@ import type { Database } from '@dmtx/db';
 import { LIVE_SUBSCRIPTION_STATUS } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { resolveEntitlement } from '../lib/entitlement';
-import { loadUserActivity } from '../lib/user-activity';
+import { HISTORY_TYPES, loadUserActivity, loadUserHistory, type HistoryType } from '../lib/user-activity';
 import { requireAdmin } from '../middleware/auth';
 
 const DAY_MS = 86_400_000;
@@ -46,6 +46,13 @@ async function terminateLive(db: Database, userId: string, status: 'expired' | '
     })
     .where(and(eq(subscriptions.userId, userId), inArray(subscriptions.status, LIVE)));
 }
+
+const parseHistoryCursor = (raw: string) => {
+  const cut = raw.lastIndexOf('|');
+  const at = raw.slice(0, cut);
+  const id = raw.slice(cut + 1);
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?[+-]\d{2}$/.test(at) && /^[0-9a-f-]{36}$/i.test(id) ? { at, id } : null;
+};
 
 export const subscriptionsRoute = createApp();
 subscriptionsRoute.use('*', requireAdmin);
@@ -166,9 +173,20 @@ subscriptionsRoute.get('/users/:id', async (c) => {
 });
 
 /** PATCH /api/subscriptions/users/:id — edit a member's name / email. */
-/** GET /api/subscriptions/users/:id/activity — what a member did, looked at and searched for. */
+/** GET /api/subscriptions/users/:id/activity — what a member did and what interests them, summed up. */
 subscriptionsRoute.get('/users/:id/activity', async (c) => {
   return c.json(await loadUserActivity(c.get('db'), c.req.param('id')));
+});
+
+/** GET /api/subscriptions/users/:id/activity/history?type=&cursor=&limit= — one page of it all, newest first. */
+subscriptionsRoute.get('/users/:id/activity/history', async (c) => {
+  const type = c.req.query('type') ?? 'all';
+  if (!(HISTORY_TYPES as readonly string[]).includes(type)) return c.json({ error: 'Tipo inválido' }, 400);
+  const raw = c.req.query('cursor');
+  const cursor = raw ? parseHistoryCursor(raw) : null;
+  if (raw && !cursor) return c.json({ error: 'Cursor inválido' }, 400);
+  const limit = Math.min(100, Math.max(1, Number(c.req.query('limit')) || 50));
+  return c.json(await loadUserHistory(c.get('db'), c.req.param('id'), { type: type as HistoryType, cursor, limit }));
 });
 
 subscriptionsRoute.patch('/users/:id', async (c) => {

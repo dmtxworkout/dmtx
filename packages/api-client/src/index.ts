@@ -37,6 +37,8 @@ export type {
   SubscriptionHistoryItem,
   EntitlementResult,
   UserActivity,
+  UserHistoryPage,
+  UserHistoryType,
 } from './subscriptions';
 export type {
   CreateUploadInput,

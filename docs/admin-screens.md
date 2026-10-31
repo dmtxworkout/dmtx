@@ -22,7 +22,7 @@ Each follows the same pattern: list (TanStack Table) + create/edit (RHF + Zod ag
 - **Suscripciones** (`/suscripciones`) — see [billing.md](billing.md): set custom price/discount, comp, adjust next charge date, manual charge/retry, payment history, pause/cancel.
 - **Reportes** (`/reportes`) — revenue over a period, by segment, MRR/churn (SQL over `subscriptions` + `payments`).
 - **Panel** (`/`) — dashboard summary (currently redirects to `/ejercicios`).
-- **Usuarios → detalle** (`/usuarios/:id`) — two columns. Left, from `GET /api/subscriptions/users/:id/activity`: totals; **Qué ha hecho** (programs with days done, skills with level, rutinas with sessions); **Qué le interesa** (opened or started, no session yet); **Qué busca** (text, filters, results, no-result searches marked); **Historial** (all of it in order, filterable). Right: Datos, Perfil (what the app asks after sign-up, with the metabolic rates), Suscripción, Contraseña.
+- **Usuarios → detalle** (`/usuarios/:id`) — two columns. Left, from `GET /api/subscriptions/users/:id/activity` (summed up by the database, so exact however long the history) and `/activity/history` (paged with «Ver más»): totals; **Qué ha hecho** (programs with days done, skills with level, rutinas with sessions); **Qué le interesa** (opened or started, no session yet); **Qué busca** (text, filters, results, no-result searches marked); **Historial** (all of it in order, filterable). Right: Datos, Perfil (what the app asks after sign-up, with the metabolic rates), Suscripción, Contraseña.
 
 ## UI kit
 

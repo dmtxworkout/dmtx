@@ -55,8 +55,22 @@ export interface UserActivity {
   skills: { id: string; name: string; sessions: number; level: number; levels: number; lastAt: string | null }[];
   /** Opened or started, not yet done: the most looked at first. */
   interest: { type: 'workout' | 'program' | 'skill'; id: string; name: string; views: number; starts: number; lastAt: string }[];
-  searches: { query: string | null; filters: string[]; results: number; at: string }[];
-  timeline: { type: 'session' | 'view' | 'start' | 'search'; title: string; detail: string | null; at: string }[];
+}
+
+export type UserHistoryType = 'all' | 'session' | 'view' | 'start' | 'search';
+
+export interface UserHistoryPage {
+  items: {
+    id: string;
+    type: Exclude<UserHistoryType, 'all'>;
+    title: string;
+    detail: string | null;
+    query: string | null;
+    filters: string[];
+    results: number;
+    at: string;
+  }[];
+  nextCursor: string | null;
 }
 
 export interface EntitlementResult {
@@ -78,6 +92,11 @@ export function subscriptionsApi(http: Http) {
     },
     activity(id: string): Promise<UserActivity> {
       return http.request(`/api/subscriptions/users/${id}/activity`);
+    },
+    activityHistory(id: string, opts: { type: UserHistoryType; cursor?: string | null; limit: number }): Promise<UserHistoryPage> {
+      const qs = new URLSearchParams({ type: opts.type, limit: String(opts.limit) });
+      if (opts.cursor) qs.set('cursor', opts.cursor);
+      return http.request(`/api/subscriptions/users/${id}/activity/history?${qs}`);
     },
     updateUser(id: string, patch: { name?: string; email?: string }): Promise<{ ok: true }> {
       return http.request(`/api/subscriptions/users/${id}`, {

@@ -4,10 +4,11 @@
 // without doing it, what they search for, and all of it in order.
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
-import type { UserActivity as Activity } from '@dmtx/api-client';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import type { UserActivity as Activity, UserHistoryPage, UserHistoryType } from '@dmtx/api-client';
 import { api } from '@/lib/api';
 import { cn, formatDateEs } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { StatCard } from '@/components/ui/stat-card';
 
@@ -18,13 +19,13 @@ const CONTENT = {
 } as const;
 
 const TIMELINE_LABEL = { session: 'Terminó', start: 'Empezó', view: 'Abrió', search: 'Buscó' } as const;
-const TIMELINE_FILTERS = [
+const TIMELINE_FILTERS: { value: UserHistoryType; label: string }[] = [
   { value: 'all', label: 'Todo' },
   { value: 'session', label: 'Sesiones' },
   { value: 'view', label: 'Abrió' },
   { value: 'start', label: 'Empezó' },
   { value: 'search', label: 'Búsquedas' },
-] as const;
+];
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -130,9 +131,57 @@ function Done({ data }: { data: Activity }) {
   );
 }
 
-function Timeline({ items }: { items: Activity['timeline'] }) {
-  const [filter, setFilter] = useState<(typeof TIMELINE_FILTERS)[number]['value']>('all');
-  const shown = filter === 'all' ? items : items.filter((i) => i.type === filter);
+const PAGE = { history: 50, searches: 10 };
+
+function useHistory(userId: string, type: UserHistoryType, limit: number) {
+  return useInfiniteQuery({
+    queryKey: ['admin-user-history', userId, type],
+    queryFn: ({ pageParam }) => api.subscriptions.activityHistory(userId, { type, cursor: pageParam, limit }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.nextCursor,
+  });
+}
+
+/** Loading, empty and error states, the rows, and «Ver más» while there's more. */
+function Paged({ query, empty, children }: { query: ReturnType<typeof useHistory>; empty: string; children: (items: UserHistoryPage['items']) => ReactNode }) {
+  const items = query.data?.pages.flatMap((p) => p.items) ?? [];
+  if (query.isLoading) return <Empty>Cargando…</Empty>;
+  if (query.isError) return <p className="text-[13px] text-accent-dark">No se pudo cargar.</p>;
+  if (items.length === 0) return <Empty>{empty}</Empty>;
+  return (
+    <>
+      {children(items)}
+      {query.hasNextPage && (
+        <Button type="button" variant="outline" size="sm" className="mt-3 w-full" disabled={query.isFetchingNextPage} onClick={() => void query.fetchNextPage()}>
+          {query.isFetchingNextPage ? 'Cargando…' : 'Ver más'}
+        </Button>
+      )}
+    </>
+  );
+}
+
+function Searches({ userId }: { userId: string }) {
+  const query = useHistory(userId, 'search', PAGE.searches);
+  return (
+    <Section title="Qué busca">
+      <Paged query={query} empty="Aún no ha buscado nada.">
+        {(items) =>
+          items.map((s) => (
+            <Row key={s.id} name={s.query ?? 'Solo filtros'} meta={ago(s.at)}>
+              <span className={cn('font-mono text-[11px]', s.results ? 'text-muted' : 'font-medium text-accent-dark')}>
+                {[s.results ? plural(s.results, 'resultado', 'resultados') : 'Sin resultados', ...s.filters].join(' · ')}
+              </span>
+            </Row>
+          ))
+        }
+      </Paged>
+    </Section>
+  );
+}
+
+function Timeline({ userId }: { userId: string }) {
+  const [filter, setFilter] = useState<UserHistoryType>('all');
+  const query = useHistory(userId, filter, PAGE.history);
   return (
     <Section
       title="Historial"
@@ -151,25 +200,25 @@ function Timeline({ items }: { items: Activity['timeline'] }) {
         </div>
       }
     >
-      {shown.length === 0 ? (
-        <Empty>Nada por aquí todavía.</Empty>
-      ) : (
-        shown.map((t, i) => (
-          <div key={i} className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-baseline gap-3 border-t border-line-4 py-2 first:border-0">
-            <span className={cn('font-mono text-[11px]', t.type === 'session' ? 'font-medium text-accent-dark' : 'text-muted')}>{TIMELINE_LABEL[t.type]}</span>
-            <span className="truncate text-[13px] text-ink-2">
-              {t.title}
-              {t.detail && <span className="text-muted"> · {t.detail}</span>}
-            </span>
-            <span className="font-mono text-[11px] text-muted">{ago(t.at)}</span>
-          </div>
-        ))
-      )}
+      <Paged query={query} empty="Nada por aquí todavía.">
+        {(items) =>
+          items.map((t) => (
+            <div key={t.id} className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-baseline gap-3 border-t border-line-4 py-2 first:border-0">
+              <span className={cn('font-mono text-[11px]', t.type === 'session' ? 'font-medium text-accent-dark' : 'text-muted')}>{TIMELINE_LABEL[t.type]}</span>
+              <span className="truncate text-[13px] text-ink-2">
+                {t.title}
+                {t.detail && <span className="text-muted"> · {t.detail}</span>}
+              </span>
+              <span className="font-mono text-[11px] text-muted">{ago(t.at)}</span>
+            </div>
+          ))
+        }
+      </Paged>
     </Section>
   );
 }
 
-export function UserActivity({ data, isLoading, isError }: { data?: Activity; isLoading: boolean; isError: boolean }) {
+export function UserActivity({ userId, data, isLoading, isError }: { userId: string; data?: Activity; isLoading: boolean; isError: boolean }) {
   if (isLoading) return <div className="p-10 text-center text-sm text-muted">Cargando…</div>;
   if (isError || !data) return <div className="p-10 text-center text-sm text-accent-dark">No se pudo cargar la actividad.</div>;
   const { summary } = data;
@@ -203,21 +252,9 @@ export function UserActivity({ data, isLoading, isError }: { data?: Activity; is
         )}
       </Section>
 
-      <Section title="Qué busca">
-        {data.searches.length === 0 ? (
-          <Empty>Aún no ha buscado nada.</Empty>
-        ) : (
-          data.searches.map((s, i) => (
-            <Row key={i} name={s.query ?? 'Solo filtros'} meta={ago(s.at)}>
-              <span className={cn('font-mono text-[11px]', s.results ? 'text-muted' : 'font-medium text-accent-dark')}>
-                {[s.results ? plural(s.results, 'resultado', 'resultados') : 'Sin resultados', ...s.filters].join(' · ')}
-              </span>
-            </Row>
-          ))
-        )}
-      </Section>
+      <Searches userId={userId} />
 
-      <Timeline items={data.timeline} />
+      <Timeline userId={userId} />
     </div>
   );
 }
