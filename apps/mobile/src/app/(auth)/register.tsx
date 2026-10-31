@@ -35,7 +35,13 @@ export default function Register() {
     setLoading(true);
     const res = await signUp.email({ email: email.trim(), password, name: name.trim() });
     setLoading(false);
-    if (res.error) setError(res.error.message ?? 'No se pudo crear la cuenta');
+    if (res.error) {
+      setError(
+        res.error.code?.startsWith('USER_ALREADY_EXISTS')
+          ? 'Ese correo ya tiene una cuenta. Entra con tu contraseña.'
+          : 'No se pudo crear la cuenta',
+      );
+    }
     // On success, the root AuthGate redirects into the app.
   };
 
@@ -49,19 +55,13 @@ export default function Register() {
           contentContainerClassName="flex-grow px-6 pb-6"
           keyboardShouldPersistTaps="handled"
         >
-          <View className="mt-2 flex-row items-center gap-3">
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={12}
-              className="h-10 w-10 items-center justify-center"
-            >
-              <Text className="text-[22px] text-ink">←</Text>
-            </Pressable>
-            <View className="h-1 flex-1 overflow-hidden rounded-full bg-surface-2">
-              <View className="h-full w-1/6 rounded-full bg-accent" />
-            </View>
-            <Text className="font-mono text-[12px] text-ink-3">1 / 6</Text>
-          </View>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            className="mt-2 h-10 w-10 items-center justify-center"
+          >
+            <Text className="text-[22px] text-ink">←</Text>
+          </Pressable>
 
           <Text className="mb-7 mt-4 font-extrabold text-[30px] tracking-tight text-ink">
             Crea tu cuenta

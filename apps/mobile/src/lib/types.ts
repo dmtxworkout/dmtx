@@ -15,7 +15,7 @@ export interface Entitlement {
 }
 
 export interface Me {
-  user: { id: string; email: string; name: string; image: string | null };
+  user: { id: string; email: string; name: string; image: string | null; emailVerified: boolean };
   entitlement: Entitlement;
   profile: Profile;
 }

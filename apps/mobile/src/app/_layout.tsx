@@ -44,6 +44,11 @@ function AuthGate() {
     return () => clearTimeout(t);
   }, []);
 
+  // What was cached belongs to whoever just signed out.
+  useEffect(() => {
+    if (!isPending && !session) queryClient.clear();
+  }, [session, isPending]);
+
   useEffect(() => {
     if (isPending && !ready) return;
     const group = segments[0];

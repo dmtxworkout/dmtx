@@ -33,12 +33,14 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
 });
 
 /**
- * Gate: require an authenticated user with an active entitlement (trial, paid
- * subscription, or admin grant). 401 if anonymous, 402 if no active access.
+ * Gate: require an authenticated user with a verified email and an active
+ * entitlement (trial, paid subscription, or admin grant). 401 if anonymous, 403
+ * if the email isn't verified, 402 if no active access.
  */
 export const requireAccess = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'No autenticado' }, 401);
+  if (!user.emailVerified) return c.json({ error: 'Verifica tu correo', code: 'email_unverified' }, 403);
   const entitlement = await resolveEntitlement(c.get('db'), c.env, user.id);
   if (!entitlement.active) {
     return c.json({ error: 'Suscripción requerida', code: 'subscription_required' }, 402);

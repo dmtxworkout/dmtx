@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../lib/api';
 import { Loading } from '../../components/ui';
+import { EmailCode } from '../../components/email-code';
 import { Onboarding } from '../../components/onboarding';
 import { Paywall } from '../../components/paywall';
 import { colors } from '../../theme';
@@ -19,6 +20,7 @@ export default function AppLayout() {
       </View>
     );
   }
+  if (me.data && !me.data.user.emailVerified) return <EmailCode email={me.data.user.email} />;
   if (me.data && !me.data.entitlement.active) {
     return <Paywall entitlement={me.data.entitlement} onRetry={() => void me.refetch()} />;
   }

@@ -42,7 +42,8 @@ PostgreSQL via Drizzle. Schema lives in `packages/db/src/schema/` (one file per 
 ## Users & billing
 
 - Better Auth owns `user` / `session` / `account` / `verification` (`packages/db/src/schema/auth.ts`; `user.role` for the admin gate).
-- **`profiles`** (1:1) also holds what the app asks after sign-up: `dateOfBirth`, `gender`, `weightKg`, `heightCm`, `activityLevel` (`onboardingCompletedAt` is set once all are there), and `bodyFigure`, the body the app draws (null follows the gender). `@dmtx/core` computes the basal and active metabolic rates from them.
+- **`profiles`** (1:1) also holds what the app asks after sign-up: `dateOfBirth`, `gender`, `weightKg`, `heightCm`, `activityLevel` (`onboardingCompletedAt` is set once all are there), and `bodyFigure`, the body the app draws (null follows the gender). `@dmtx/core` computes the basal and active metabolic rates from them. Each answer saves as it's given, so a member who leaves comes back to the first one missing.
+- New members prove their email with a six-digit code (Better Auth `emailOTP`; the code is stored hashed and lasts 10 minutes). They can sign in before that, but `requireAccess` answers 403 `email_unverified` and the app stays on the code step.
 - **`subscriptions`** (our own billing record), **`discounts`**, **`payments`** (ledger), **`webhook_events`**. See [billing.md](billing.md).
 
 ## Cascade rules

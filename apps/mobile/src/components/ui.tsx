@@ -150,6 +150,28 @@ export function Segmented<T extends string | number>({
   );
 }
 
+/** Sign-up progress, from the step after the account: back arrow, bar, "2 / 6". */
+export function StepHeader({ step, total, onBack }: { step: number; total: number; onBack?: () => void }) {
+  return (
+    <View className="mt-2 flex-row items-center gap-3">
+      <Pressable
+        onPress={onBack}
+        disabled={!onBack}
+        hitSlop={12}
+        className={`h-10 w-10 items-center justify-center ${onBack ? '' : 'opacity-0'}`}
+      >
+        <Text className="text-[22px] text-ink">←</Text>
+      </Pressable>
+      <View className="h-1 flex-1 overflow-hidden rounded-full bg-surface-2">
+        <View className="h-full rounded-full bg-accent" style={{ width: `${(step / total) * 100}%` }} />
+      </View>
+      <Text className="font-mono text-[12px] text-ink-3">
+        {step} / {total}
+      </Text>
+    </View>
+  );
+}
+
 /** Placeholder for media that hasn't loaded (approximates the comp's hatch). */
 export function Placeholder({ className = '' }: { className?: string }) {
   return <View className={`bg-[#1c1c21] ${className}`} />;

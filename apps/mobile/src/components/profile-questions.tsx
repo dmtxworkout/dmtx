@@ -1,4 +1,4 @@
-// The questions about the member, one per sign-up step and all together in Mis
+// The questions about the member, one per sign-up step and all together in Tus
 // datos. Each edits a text draft and says what's wrong with its answer; the
 // draft becomes canonical units (kg, cm, YYYY-MM-DD) only when saved.
 import { useState } from 'react';
@@ -61,15 +61,9 @@ export function useDraft(profile: Profile) {
   });
 }
 
-export function toInput(d: Draft, u: Units): UpdateProfileInput {
-  return {
-    dateOfBirth: birthDate(d.birth),
-    gender: d.gender ?? undefined,
-    weightKg: weightKg(d, u),
-    heightCm: heightCm(d, u),
-    activityLevel: d.activityLevel ?? undefined,
-  };
-}
+/** Every answer at once, for Tus datos. */
+export const allAnswers = (d: Draft, u: Units): UpdateProfileInput =>
+  Object.assign({}, ...QUESTIONS.map((q) => q.answer(d, u))) as UpdateProfileInput;
 
 type FieldsProps = { draft: Draft; onChange: (patch: Partial<Draft>) => void };
 
@@ -80,6 +74,8 @@ export interface Question {
   Fields: (props: FieldsProps) => React.ReactNode;
   /** What's wrong with the answer, or null. */
   problem: (d: Draft, u: Units) => string | null;
+  answer: (d: Draft, u: Units) => UpdateProfileInput;
+  answered: (p: Profile) => boolean;
 }
 
 export const QUESTIONS: Question[] = [
@@ -92,6 +88,8 @@ export const QUESTIONS: Question[] = [
       dateOfBirthSchema.safeParse(birthDate(d.birth)).success
         ? null
         : `Escribe una fecha válida. Debes tener al menos ${MIN_AGE} años.`,
+    answer: (d) => ({ dateOfBirth: birthDate(d.birth) }),
+    answered: (p) => Boolean(p.dateOfBirth),
   },
   {
     key: 'gender',
@@ -99,6 +97,8 @@ export const QUESTIONS: Question[] = [
     hint: 'Lo usamos para calcular tu metabolismo y elegir la figura del cuerpo que ves en las rutinas.',
     Fields: GenderFields,
     problem: (d) => (d.gender ? null : 'Elige una opción.'),
+    answer: (d) => ({ gender: d.gender ?? undefined }),
+    answered: (p) => Boolean(p.gender),
   },
   {
     key: 'weight',
@@ -106,6 +106,8 @@ export const QUESTIONS: Question[] = [
     hint: 'Puedes cambiarlo cuando quieras en tu perfil.',
     Fields: WeightFields,
     problem: (d, u) => (weightKgSchema.safeParse(weightKg(d, u)).success ? null : 'Escribe un peso válido.'),
+    answer: (d, u) => ({ weightKg: weightKg(d, u) }),
+    answered: (p) => Boolean(p.weightKg),
   },
   {
     key: 'height',
@@ -113,6 +115,8 @@ export const QUESTIONS: Question[] = [
     hint: 'Puedes cambiarlo cuando quieras en tu perfil.',
     Fields: HeightFields,
     problem: (d, u) => (heightCmSchema.safeParse(heightCm(d, u)).success ? null : 'Escribe una altura válida.'),
+    answer: (d, u) => ({ heightCm: heightCm(d, u) }),
+    answered: (p) => Boolean(p.heightCm),
   },
   {
     key: 'activity',
@@ -120,6 +124,8 @@ export const QUESTIONS: Question[] = [
     hint: 'Piensa en una semana normal.',
     Fields: ActivityFields,
     problem: (d) => (d.activityLevel ? null : 'Elige una opción.'),
+    answer: (d) => ({ activityLevel: d.activityLevel ?? undefined }),
+    answered: (p) => Boolean(p.activityLevel),
   },
 ];
 

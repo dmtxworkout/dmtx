@@ -579,7 +579,7 @@ appRoute.get('/me', async (c) => {
     db.select().from(profiles).where(eq(profiles.userId, user.id)).limit(1),
   ]);
   return c.json({
-    user: { id: user.id, email: user.email, name: user.name, image: user.image ?? null },
+    user: { id: user.id, email: user.email, name: user.name, image: user.image ?? null, emailVerified: Boolean(user.emailVerified) },
     entitlement,
     profile: profileDto(profile),
   });

@@ -1,6 +1,6 @@
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
-import { admin } from 'better-auth/plugins';
+import { admin, emailOTP } from 'better-auth/plugins';
 import { expo } from '@better-auth/expo';
 import { createDb } from '@dmtx/db';
 import { Resend } from 'resend';
@@ -45,7 +45,12 @@ export function createAuth(env: AuthEnv) {
     database: drizzleAdapter(db, { provider: 'pg' }),
     emailAndPassword: {
       enabled: true,
+      // Sign-in stays open so an unverified member can come back to the code step;
+      // the API keeps content from them (requireAccess).
       requireEmailVerification: false,
+      // Whoever signed up with someone else's address loses the session when its
+      // owner resets the password, before that owner verifies it.
+      revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         if (!resend) return;
         await resend.emails.send({
@@ -77,6 +82,24 @@ export function createAuth(env: AuthEnv) {
       // Mobile app support: trusted-origin handling for the app scheme and
       // SecureStore-backed session cookies from the Expo client.
       expo(),
+      // The six-digit code that proves a new member's email. Only this type is
+      // ever sent: the plugin's sign-in and password flows stay unused.
+      emailOTP({
+        otpLength: 6,
+        expiresIn: 600,
+        storeOTP: 'hashed',
+        disableSignUp: true,
+        sendVerificationOTP: async ({ email, otp, type }) => {
+          if (type !== 'email-verification' || !resend) return;
+          const { error } = await resend.emails.send({
+            from,
+            to: email,
+            subject: `${otp} es tu código de DMTX`,
+            html: `<p>Tu código para verificar tu correo es:</p><p style="font-size:28px;font-weight:700;letter-spacing:4px">${otp}</p><p>Vence en 10 minutos. Si no creaste una cuenta en DMTX, ignora este correo.</p>`,
+          });
+          if (error) throw new Error(error.message);
+        },
+      }),
     ],
   });
 }

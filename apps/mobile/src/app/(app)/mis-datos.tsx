@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button, Loading } from '../../components/ui';
-import { QUESTIONS, toInput, useDraft } from '../../components/profile-questions';
+import { QUESTIONS, allAnswers, useDraft } from '../../components/profile-questions';
 import { api } from '../../lib/api';
 import type { Profile } from '../../lib/types';
 import { useUnits } from '../../lib/units-context';
@@ -21,7 +21,7 @@ function Form({ profile }: { profile: Profile }) {
   const [draft, setDraft] = useDraft(profile);
   const [problem, setProblem] = useState<string | null>(null);
   const save = useMutation({
-    mutationFn: () => api.updateProfile(toInput(draft, units)),
+    mutationFn: () => api.updateProfile(allAnswers(draft, units)),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['me'] });
       router.back();
