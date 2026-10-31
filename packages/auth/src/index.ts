@@ -6,7 +6,7 @@ import { createDb } from '@dmtx/db';
 import { Resend } from 'resend';
 import { ac, roles } from './permissions';
 
-const DEFAULT_FROM = 'DMTX <no-reply@dmtx.app>';
+const DEFAULT_FROM = 'DMTX <no-reply@dmtxworkout.com>';
 
 export interface AuthEnv {
   DATABASE_URL: string;

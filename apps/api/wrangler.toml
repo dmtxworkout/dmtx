@@ -12,7 +12,7 @@ enabled = true
 [vars]
 BETTER_AUTH_URL = "http://localhost:8787"
 ADMIN_ORIGIN = "http://localhost:3001"
-EMAIL_FROM = "DMTX <no-reply@dmtx.app>"
+EMAIL_FROM = "DMTX <no-reply@dmtxworkout.com>"
 
 # Daily billing run (implemented in the billing phase; needs a scheduled()
 # handler before enabling).
