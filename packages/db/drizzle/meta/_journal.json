@@ -393,6 +393,13 @@
       "when": 1793406114707,
       "tag": "0055_body_part_plain",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1793406739546,
+      "tag": "0056_body_part_neck_sides",
+      "breakpoints": true
     }
   ]
 }

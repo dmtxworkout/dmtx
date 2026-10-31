@@ -54,7 +54,8 @@ export const BODY_PART = [
   'hamstring',
   'calves',
   'tibialis',
-  'neck',
+  'neck-front',
+  'neck-back',
   'hands',
   'feet',
 ] as const;
@@ -78,7 +79,8 @@ export const BODY_PART_LABEL: Record<BodyPart, string> = {
   hamstring: 'Femorales',
   calves: 'Pantorrillas',
   tibialis: 'Tibial',
-  neck: 'Cuello',
+  'neck-front': 'Cuello frontal',
+  'neck-back': 'Cuello posterior',
   hands: 'Manos',
   feet: 'Pies',
 };
@@ -101,7 +103,8 @@ export const BODY_PART_ZONE: Record<BodyPart, MuscleZone> = {
   hamstring: 'legs',
   calves: 'legs',
   tibialis: 'legs',
-  neck: 'back',
+  'neck-front': 'back',
+  'neck-back': 'back',
   hands: 'arms',
   feet: 'legs',
 };
