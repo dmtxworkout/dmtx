@@ -13,10 +13,25 @@ import { Badge } from '@/components/ui/badge';
 import { MonoLabel } from '@/components/ui/mono-label';
 import { Dialog } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
+import { ACTIVITY_LEVEL_LABEL, ageOn } from '@dmtx/schemas';
+import { metabolicRates } from '@dmtx/core';
+import { UserActivity, useUserActivity } from './user-activity';
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 text-[13px]">
+      <span className="text-ink-3">{label}</span>
+      <span className="text-right font-semibold text-ink-2">{value}</span>
+    </div>
+  );
+}
 
 export function UserDetail({ id }: { id: string }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['admin-user', id], queryFn: () => api.subscriptions.user(id) });
+  const activity = useUserActivity(id);
+  const profile = activity.data?.profile;
+  const rates = profile ? metabolicRates(profile) : null;
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -107,11 +122,14 @@ export function UserDetail({ id }: { id: string }) {
         ) : q.isError || !q.data ? (
           <div className="p-10 text-center text-sm text-accent-dark">Usuario no encontrado.</div>
         ) : (
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
+          <div className="mx-auto grid w-full max-w-[1280px] items-start gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <UserActivity data={activity.data} isLoading={activity.isLoading} isError={activity.isError} />
+
+            <div className="flex min-w-0 flex-col gap-5">
             {/* Datos */}
             <section className="flex flex-col gap-4 rounded-xl border border-line-2 bg-surface p-5">
               <MonoLabel>Datos</MonoLabel>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4">
                 <div>
                   <div className="mb-1.5 text-[13px] font-semibold text-ink-2">Nombre</div>
                   <Input value={name} onChange={(e) => setName(e.target.value)} />
@@ -130,6 +148,26 @@ export function UserDetail({ id }: { id: string }) {
                 </Button>
               </div>
             </section>
+
+            {/* Perfil */}
+            {profile && (
+              <section className="flex flex-col gap-2.5 rounded-xl border border-line-2 bg-surface p-5">
+                <MonoLabel>Perfil</MonoLabel>
+                {profile.dateOfBirth || profile.gender || profile.weightKg || profile.heightCm || profile.activityLevel ? (
+                  <>
+                    {profile.dateOfBirth && <Fact label="Edad" value={`${ageOn(profile.dateOfBirth)} años`} />}
+                    {profile.gender && <Fact label="Género" value={profile.gender === 'male' ? 'Hombre' : 'Mujer'} />}
+                    {profile.weightKg && <Fact label="Peso" value={`${Math.round(profile.weightKg * 10) / 10} kg`} />}
+                    {profile.heightCm && <Fact label="Altura" value={`${profile.heightCm} cm`} />}
+                    {profile.activityLevel && <Fact label="Actividad" value={ACTIVITY_LEVEL_LABEL[profile.activityLevel].label} />}
+                    {rates && <Fact label="Tasa metabólica basal" value={`${rates.basal} kcal/día`} />}
+                    {rates && <Fact label="Tasa metabólica activa" value={`${rates.active} kcal/día`} />}
+                  </>
+                ) : (
+                  <p className="text-[13px] text-muted">Aún no completa sus datos en la app.</p>
+                )}
+              </section>
+            )}
 
             {/* Suscripción */}
             <section className="flex flex-col gap-4 rounded-xl border border-line-2 bg-surface p-5">
@@ -249,10 +287,11 @@ export function UserDetail({ id }: { id: string }) {
                   Envía un correo para que el usuario restablezca su contraseña.
                 </p>
               </div>
-              <Button variant="outline" disabled={reset.isPending} onClick={() => reset.mutate()}>
+              <Button variant="outline" className="shrink-0 whitespace-nowrap" disabled={reset.isPending} onClick={() => reset.mutate()}>
                 {reset.isPending ? 'Enviando…' : 'Enviar correo'}
               </Button>
             </section>
+            </div>
           </div>
         )}
       </div>

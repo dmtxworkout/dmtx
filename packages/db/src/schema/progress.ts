@@ -1,5 +1,5 @@
-import { doublePrecision, index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { measurementTypeEnum, primaryId, timestamps, trainingModeEnum, workoutFormatEnum } from './_shared';
+import { doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { activityKindEnum, measurementTypeEnum, primaryId, timestamps, trainingModeEnum, workoutFormatEnum } from './_shared';
 import { user } from './auth';
 import { workouts } from './workouts';
 import { exercises } from './exercises';
@@ -75,4 +75,27 @@ export const skillProgress = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex('skill_progress_user_skill_idx').on(t.userId, t.skillId)],
+);
+
+/**
+ * What a member looked at and searched for, so an admin can see their interests:
+ * opened content, started training, searches. `contentId` has no foreign key (it
+ * may be a rutina, program or skill) and the name is snapshotted, like a log's.
+ */
+export const activityEvents = pgTable(
+  'activity_events',
+  {
+    id: primaryId(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    kind: activityKindEnum().notNull(),
+    contentId: uuid(),
+    contentName: text(),
+    query: text(),
+    filters: jsonb().$type<string[]>(),
+    results: integer(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index('activity_events_user_idx').on(t.userId, t.createdAt)],
 );

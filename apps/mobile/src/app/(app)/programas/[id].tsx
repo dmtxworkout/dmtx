@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Loading, Thumb } from '../../../components/ui';
 import { api } from '../../../lib/api';
+import { useTrackActivity } from '../../../lib/activity';
 import { difficultyLabel, es } from '../../../i18n';
 
 export default function ProgramaDetalle() {
@@ -11,6 +12,7 @@ export default function ProgramaDetalle() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const q = useQuery({ queryKey: ['program', id], queryFn: () => api.program(id) });
+  useTrackActivity('view_program', id);
 
   if (q.isLoading) return <Loading />;
   if (q.isError || !q.data) {

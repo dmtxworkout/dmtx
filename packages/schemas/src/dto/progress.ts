@@ -16,6 +16,13 @@ export const setResultInputSchema = z.object({
 });
 export type SetResultInput = z.infer<typeof setResultInputSchema>;
 
+/** A member opened a piece of content, or started training; searches are recorded by the API. */
+export const trackActivitySchema = z.object({
+  kind: z.enum(['view_workout', 'view_program', 'view_skill', 'start_workout']),
+  contentId: z.uuid(),
+});
+export type TrackActivityInput = z.infer<typeof trackActivitySchema>;
+
 /** Payload the mobile player sends after a workout. */
 export const createWorkoutLogSchema = z.object({
   workoutId: z.uuid(),

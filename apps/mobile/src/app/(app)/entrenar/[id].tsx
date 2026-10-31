@@ -23,6 +23,7 @@ import { ModeChoice } from '../../../components/mode-choice';
 import { localVideoUri, useDownload } from '../../../lib/downloads';
 import type { WorkoutDetail } from '../../../lib/types';
 import { api } from '../../../lib/api';
+import { useTrackActivity } from '../../../lib/activity';
 import { buildSession, type ExerciseStep, type Step, type StepMeasure } from '../../../lib/session';
 import { mmss } from '../../../lib/format';
 import { useUnits } from '../../../lib/units-context';
@@ -49,6 +50,7 @@ interface Mark {
 export default function Entrenar() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useQuery({ queryKey: ['workout', id], queryFn: () => api.workout(id) });
+  useTrackActivity('start_workout', id);
 
   if (q.isLoading) return <Loading />;
   if (q.isError || !q.data) {

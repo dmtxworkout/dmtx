@@ -242,3 +242,9 @@ export type BodyFigure = z.infer<typeof bodyFigureSchema>;
 export const ACTIVITY_LEVEL = ['sedentary', 'light', 'moderate', 'active', 'very_active'] as const;
 export const activityLevelSchema = enumOf(ACTIVITY_LEVEL);
 export type ActivityLevel = z.infer<typeof activityLevelSchema>;
+
+// --- Member activity ---------------------------------------------------------
+/** What a member did in the app besides finishing a session (those are workout_logs). */
+export const ACTIVITY_KIND = ['view_workout', 'view_program', 'view_skill', 'start_workout', 'search'] as const;
+export const activityKindSchema = enumOf(ACTIVITY_KIND);
+export type ActivityKind = z.infer<typeof activityKindSchema>;

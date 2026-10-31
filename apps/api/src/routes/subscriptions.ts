@@ -4,6 +4,7 @@ import type { Database } from '@dmtx/db';
 import { LIVE_SUBSCRIPTION_STATUS } from '@dmtx/schemas';
 import { createApp } from '../lib/openapi';
 import { resolveEntitlement } from '../lib/entitlement';
+import { loadUserActivity } from '../lib/user-activity';
 import { requireAdmin } from '../middleware/auth';
 
 const DAY_MS = 86_400_000;
@@ -165,6 +166,11 @@ subscriptionsRoute.get('/users/:id', async (c) => {
 });
 
 /** PATCH /api/subscriptions/users/:id — edit a member's name / email. */
+/** GET /api/subscriptions/users/:id/activity — what a member did, looked at and searched for. */
+subscriptionsRoute.get('/users/:id/activity', async (c) => {
+  return c.json(await loadUserActivity(c.get('db'), c.req.param('id')));
+});
+
 subscriptionsRoute.patch('/users/:id', async (c) => {
   const db = c.get('db');
   const id = c.req.param('id');

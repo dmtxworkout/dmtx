@@ -1,3 +1,4 @@
+import type { ActivityLevel, Gender } from '@dmtx/schemas';
 import type { Http } from './http';
 
 export interface UserSubscription {
@@ -40,6 +41,24 @@ export interface AdminUser {
   history?: SubscriptionHistoryItem[];
 }
 
+export interface UserActivity {
+  summary: { sessions: number; sessions30d: number; minutes: number; lastActiveAt: string | null };
+  profile: {
+    gender: Gender | null;
+    dateOfBirth: string | null;
+    heightCm: number | null;
+    weightKg: number | null;
+    activityLevel: ActivityLevel | null;
+  };
+  workouts: { id: string | null; name: string; sessions: number; minutes: number; lastAt: string }[];
+  programs: { id: string; name: string; sessions: number; daysDone: number; daysTotal: number; lastAt: string }[];
+  skills: { id: string; name: string; sessions: number; level: number; levels: number; lastAt: string | null }[];
+  /** Opened or started, not yet done: the most looked at first. */
+  interest: { type: 'workout' | 'program' | 'skill'; id: string; name: string; views: number; starts: number; lastAt: string }[];
+  searches: { query: string | null; filters: string[]; results: number; at: string }[];
+  timeline: { type: 'session' | 'view' | 'start' | 'search'; title: string; detail: string | null; at: string }[];
+}
+
 export interface EntitlementResult {
   active: boolean;
   status: string;
@@ -56,6 +75,9 @@ export function subscriptionsApi(http: Http) {
     },
     user(id: string): Promise<AdminUser> {
       return http.request(`/api/subscriptions/users/${id}`);
+    },
+    activity(id: string): Promise<UserActivity> {
+      return http.request(`/api/subscriptions/users/${id}/activity`);
     },
     updateUser(id: string, patch: { name?: string; email?: string }): Promise<{ ok: true }> {
       return http.request(`/api/subscriptions/users/${id}`, {

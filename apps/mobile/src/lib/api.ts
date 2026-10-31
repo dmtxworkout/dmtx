@@ -1,4 +1,4 @@
-import type { CreateWorkoutLogInput, UpdateProfileInput } from '@dmtx/schemas';
+import type { CreateWorkoutLogInput, TrackActivityInput, UpdateProfileInput } from '@dmtx/schemas';
 import { API_URL, getSessionCookie } from './auth';
 import type { Browse, BrowseFilters, Home, Me, Profile, ProgramDetail, SkillDetail, WorkoutDetail } from './types';
 
@@ -71,6 +71,8 @@ export const api = {
   workout: (id: string) => req<WorkoutDetail>(`/app/workouts/${id}`),
   program: (id: string) => req<ProgramDetail>(`/app/programs/${id}`),
   skill: (id: string) => req<SkillDetail>(`/app/skills/${id}`),
+  track: (payload: TrackActivityInput) =>
+    req<{ ok: true }>('/app/activity', { method: 'POST', body: JSON.stringify(payload) }),
   saveLog: (payload: CreateWorkoutLogInput) =>
     req<{ id: string }>('/app/logs', { method: 'POST', body: JSON.stringify(payload) }),
 };

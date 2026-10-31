@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Loading, Thumb } from '../../../components/ui';
 import { api } from '../../../lib/api';
+import { useTrackActivity } from '../../../lib/activity';
 import { difficultyLabel, es } from '../../../i18n';
 import type { SkillGoal } from '@dmtx/schemas';
 import { pluralName } from '../../../lib/format';
@@ -32,6 +33,7 @@ export default function HabilidadDetalle() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const q = useQuery({ queryKey: ['skill', id], queryFn: () => api.skill(id) });
+  useTrackActivity('view_skill', id);
 
   if (q.isLoading) return <Loading />;
   if (q.isError || !q.data) {

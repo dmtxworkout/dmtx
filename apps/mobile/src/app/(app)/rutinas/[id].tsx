@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Button, Loading, Thumb } from '../../../components/ui';
 import { BodyMap } from '../../../components/body-map';
+import { useTrackActivity } from '../../../lib/activity';
 import { DownloadButton } from '../../../components/download-button';
 import { api } from '../../../lib/api';
 import { sectionVideos, useDownload } from '../../../lib/downloads';
@@ -83,6 +84,7 @@ export default function RutinaDetalle() {
   const insets = useSafeAreaInsets();
   const { units } = useUnits();
   const q = useQuery({ queryKey: ['workout', id], queryFn: () => api.workout(id) });
+  useTrackActivity('view_workout', id);
   // Saved for offline use: the page opens from the copy kept with the download when the API cannot be reached.
   const download = useDownload(id);
   const offlineCopy = download?.status === 'done' ? download.workout : undefined;

@@ -1,5 +1,6 @@
-import { and, count, desc, eq, inArray, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, or, sql, type AnyColumn } from 'drizzle-orm';
 import {
+  activityEvents,
   equipment,
   exerciseEquipment,
   exercises,
@@ -20,7 +21,7 @@ import {
 } from '@dmtx/db';
 import type { Database } from '@dmtx/db';
 import { sendEmailCode } from '@dmtx/auth';
-import { MUSCLE_ZONE, MUSCLE_ZONE_ALIASES, MUSCLE_ZONE_LABEL, createWorkoutLogSchema, updateProfileSchema } from '@dmtx/schemas';
+import { MUSCLE_ZONE, MUSCLE_ZONE_ALIASES, MUSCLE_ZONE_LABEL, createWorkoutLogSchema, trackActivitySchema, updateProfileSchema } from '@dmtx/schemas';
 import type { MuscleZone, SkillGoal } from '@dmtx/schemas';
 import { FULL_BODY_ZONES } from '@dmtx/core';
 import { createApp } from '../lib/openapi';
@@ -559,6 +560,31 @@ async function loadCatalog(db: Database, env: Env, f: CatalogFilter) {
 }
 
 const EMAIL_CODE_GAP_MS = 25_000;
+// Reopening the same content soon after is one visit, not two.
+const VISIT_GAP_MS = 30 * 60_000;
+// Typing «abd», «abdo», «abdomen» in a row is one search: the last text stands.
+const SEARCH_GAP_MS = 30_000;
+
+/** Keeps what a member searched for. Never gets in the way of the results. */
+async function recordSearch(db: Database, userId: string, query: string | undefined, filters: string[], results: number) {
+  try {
+    const text = (query ?? '').toLowerCase();
+    const [last] = await db
+      .select()
+      .from(activityEvents)
+      .where(and(eq(activityEvents.userId, userId), eq(activityEvents.kind, 'search'), gte(activityEvents.createdAt, new Date(Date.now() - SEARCH_GAP_MS))))
+      .orderBy(desc(activityEvents.createdAt))
+      .limit(1);
+    const before = last?.query ?? '';
+    if (last && (text.startsWith(before) || before.startsWith(text)) && (last.filters ?? []).join() === filters.join()) {
+      await db.update(activityEvents).set({ query: text || null, results, createdAt: new Date() }).where(eq(activityEvents.id, last.id));
+    } else {
+      await db.insert(activityEvents).values({ userId, kind: 'search', query: text || null, filters, results });
+    }
+  } catch (e) {
+    console.error('Search not recorded:', e);
+  }
+}
 
 const profileDto = (p: typeof profiles.$inferSelect | undefined) => ({
   gender: p?.gender ?? null,
@@ -643,6 +669,7 @@ appRoute.use('/workouts/*', requireAccess);
 appRoute.use('/programs/*', requireAccess);
 appRoute.use('/skills/*', requireAccess);
 appRoute.use('/logs', requireAccess);
+appRoute.use('/activity', requireAccess);
 
 // GET /api/app/home — hero + curated rows.
 appRoute.get('/home', async (c) => {
@@ -718,6 +745,22 @@ appRoute.get('/browse', async (c) => {
   const db = c.get('db');
   const ranked = zones.length || muscleSlugs.length || fullBody ? await rankByMuscles(db, { zones, muscles: muscleSlugs, fullBody }) : undefined;
   const cat = await loadCatalog(db, c.env, { userId: c.get('user')!.id, q, types, limit: 30, equipment: equipmentSlug, video, guided, ranked });
+  if ((q && q.length >= 2) || zones.length || muscleSlugs.length || fullBody || equipmentSlug || video || guided) {
+    const [muscleNames, equipmentNames] = await Promise.all([
+      muscleSlugs.length ? db.select({ name: muscles.name }).from(muscles).where(inArray(muscles.slug, muscleSlugs)) : [],
+      equipmentSlug ? db.select({ name: equipment.name }).from(equipment).where(eq(equipment.slug, equipmentSlug)) : [],
+    ]);
+    const filters = [
+      ...zones.map((z) => MUSCLE_ZONE_LABEL[z]),
+      ...muscleNames.map((m) => m.name),
+      ...(fullBody ? ['Cuerpo completo'] : []),
+      ...equipmentNames.map((e) => e.name),
+      ...(video ? ['Con video'] : []),
+      ...(guided ? ['Guiada'] : []),
+    ];
+    await recordSearch(db, c.get('user')!.id, q, filters, cat.workouts.length + cat.programs.length + cat.skills.length);
+  }
+
   const rows = [
     { title: 'Rutinas', layout: 'row', items: cat.workouts },
     { title: 'Programas', layout: 'poster', items: cat.programs },
@@ -1063,6 +1106,35 @@ appRoute.post('/logs', async (c) => {
   }
 
   return c.json({ id: log.id }, 201);
+});
+
+// POST /api/app/activity — the member opened a rutina, program or skill, or started training.
+appRoute.post('/activity', async (c) => {
+  const userId = c.get('user')!.id;
+  const db = c.get('db');
+  const parsed = trackActivitySchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'Datos inválidos' }, 400);
+  const { kind, contentId } = parsed.data;
+
+  const [recent] = await db
+    .select({ id: activityEvents.id })
+    .from(activityEvents)
+    .where(
+      and(
+        eq(activityEvents.userId, userId),
+        eq(activityEvents.kind, kind),
+        eq(activityEvents.contentId, contentId),
+        gte(activityEvents.createdAt, new Date(Date.now() - VISIT_GAP_MS)),
+      ),
+    )
+    .limit(1);
+  if (recent) return c.json({ ok: true });
+
+  const table = kind === 'view_program' ? programs : kind === 'view_skill' ? skills : workouts;
+  const [content] = await db.select({ name: table.name }).from(table).where(eq(table.id, contentId)).limit(1);
+  if (!content) return c.json({ error: 'No encontrado' }, 404);
+  await db.insert(activityEvents).values({ userId, kind, contentId, contentName: content.name });
+  return c.json({ ok: true }, 201);
 });
 
 // GET /api/app/logs — recent sessions for the current user.
