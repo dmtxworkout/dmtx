@@ -133,7 +133,14 @@ export function MuscleEditor({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
         <label>
           <span className={fieldLabel}>Nombre</span>
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="p. ej. Femorales" />
+          <Input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="p. ej. Femorales"
+            aria-invalid={tried && !name.trim()}
+            className={cn(tried && !name.trim() && 'border-accent bg-accent-tint')}
+          />
           {tried && !name.trim() && <span className="mt-1.5 block text-[12px] text-accent-dark">Escribe un nombre.</span>}
         </label>
         <div>
