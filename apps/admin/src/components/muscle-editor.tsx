@@ -57,9 +57,12 @@ export function MuscleEditor({
     return taken ? `«${taken.name}» ya es un músculo: no puede ser un alias.` : null;
   };
 
+  // Cancelar and Guardar only appear once something changed.
+  const dirty = name !== (muscle?.name ?? '') || aliases.join() !== (muscle?.aliases ?? []).join() || bodyPart !== (muscle?.bodyPart ?? null);
+
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !bodyPart) return;
+    if (!dirty || !name.trim() || !bodyPart) return;
     setSaving(true);
     try {
       const input = { name: name.trim(), aliases, bodyPart };
@@ -89,11 +92,28 @@ export function MuscleEditor({
 
   return (
     <form onSubmit={(e) => void save(e)} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center gap-2 border-b border-line-3 px-5 py-3.5">
-        <button type="button" onClick={onCancel} aria-label="Volver a la lista" className="text-muted hover:text-ink">
-          ←
-        </button>
-        <h2 className="truncate text-[15px] font-semibold text-ink">{muscle ? muscle.name : 'Agregar músculo'}</h2>
+      <div className="flex min-h-[59px] items-center gap-2 border-b border-line-3 px-5 py-3">
+        {!dirty && (
+          <button type="button" onClick={onCancel} aria-label="Volver a la lista" className="text-muted hover:text-ink">
+            ←
+          </button>
+        )}
+        <h2 className="min-w-0 truncate text-[15px] font-semibold text-ink">{muscle ? muscle.name : 'Agregar músculo'}</h2>
+        {muscle && (
+          <Button type="button" variant="outline" size="sm" onClick={() => setConfirming(true)} disabled={saving}>
+            {es.app.delete}
+          </Button>
+        )}
+        {dirty && (
+          <div className="ml-auto flex shrink-0 gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+              {es.app.cancel}
+            </Button>
+            <Button type="submit" size="sm" disabled={saving || !name.trim() || !bodyPart}>
+              {saving ? es.app.saving : 'Guardar'}
+            </Button>
+          </div>
+        )}
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
         <label>
@@ -131,24 +151,6 @@ export function MuscleEditor({
           ) : (
             <p className="text-[13px] leading-5 text-ink-3">Elige una en el cuerpo: la zona se asigna sola.</p>
           )}
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between gap-2 border-t border-line-3 px-5 py-3">
-        {muscle ? (
-          <Button type="button" variant="outline" onClick={() => setConfirming(true)} disabled={saving}>
-            {es.app.delete}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            {es.app.cancel}
-          </Button>
-          <Button type="submit" disabled={saving || !name.trim() || !bodyPart}>
-            {saving ? es.app.saving : muscle ? 'Guardar' : 'Agregar'}
-          </Button>
         </div>
       </div>
 
