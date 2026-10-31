@@ -151,10 +151,10 @@ export function Segmented<T extends string | number>({
   );
 }
 
-/** A screen's title beside its back chevron; a long title shrinks to stay on one line. */
+/** A back chevron with the screen's title on the line below it. */
 export function BackTitle({ title, onBack, className = '' }: { title: string; onBack: () => void; className?: string }) {
   return (
-    <View className={`mt-2 flex-row items-center gap-1 ${className}`}>
+    <View className={`mt-2 ${className}`}>
       <Pressable
         onPress={onBack}
         hitSlop={12}
@@ -166,9 +166,7 @@ export function BackTitle({ title, onBack, className = '' }: { title: string; on
           <Path d="M15 5l-7 7 7 7" stroke={colors.ink} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
       </Pressable>
-      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} className="flex-1 font-extrabold text-[30px] tracking-tight text-ink">
-        {title}
-      </Text>
+      <Text className="mt-3 font-extrabold text-[30px] tracking-tight text-ink">{title}</Text>
     </View>
   );
 }

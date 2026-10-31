@@ -31,7 +31,7 @@ export default function Login() {
           contentContainerClassName="flex-grow px-6 pb-6"
           keyboardShouldPersistTaps="handled"
         >
-          <BackTitle title="Bienvenido de vuelta" onBack={() => router.back()} className="mb-7" />
+          <BackTitle title="Iniciar sesión" onBack={() => router.back()} className="mb-7" />
 
           <View className="gap-4">
             <Field
