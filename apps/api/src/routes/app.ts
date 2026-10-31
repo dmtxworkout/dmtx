@@ -566,9 +566,27 @@ const VISIT_GAP_MS = 30 * 60_000;
 const SEARCH_GAP_MS = 30_000;
 
 /** Keeps what a member searched for. Never gets in the way of the results. */
-async function recordSearch(db: Database, userId: string, query: string | undefined, filters: string[], results: number) {
+async function recordSearch(
+  db: Database,
+  userId: string,
+  query: string | undefined,
+  picked: { zones: MuscleZone[]; muscleSlugs: string[]; equipmentSlug?: string; fullBody: boolean; video: boolean; guided: boolean },
+  results: number,
+) {
   try {
     const text = (query ?? '').toLowerCase();
+    const [muscleNames, equipmentNames] = await Promise.all([
+      picked.muscleSlugs.length ? db.select({ name: muscles.name }).from(muscles).where(inArray(muscles.slug, picked.muscleSlugs)) : [],
+      picked.equipmentSlug ? db.select({ name: equipment.name }).from(equipment).where(eq(equipment.slug, picked.equipmentSlug)) : [],
+    ]);
+    const filters = [
+      ...picked.zones.map((z) => MUSCLE_ZONE_LABEL[z]),
+      ...muscleNames.map((m) => m.name),
+      ...(picked.fullBody ? ['Cuerpo completo'] : []),
+      ...equipmentNames.map((e) => e.name),
+      ...(picked.video ? ['Con video'] : []),
+      ...(picked.guided ? ['Guiada'] : []),
+    ];
     const [last] = await db
       .select()
       .from(activityEvents)
@@ -745,20 +763,12 @@ appRoute.get('/browse', async (c) => {
   const db = c.get('db');
   const ranked = zones.length || muscleSlugs.length || fullBody ? await rankByMuscles(db, { zones, muscles: muscleSlugs, fullBody }) : undefined;
   const cat = await loadCatalog(db, c.env, { userId: c.get('user')!.id, q, types, limit: 30, equipment: equipmentSlug, video, guided, ranked });
+  // Kept after answering: the member never waits for it.
   if ((q && q.length >= 2) || zones.length || muscleSlugs.length || fullBody || equipmentSlug || video || guided) {
-    const [muscleNames, equipmentNames] = await Promise.all([
-      muscleSlugs.length ? db.select({ name: muscles.name }).from(muscles).where(inArray(muscles.slug, muscleSlugs)) : [],
-      equipmentSlug ? db.select({ name: equipment.name }).from(equipment).where(eq(equipment.slug, equipmentSlug)) : [],
-    ]);
-    const filters = [
-      ...zones.map((z) => MUSCLE_ZONE_LABEL[z]),
-      ...muscleNames.map((m) => m.name),
-      ...(fullBody ? ['Cuerpo completo'] : []),
-      ...equipmentNames.map((e) => e.name),
-      ...(video ? ['Con video'] : []),
-      ...(guided ? ['Guiada'] : []),
-    ];
-    await recordSearch(db, c.get('user')!.id, q, filters, cat.workouts.length + cat.programs.length + cat.skills.length);
+    const results = cat.workouts.length + cat.programs.length + cat.skills.length;
+    c.executionCtx.waitUntil(
+      recordSearch(db, c.get('user')!.id, q, { zones, muscleSlugs, equipmentSlug, fullBody, video, guided }, results),
+    );
   }
 
   const rows = [

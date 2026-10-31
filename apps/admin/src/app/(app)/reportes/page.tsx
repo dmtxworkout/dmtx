@@ -3,6 +3,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { StatCard } from '@/components/ui/stat-card';
+import { ReportTabs } from '@/components/report-tabs';
 
 const periods = ['12 meses', 'Trimestre', 'Mes', 'Personalizado'];
 
@@ -16,6 +17,7 @@ export default function ReportesPage() {
         subtitle="Agosto 2025 – julio 2026 · datos de suscripciones y pagos"
         actions={<Button variant="outline">Descargar CSV</Button>}
       >
+        <ReportTabs current="ingresos" />
         <div className="flex flex-wrap items-center gap-2.5">
           {periods.map((p, i) => (
             <Chip key={p} active={i === 0}>

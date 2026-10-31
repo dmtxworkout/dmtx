@@ -1,4 +1,4 @@
-import { doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { date, doublePrecision, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 import { activityKindEnum, measurementTypeEnum, primaryId, timestamps, trainingModeEnum, workoutFormatEnum } from './_shared';
 import { user } from './auth';
 import { workouts } from './workouts';
@@ -30,7 +30,7 @@ export const workoutLogs = pgTable(
     notes: text(),
     ...timestamps,
   },
-  (t) => [index('workout_logs_user_idx').on(t.userId, t.createdAt)],
+  (t) => [index('workout_logs_user_idx').on(t.userId, t.createdAt), index('workout_logs_created_brin').using('brin', t.createdAt)],
 );
 
 /** One logged mark within a session (per exercise instance / round / set). */
@@ -97,5 +97,25 @@ export const activityEvents = pgTable(
     results: integer(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [index('activity_events_user_idx').on(t.userId, t.createdAt)],
+  (t) => [index('activity_events_user_idx').on(t.userId, t.createdAt), index('activity_events_created_brin').using('brin', t.createdAt)],
+);
+
+/**
+ * What everyone did, added up by day (UTC), for the reports: a report reads these
+ * few rows instead of the whole of activity_events. It holds no user ids, so it
+ * outlives deleted accounts. Built by rollupActivity.
+ */
+export const activityDaily = pgTable(
+  'activity_daily',
+  {
+    day: date().notNull(),
+    // search, search_empty, filter, view_workout, view_program, view_skill, start_workout, session
+    metric: text().notNull(),
+    // The search text without accents or case, the filter's name, or the content's id.
+    key: text().notNull(),
+    label: text().notNull(),
+    count: integer().notNull(),
+    updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.metric, t.key] })],
 );

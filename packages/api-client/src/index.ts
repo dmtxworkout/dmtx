@@ -6,6 +6,7 @@ import { reusableBlocksApi } from './reusable-blocks';
 import { programsApi } from './programs';
 import { skillsApi } from './skills';
 import { subscriptionsApi } from './subscriptions';
+import { reportsApi } from './reports';
 import { taxonomyApi } from './taxonomy';
 
 /**
@@ -23,6 +24,7 @@ export function createApiClient(options: HttpClientOptions) {
     programs: programsApi(http),
     skills: skillsApi(http),
     subscriptions: subscriptionsApi(http),
+    reports: reportsApi(http),
     taxonomy: taxonomyApi(http),
   };
 }
@@ -30,6 +32,7 @@ export function createApiClient(options: HttpClientOptions) {
 export type ApiClient = ReturnType<typeof createApiClient>;
 
 export * from './http';
+export type { ActivityReport, ActivityReportItem } from './reports';
 export type { Paginated, ExerciseListItem } from './exercises';
 export type {
   AdminUser,

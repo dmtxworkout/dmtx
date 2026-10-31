@@ -14,6 +14,9 @@ import { subscriptionsRoute } from './routes/subscriptions';
 import { appRoute } from './routes/app';
 import { webhooksRoute } from './routes/webhooks';
 import { filesRoute } from './routes/files';
+import { reportsRoute } from './routes/reports';
+import { rollupActivity } from './lib/activity-rollup';
+import type { Env } from './env';
 
 const app = createApp();
 // An unexpected error reaches the admin as JSON with its message (the UI shows
@@ -61,6 +64,7 @@ app.route('/api/taxonomy', taxonomyRoute);
 app.route('/api/programs', programsRoute);
 app.route('/api/skills', skillsRoute);
 app.route('/api/subscriptions', subscriptionsRoute);
+app.route('/api/reports', reportsRoute);
 // Consumer / mobile-app API (read published content, entitlement-gated).
 app.route('/api/app', appRoute);
 
@@ -70,4 +74,10 @@ app.doc('/doc', {
   info: { title: 'DMTX API', version: '0.0.0', description: 'Admin API para DMTX' },
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  // Daily: adds up what members did for the reports (wrangler.toml [triggers]).
+  scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(rollupActivity(createDb(env.DATABASE_URL)));
+  },
+};
