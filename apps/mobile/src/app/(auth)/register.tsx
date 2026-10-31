@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Field } from '../../components/ui';
+import { BackTitle, Button, Field } from '../../components/ui';
 import { signUp } from '../../lib/auth';
 
 function passwordScore(pw: string): number {
@@ -55,17 +55,7 @@ export default function Register() {
           contentContainerClassName="flex-grow px-6 pb-6"
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            className="mt-2 h-10 w-10 items-center justify-center"
-          >
-            <Text className="text-[22px] text-ink">←</Text>
-          </Pressable>
-
-          <Text className="mb-7 mt-4 font-extrabold text-[30px] tracking-tight text-ink">
-            Crea tu cuenta
-          </Text>
+          <BackTitle title="Crea tu cuenta" onBack={() => router.back()} className="mb-7" />
 
           <View className="gap-4">
             <Field label="Nombre" value={name} onChangeText={setName} placeholder="Tu nombre" autoCapitalize="words" />

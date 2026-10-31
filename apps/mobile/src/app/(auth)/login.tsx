@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Field } from '../../components/ui';
+import { BackTitle, Button, Field } from '../../components/ui';
 import { signIn } from '../../lib/auth';
 
 export default function Login() {
@@ -31,17 +31,7 @@ export default function Login() {
           contentContainerClassName="flex-grow px-6 pb-6"
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            className="mt-2 h-10 w-10 items-center justify-center"
-          >
-            <Text className="text-[22px] text-ink">←</Text>
-          </Pressable>
-
-          <Text className="mb-7 mt-3 font-extrabold text-[30px] tracking-tight text-ink">
-            Bienvenido de vuelta
-          </Text>
+          <BackTitle title="Bienvenido de vuelta" onBack={() => router.back()} className="mb-7" />
 
           <View className="gap-4">
             <Field

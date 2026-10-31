@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Field } from '../../components/ui';
+import { BackTitle, Button, Field } from '../../components/ui';
 import { authClient } from '../../lib/auth';
 
 export default function Recover() {
@@ -40,17 +40,7 @@ export default function Recover() {
           contentContainerClassName="flex-grow px-6 pb-6"
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable
-            onPress={() => router.back()}
-            hitSlop={12}
-            className="mt-2 h-10 w-10 items-center justify-center"
-          >
-            <Text className="text-[22px] text-ink">←</Text>
-          </Pressable>
-
-          <Text className="mb-3 mt-3 font-extrabold text-[30px] tracking-tight text-ink">
-            Recupera tu acceso
-          </Text>
+          <BackTitle title="Recupera tu acceso" onBack={() => router.back()} className="mb-3" />
           <Text className="mb-7 font-sans text-[15px] leading-6 text-ink-3">
             Te enviaremos un enlace para restablecer tu contraseña.
           </Text>
