@@ -4,6 +4,8 @@ export interface ActivityReportItem {
   key: string;
   label: string;
   total: number;
+  /** Different people, once each across the whole period. */
+  people: number;
 }
 
 export interface ActivityReport {

@@ -101,9 +101,9 @@ export const activityEvents = pgTable(
 );
 
 /**
- * What everyone did, added up by day (UTC), for the reports: a report reads these
- * few rows instead of the whole of activity_events. It holds no user ids, so it
- * outlives deleted accounts. Built by rollupActivity.
+ * What everyone did, added up by day (Ecuador time), for the reports: a report
+ * reads these few rows instead of the whole of activity_events. It holds no user
+ * ids, so it outlives deleted accounts. Built by rollupActivity.
  */
 export const activityDaily = pgTable(
   'activity_daily',
@@ -118,4 +118,22 @@ export const activityDaily = pgTable(
     updatedAt: timestamp({ withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [primaryKey({ columns: [t.day, t.metric, t.key] })],
+);
+
+/**
+ * Who did each thing each day, once per person, because a period's unique people
+ * can't be had by adding up days: someone active on two days would count twice.
+ * Goes away with the account.
+ */
+export const activityDailyUsers = pgTable(
+  'activity_daily_users',
+  {
+    day: date().notNull(),
+    metric: text().notNull(),
+    key: text().notNull(),
+    userId: text()
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.metric, t.key, t.userId] }), index('activity_daily_users_user_idx').on(t.userId)],
 );

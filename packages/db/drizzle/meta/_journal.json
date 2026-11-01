@@ -428,6 +428,13 @@
       "when": 1793470113906,
       "tag": "0060_wealthy_hitman",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793538084386,
+      "tag": "0061_rich_mac_gargan",
+      "breakpoints": true
     }
   ]
 }

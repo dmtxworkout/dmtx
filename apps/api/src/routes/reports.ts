@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { activityDaily } from '@dmtx/db';
 import { createApp } from '../lib/openapi';
-import { rollupActivity } from '../lib/activity-rollup';
+import { REPORT_TIME_ZONE, rollupActivity } from '../lib/activity-rollup';
 import { requireAdmin } from '../middleware/auth';
 
 const TOP = 20;
@@ -9,7 +9,7 @@ const TOP = 20;
 export const reportsRoute = createApp();
 reportsRoute.use('*', requireAdmin);
 
-type Row = { metric: string; key: string; label: string; total: number };
+type Row = { metric: string; key: string; label: string; total: number; people: number };
 
 /** GET /api/reports/activity?days=7|30|90 — what everyone searches, opens and trains, from the daily summary. */
 reportsRoute.get('/activity', async (c) => {
@@ -17,19 +17,24 @@ reportsRoute.get('/activity', async (c) => {
   const days = [7, 30, 90].includes(Number(c.req.query('days'))) ? Number(c.req.query('days')) : 30;
   const [{ rows }, [fresh]] = await Promise.all([
     db.execute<Row>(sql`
-      select metric, key, label, total from (
+      with period as (select (now() at time zone ${REPORT_TIME_ZONE})::date - ${days}::int as after),
+      ranked as (
         select metric, key, (array_agg(label order by day desc))[1] as label, sum(count)::int as total,
                row_number() over (partition by metric order by sum(count) desc, key) as rank
-        from activity_daily
-        where day > (now() at time zone 'UTC')::date - ${days}::int
+        from activity_daily, period
+        where day > period.after
         group by metric, key
-      ) ranked
-      where rank <= ${TOP}
-      order by metric, total desc`),
+      )
+      select r.metric, r.key, r.label, r.total, count(distinct u.user_id)::int as people
+      from ranked r
+      left join activity_daily_users u on u.metric = r.metric and u.key = r.key and u.day > (select after from period)
+      where r.rank <= ${TOP}
+      group by r.metric, r.key, r.label, r.total
+      order by r.metric, r.total desc, r.key`),
     db.select({ at: sql<string | null>`max(${activityDaily.updatedAt})` }).from(activityDaily),
   ]);
   const of = (...metrics: string[]) => rows.filter((r) => metrics.includes(r.metric));
-  const item = (r: Row) => ({ key: r.key, label: r.label, total: r.total });
+  const item = (r: Row) => ({ key: r.key, label: r.label, total: r.total, people: r.people });
   return c.json({
     days,
     updatedAt: fresh?.at ? new Date(fresh.at).toISOString() : null,

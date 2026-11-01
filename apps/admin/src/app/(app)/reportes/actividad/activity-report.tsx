@@ -56,7 +56,9 @@ function Ranking({
                 )}
                 {note && <span className="ml-2 font-mono text-[11px] font-normal text-muted">{note(i)}</span>}
               </span>
-              <span className="shrink-0 font-mono text-[12px] text-ink-3">{i.total}</span>
+              <span className="shrink-0 font-mono text-[12px] text-ink-3">
+                {i.total} {i.total === 1 ? 'vez' : 'veces'} · {i.people} {i.people === 1 ? 'persona' : 'personas'}
+              </span>
             </div>
             <div className="mt-1 h-1 overflow-hidden rounded-full bg-surface-2">
               <div className="h-full rounded-full bg-accent" style={{ width: `${(i.total / max) * 100}%` }} />
