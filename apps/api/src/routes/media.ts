@@ -91,8 +91,13 @@ async function createUploading(db: Database, externalId: string, name: string, k
   return row;
 }
 
+// Every environment shares one Cloudflare account, and a database branch holds the
+// same file ids as production: only production may delete the files themselves.
+const PRODUCTION_API = 'https://api.dmtxworkout.com';
+
 /** Remove the file at Cloudflare (best effort; the row is handled by the caller). */
 async function deleteRemote(env: Env, kind: 'video' | 'image', externalId: string) {
+  if (env.BETTER_AUTH_URL !== PRODUCTION_API) return;
   if (kind === 'image') await imagesDelete(env, externalId);
   else await streamDelete(env, externalId);
 }

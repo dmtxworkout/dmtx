@@ -43,4 +43,5 @@ Create the first admin: sign up via the app, then set that user's `role` to `adm
 
 - Host admin + API under a **shared parent domain** (`admin.dmtxworkout.com` / `api.dmtxworkout.com`) for cross-subdomain auth cookies; set `ADMIN_ORIGIN` + `BETTER_AUTH_URL` accordingly and enable Better Auth `crossSubDomainCookies`.
 - Media needs no CORS or bucket configuration: Images' direct-upload URLs and Stream's tus endpoint accept browser uploads as they are. Register the Stream webhook (above) so videos become `ready` without an admin tab open; the Images and Stream storage blocks do not grow on their own — when a block is full, uploads fail with Cloudflare's message in the tray, and the fix is one more block in Images & Stream → Plans.
+- Every environment uses the same Cloudflare Images and Stream account, and Cloudflare has no staging of its own. Only the API at `https://api.dmtxworkout.com` deletes files there; elsewhere a delete removes the database row and leaves the file, so a branch can't break production's media.
 - CI: Turbo remote cache (`TURBO_TOKEN`/`TURBO_TEAM`), and a migration check against an ephemeral Neon branch.
