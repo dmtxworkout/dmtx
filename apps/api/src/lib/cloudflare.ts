@@ -34,11 +34,17 @@ const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(
 
 // --- Images ------------------------------------------------------------------
 
+/** Which environment this API is. All of them share one Cloudflare account. */
+export const mediaEnvironment = (env: Env) => (env.BETTER_AUTH_URL === 'https://api.dmtxworkout.com' ? 'production' : 'development');
+
+/** Cloudflare has no folders: the name's prefix is what tells environments apart in its dashboard. */
+const remoteName = (env: Env, name: string) => `${mediaEnvironment(env)}/${name}`;
+
 /** A one-time URL the browser POSTs the file to (multipart, field `file`). */
 export async function imagesDirectUpload(env: Env, name: string): Promise<{ id: string; uploadURL: string }> {
   const form = new FormData();
   form.set('requireSignedURLs', 'false');
-  form.set('metadata', JSON.stringify({ name }));
+  form.set('metadata', JSON.stringify({ name: remoteName(env, name), environment: mediaEnvironment(env) }));
   return cfRequest(env, '/images/v2/direct_upload', { method: 'POST', body: form });
 }
 
@@ -70,7 +76,7 @@ export const streamSigned = (env: Env) => !!(env.CF_STREAM_SIGNING_KEY_ID && env
  * video's uid and the upload URL; the bytes never pass through the Worker.
  */
 export async function streamCreateUpload(env: Env, name: string, sizeBytes: number): Promise<{ uid: string; uploadUrl: string }> {
-  const meta = [`name ${b64(name)}`, `maxDurationSeconds ${b64('21600')}`];
+  const meta = [`name ${b64(remoteName(env, name))}`, `maxDurationSeconds ${b64('21600')}`];
   if (streamSigned(env)) meta.push('requiresignedurls');
   const res = await fetch(accountUrl(env, '/stream?direct_user=true'), {
     method: 'POST',

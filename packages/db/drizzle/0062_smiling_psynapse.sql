@@ -1,0 +1,1 @@
+ALTER TABLE "media_assets" ADD COLUMN "uploaded_in" text DEFAULT 'production' NOT NULL;

@@ -435,6 +435,13 @@
       "when": 1793538084386,
       "tag": "0061_rich_mac_gargan",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793550447498,
+      "tag": "0062_smiling_psynapse",
+      "breakpoints": true
     }
   ]
 }

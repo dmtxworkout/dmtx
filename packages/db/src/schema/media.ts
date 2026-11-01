@@ -18,6 +18,9 @@ export const mediaFolders = pgTable('media_folders', {
 export const mediaAssets = pgTable('media_assets', {
   id: primaryId(),
   externalId: text().notNull().unique(),
+  // Where it was uploaded. A database branch also lists its parent's files, and only
+  // the environment that uploaded a file may delete it at Cloudflare.
+  uploadedIn: text().notNull().default('production'),
   /** The original file name, as the admin sees it in the library. */
   name: text().notNull(),
   kind: mediaKindEnum().notNull(),

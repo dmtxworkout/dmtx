@@ -5,7 +5,7 @@ import { MEDIA_PROCESSING_STATUS, paginated, paginationQuerySchema } from '@dmtx
 import type { Database } from '@dmtx/db';
 import type { Env } from '../env';
 import { createApp } from '../lib/openapi';
-import { imageUrl, imagesDelete, imagesDirectUpload, imagesGet, streamCreateUpload, streamDelete } from '../lib/cloudflare';
+import { imageUrl, imagesDelete, mediaEnvironment, imagesDirectUpload, imagesGet, streamCreateUpload, streamDelete } from '../lib/cloudflare';
 import { refreshVideo, serializeAsset } from '../lib/media';
 import { requireAdmin } from '../middleware/auth';
 
@@ -82,24 +82,23 @@ const errorSchema = z.object({ error: z.string() });
 const idParam = z.object({ id: z.uuid() });
 
 /** The media record exists from the moment an upload starts, as `uploading`, so the admin can keep working. */
-async function createUploading(db: Database, externalId: string, name: string, kind: 'video' | 'image', contentType: string, sizeBytes: number, folderId: string | null) {
+async function createUploading(db: Database, uploadedIn: string, externalId: string, name: string, kind: 'video' | 'image', contentType: string, sizeBytes: number, folderId: string | null) {
   const [row] = await db
     .insert(mediaAssets)
-    .values({ externalId, name, kind, mimeType: contentType, sizeBytes, processingStatus: 'uploading', folderId })
+    .values({ externalId, uploadedIn, name, kind, mimeType: contentType, sizeBytes, processingStatus: 'uploading', folderId })
     .returning();
   if (!row) throw new Error('No se pudo crear el asset de medios');
   return row;
 }
 
-// Every environment shares one Cloudflare account, and a database branch holds the
-// same file ids as production: only production may delete the files themselves.
-const PRODUCTION_API = 'https://api.dmtxworkout.com';
-
-/** Remove the file at Cloudflare (best effort; the row is handled by the caller). */
-async function deleteRemote(env: Env, kind: 'video' | 'image', externalId: string) {
-  if (env.BETTER_AUTH_URL !== PRODUCTION_API) return;
-  if (kind === 'image') await imagesDelete(env, externalId);
-  else await streamDelete(env, externalId);
+/**
+ * Remove the file at Cloudflare (best effort; the row is handled by the caller). Only
+ * the environment that uploaded it may: a database branch also lists its parent's files.
+ */
+async function deleteRemote(env: Env, row: { kind: 'video' | 'image'; externalId: string; uploadedIn: string }) {
+  if (row.uploadedIn !== mediaEnvironment(env)) return;
+  if (row.kind === 'image') await imagesDelete(env, row.externalId);
+  else await streamDelete(env, row.externalId);
 }
 
 type UsageItem = z.infer<typeof usageItem>;
@@ -343,11 +342,11 @@ mediaRoute.openapi(
     const db = c.get('db');
     if (kind === 'image') {
       const { id, uploadURL } = await imagesDirectUpload(c.env, filename);
-      const row = await createUploading(db, id, filename, kind, contentType, sizeBytes, folderId ?? null);
+      const row = await createUploading(db, mediaEnvironment(c.env), id, filename, kind, contentType, sizeBytes, folderId ?? null);
       return c.json({ asset: await serializeAsset(c.env, row), uploadUrl: uploadURL, protocol: 'form' as const }, 200);
     }
     const { uid, uploadUrl } = await streamCreateUpload(c.env, filename, sizeBytes);
-    const row = await createUploading(db, uid, filename, kind, contentType, sizeBytes, folderId ?? null);
+    const row = await createUploading(db, mediaEnvironment(c.env), uid, filename, kind, contentType, sizeBytes, folderId ?? null);
     return c.json({ asset: await serializeAsset(c.env, row), uploadUrl, protocol: 'tus' as const }, 200);
   },
 );
@@ -430,7 +429,7 @@ mediaRoute.openapi(
       .where(and(eq(mediaAssets.id, id), inArray(mediaAssets.processingStatus, ['uploading', 'processing'])))
       .limit(1);
     if (!row) return c.json({ error: 'No encontrado' }, 404);
-    await deleteRemote(c.env, row.kind, row.externalId);
+    await deleteRemote(c.env, row);
     await db.delete(mediaAssets).where(eq(mediaAssets.id, id));
     return c.body(null, 204);
   },
@@ -571,6 +570,7 @@ mediaRoute.openapi(
       .update(mediaAssets)
       .set({
         externalId: source.externalId,
+        uploadedIn: source.uploadedIn,
         mimeType: source.mimeType,
         sizeBytes: source.sizeBytes,
         durationSeconds: source.durationSeconds,
@@ -583,7 +583,7 @@ mediaRoute.openapi(
       .returning();
     // The temporary row goes without touching the file, which now belongs to the target.
     await db.delete(mediaAssets).where(eq(mediaAssets.id, sourceId));
-    await deleteRemote(c.env, target.kind, target.externalId);
+    await deleteRemote(c.env, target);
     return c.json({ ...(await serializeAsset(c.env, row!)), usage: await usageOf(db, id) }, 200);
   },
 );
@@ -617,7 +617,7 @@ mediaRoute.openapi(
       .where(and(eq(mediaAssets.id, id), isNull(mediaAssets.deletedAt)))
       .returning();
     if (!row) return c.json({ error: 'No encontrado' }, 404);
-    await deleteRemote(c.env, row.kind, row.externalId);
+    await deleteRemote(c.env, row);
     return c.body(null, 204);
   },
 );
