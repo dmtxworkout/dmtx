@@ -84,6 +84,11 @@ export function createAuth(env: AuthEnv) {
         });
       },
     },
+    // In production the admin and the API are sibling subdomains (admin.* and api.*):
+    // the session cookie goes on their parent so both see it. Localhost needs none.
+    advanced: env.BETTER_AUTH_URL.startsWith('https://api.')
+      ? { crossSubDomainCookies: { enabled: true, domain: new URL(env.BETTER_AUTH_URL).hostname.slice('api.'.length) } }
+      : undefined,
     plugins: [
       admin({
         ac,

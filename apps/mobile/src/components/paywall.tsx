@@ -50,7 +50,7 @@ export function Paywall({
         <View className="mt-1 w-full rounded-2xl bg-surface p-4">
           <Text className="text-center font-sans text-[13px] leading-5 text-ink-3">
             Las suscripciones se gestionan en la web. Suscríbete en{' '}
-            <Text className="font-semibold text-ink-2">dmtx.app</Text> y vuelve a la app.
+            <Text className="font-semibold text-ink-2">dmtxworkout.com</Text> y vuelve a la app.
           </Text>
         </View>
       </View>

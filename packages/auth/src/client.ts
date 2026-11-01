@@ -4,7 +4,7 @@ import { ac, roles } from './permissions';
 
 /**
  * Browser auth client (React hooks: useSession, signIn, signOut, admin.*).
- * Pass the API base URL where Better Auth is mounted (e.g. https://api.dmtx.app).
+ * Pass the API base URL where Better Auth is mounted (e.g. https://api.dmtxworkout.com).
  */
 export function createAuthBrowserClient(baseURL: string) {
   return createAuthClient({
