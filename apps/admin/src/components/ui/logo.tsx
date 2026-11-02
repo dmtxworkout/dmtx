@@ -1,18 +1,7 @@
 import { cn } from '@/lib/utils';
 
-/**
- * DMTX wordmark. Swap for the real brand mark by dropping the asset in
- * `public/logo.png` and rendering `<img src="/logo.png" />` here.
- */
+/** The DMTX gorilla. Set its height with `className`; the width follows. */
 export function Logo({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        'select-none font-sans text-[19px] font-bold leading-none tracking-[-0.03em] text-ink',
-        className,
-      )}
-    >
-      DMTX
-    </span>
-  );
+  // eslint-disable-next-line @next/next/no-img-element -- a small static mark
+  return <img src="/logo-mark.png" alt="DMTX" className={cn('h-8 w-auto select-none', className)} />;
 }

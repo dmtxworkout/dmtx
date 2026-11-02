@@ -54,9 +54,8 @@ export function Sidebar({ user }: { user: { email: string; name?: string | null 
 
   return (
     <aside className="flex w-[244px] shrink-0 flex-col border-r border-line bg-surface">
-      <div className="flex items-center gap-2.5 px-[18px] pb-4 pt-5">
+      <div className="px-[18px] pb-4 pt-5">
         <Logo />
-        <MonoLabel className="text-[11px] tracking-[0.12em] text-muted">Admin</MonoLabel>
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-2.5 pb-3 pt-1.5">
