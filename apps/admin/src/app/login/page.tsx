@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { Logo } from '@/components/ui/logo';
-import { MonoLabel } from '@/components/ui/mono-label';
 
 // Prefill the local admin creds while developing so testing is one click.
 const DEV = process.env.NODE_ENV !== 'production';
@@ -38,12 +36,9 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-paper p-4">
       <Card className="w-full max-w-sm">
         <div className="px-7 py-8">
-          <div className="mb-6 flex items-center gap-2.5">
-            <Logo />
-            <MonoLabel className="text-[11px] tracking-[0.12em] text-muted">Admin</MonoLabel>
-          </div>
-          <h1 className="text-[22px] font-bold tracking-[-0.02em]">{es.login.title}</h1>
-          <p className="mb-6 mt-1 text-sm text-ink-3">{es.login.subtitle}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element -- a small static mark */}
+          <img src="/logo-mark.png" alt="DMTX" className="mx-auto mb-6 h-14 w-auto" />
+          <h1 className="mb-6 text-[22px] font-bold tracking-[-0.02em]">{es.login.title}</h1>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
               <Label htmlFor="email">{es.login.email}</Label>

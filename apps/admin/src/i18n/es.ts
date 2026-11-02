@@ -48,7 +48,6 @@ export const es = {
   },
   login: {
     title: 'Iniciar sesión',
-    subtitle: 'Portal de administración',
     email: 'Correo',
     password: 'Contraseña',
     submit: 'Entrar',
