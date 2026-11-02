@@ -56,8 +56,11 @@ export function Sidebar({ user }: { user: { email: string; name?: string | null 
     <aside className="flex w-[244px] shrink-0 flex-col border-r border-line bg-surface">
       <div className="flex items-end gap-2 px-[18px] pb-4 pt-5">
         <Logo className="h-7" />
-        {/* eslint-disable-next-line @next/next/no-img-element -- the brand's own lettering */}
-        <img src="/logo-wordmark.png" alt="" className="h-[15px] w-auto select-none" />
+        <div className="flex flex-col gap-[3px]">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the brand's own lettering */}
+          <img src="/logo-wordmark.png" alt="" className="h-[15px] w-[61px] skew-x-[12deg] select-none" />
+          <span className="select-none text-[8.5px] font-bold uppercase leading-none tracking-[0.245em] text-ink">Workout</span>
+        </div>
       </div>
 
       <nav className="flex min-h-0 flex-1 flex-col gap-[22px] overflow-y-auto px-2.5 pb-3 pt-1.5">
