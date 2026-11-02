@@ -37,7 +37,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-paper p-4">
       <Card className="w-full max-w-sm">
         <div className="px-7 py-8">
-          <Logo className="mx-auto mb-6 h-14" />
+          <Logo className="mx-auto mb-3 h-14" />
           <h1 className="mb-6 text-center text-[22px] font-bold tracking-[-0.02em]">{es.login.title}</h1>
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
