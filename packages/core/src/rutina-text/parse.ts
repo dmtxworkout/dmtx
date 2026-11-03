@@ -646,7 +646,9 @@ export function parseRutina(text: string, opts: ParseOptions): ParsedRutina {
     }
     const list = siblings();
     const last = list[list.length - 1];
-    if (last?.loose && last.kind !== 'rest') last.items.push(item);
+    // A run never crosses into another section: unindented main lines stay apart from a
+    // cooldown written after them.
+    if (last?.loose && last.kind !== 'rest' && last.section === section) last.items.push(item);
     else list.push({ ...looseRun(line), items: [item] });
   };
   const openContainer = (block: ParsedBlock, indent: number, slot: number | null, pendingRest: number | null) => {

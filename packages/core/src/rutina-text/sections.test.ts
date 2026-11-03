@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { Catalog } from './catalog';
+import { parseRutina } from './parse';
 import { joinSections, splitSections } from './sections';
 
 describe('section texts', () => {
@@ -25,6 +27,20 @@ Estiramiento
   plancha 1 min // respira
 `);
     expect(splitSections(doc)).toEqual(parts);
+  });
+  it('keeps each tab in its own section when the main lines have no indentation', () => {
+    for (const main of ['3x10 flexiones\n3x12 flexiones inclinadas\n', 'Fuerza\n3x10 flexiones\n3x12 flexiones inclinadas\n']) {
+      const doc = joinSections({ warmup: '12 caterpillar\n', main, cooldown: '20s cobra\n20s pose del niño\n', goal: '' });
+      const blocks = parseRutina(doc, { catalog: new Catalog([]) }).blocks;
+      const names = (section: string) =>
+        blocks
+          .filter((b) => b.section === section)
+          .flatMap((b) => [b, ...(b.children ?? [])])
+          .flatMap((b) => b.items.map((i) => i.rawName));
+      expect(names('warmup')).toEqual(['caterpillar']);
+      expect(names('main')).toEqual(['flexiones', 'flexiones inclinadas']);
+      expect(names('cooldown')).toEqual(['cobra', 'pose del niño']);
+    }
   });
   it('leaves empty sections out and tolerates a document with no headers', () => {
     expect(joinSections({ warmup: '', main: '10 burpees', cooldown: '  \n', goal: '' })).toBe('10 burpees\n');
