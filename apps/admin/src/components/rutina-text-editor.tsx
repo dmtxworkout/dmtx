@@ -1679,6 +1679,17 @@ export function RutinaTextEditor({
           diagLineField,
           lineKindPlugin,
           theme,
+          // Our own diagnostics are the only underlines: no browser spellcheck, and
+          // Grammarly and LanguageTool keep out of the editor.
+          EditorView.contentAttributes.of({
+            spellcheck: 'false',
+            autocorrect: 'off',
+            autocapitalize: 'off',
+            'data-gramm': 'false',
+            'data-gramm_editor': 'false',
+            'data-enable-grammarly': 'false',
+            'data-lt-active': 'false',
+          }),
           // No wrapping: a long line scrolls sideways instead of breaking (a code editor's way),
           // so each line stays one row and the gutter's marks line up with it, even on a narrow screen.
           cmPlaceholder(placeholder ?? ''),
